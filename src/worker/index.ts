@@ -7,6 +7,7 @@ import {
   securityHeadersMiddleware,
 } from './middleware/security';
 import { classifyPath, isApiPath } from './routing';
+import { registerPageRoutes } from './pages/routes';
 import type { WorkerApp } from './types';
 
 async function checkBindings(env: WorkerApp['Bindings']) {
@@ -40,6 +41,8 @@ export function createApp() {
       return apiError(c, 503, 'HEALTH_UNAVAILABLE', 'Service unavailable.');
     }
   });
+
+  registerPageRoutes(app);
 
   app.all('*', async (c) => {
     const pathname = new URL(c.req.url).pathname;

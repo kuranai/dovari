@@ -4,7 +4,7 @@ import { authorizeAccessRequest, isLocalAuthBypassRequest } from '../auth/access
 import { classifyPath } from '../routing';
 import type { WorkerApp } from '../types';
 
-export type ApiErrorStatus = 401 | 403 | 404 | 500 | 503;
+export type ApiErrorStatus = 400 | 401 | 403 | 404 | 409 | 413 | 422 | 500 | 503;
 
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
@@ -92,10 +92,22 @@ export function apiError(
   status: ApiErrorStatus,
   code: string,
   message: string,
+  details?: Record<string, unknown>,
 ) {
   const requestId = context.get('requestId');
   context.header('Cache-Control', 'no-store');
-  return context.json({ error: { code, message }, requestId }, status);
+  return context.json(
+    {
+      error: {
+        code,
+        message,
+        requestId,
+        ...(details ? { details } : {}),
+      },
+      requestId,
+    },
+    status,
+  );
 }
 
 export const requestIdMiddleware: MiddlewareHandler<WorkerApp> = async (context, next) => {

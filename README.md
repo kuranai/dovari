@@ -81,10 +81,27 @@ npm run test:e2e
 The E2E command builds the production Worker, starts `vite preview` on a loopback host, and checks
 that the app shell loads through the Worker routing path.
 
-The source tree keeps client code under `src/client`, Worker code under `src/worker`, and
-dependency-free shared contracts under `src/shared`. The Worker classifies private, public,
-static, health, and unknown paths centrally. Private application and API paths now require the
-security boundary described below; product APIs are introduced in later phases.
+The source tree keeps client code under `src/client`, Worker code under `src/worker`, and shared
+contracts under `src/shared`. The Worker classifies private, public, static, health, and unknown
+paths centrally. Private application and API paths require the security boundary described below;
+the Pages API is the first product API and the browser UI follows in a later phase.
+
+## Pages API
+
+The private Pages API is available to authenticated editors at:
+
+```text
+GET    /api/private/pages
+POST   /api/private/pages
+GET    /api/private/pages/:id
+PATCH  /api/private/pages/:id
+PUT    /api/private/pages/:id/content
+DELETE /api/private/pages/:id
+```
+
+Mutation requests must be same-origin. Metadata and content updates use `baseRevision`; stale
+writes return `409 PAGE_CONFLICT`. Page content is validated against the server-side Tiptap
+allowlist, and `contentText` is derived on the server.
 
 ## Cloudflare Access setup
 

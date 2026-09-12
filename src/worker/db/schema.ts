@@ -9,8 +9,9 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
+import { emptyDocument } from '../../shared/pages';
 
-export const emptyDocument = '{"type":"doc","content":[]}';
+export { emptyDocument };
 
 export const pages = sqliteTable(
   'pages',

@@ -51,7 +51,8 @@ function makeEnvironment(overrides: Partial<WorkerBindings> = {}) {
     });
   });
   const first = vi.fn(async () => ({ ok: 1 }));
-  const prepare = vi.fn(() => ({ first }));
+  const all = vi.fn(async () => ({ results: [] }));
+  const prepare = vi.fn(() => ({ all, first }));
   const head = vi.fn(async () => null);
 
   const env = {
@@ -156,16 +157,13 @@ describe('worker security boundary', () => {
       },
     });
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
     expect(response.headers.get('X-Request-ID')).toBe('security-test-request');
     expect(jwksFetch).toHaveBeenCalledWith(`${TEAM_DOMAIN}/cdn-cgi/access/certs`, {
       headers: { Accept: 'application/json' },
       redirect: 'error',
     });
-    await expect(response.json()).resolves.toMatchObject({
-      error: { code: 'NOT_FOUND' },
-      requestId: 'security-test-request',
-    });
+    await expect(response.json()).resolves.toEqual({ pages: [] });
   });
 
   it('rejects a token with a bad signature', async () => {
@@ -276,7 +274,7 @@ describe('worker security boundary', () => {
 
     expect(missingOrigin.status).toBe(403);
     expect(foreignOrigin.status).toBe(403);
-    expect(sameOrigin.status).toBe(404);
+    expect(sameOrigin.status).toBe(400);
     await expect(foreignOrigin.json()).resolves.toMatchObject({
       error: { code: 'ORIGIN_MISMATCH' },
     });

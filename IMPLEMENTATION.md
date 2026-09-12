@@ -2,9 +2,9 @@
 
 **Dieses Dokument ist die kanonische Quelle für den aktuellen Implementierungsstand.**  
 **Letzte Aktualisierung:** 12. September 2026
-**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen
+**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen
 **Aktuelle Phase:** keine
-**Nächste Phase:** P05 – Pages Domain und HTTP-API
+**Nächste Phase:** P06 – App-Shell, Sidebar und Page CRUD
 
 ## 1. Zweck
 
@@ -94,8 +94,8 @@ Ist die Phase nicht fertig, bleibt sie `IN PROGRESS`. Bei einem echten externen 
 | P02 | Grundlage | Authentifizierung und Security-Basis | `DONE` | Access-JWT, Fail-Closed-Routing, Origin-Schutz, Security-Header und Worker-Sicherheitstests umgesetzt und verifiziert |
 | P03 | Grundlage | Testsystem vervollständigen und CI-Qualitätsgates | `DONE` | Vitest-Worker-/Clienttests, lokale D1-/R2-Binding-Tests, Playwright-Smoke und CI-Gates umgesetzt und verifiziert |
 | P04 | Seiten | D1-Schema und Migrationen | `DONE` | Drizzle-Schema, D1-Migrationen, FTS5-Synchronisation und Integrity-Tests umgesetzt und verifiziert |
-| P05 | Seiten | Pages Domain und HTTP-API | `NEXT` | – |
-| P06 | Seiten | App-Shell, Sidebar und Page CRUD | `PLANNED` | – |
+| P05 | Seiten | Pages Domain und HTTP-API | `DONE` | Pages-Repository/-Service, Zod-Verträge, CRUD, Slugs, Plaintext, Konflikte, Limits und Soft Delete umgesetzt und verifiziert |
+| P06 | Seiten | App-Shell, Sidebar und Page CRUD | `NEXT` | – |
 | P07 | Navigation | Seitenhierarchie und Sortierung | `PLANNED` | – |
 | P08 | Editor | Tiptap-Grundeditor | `PLANNED` | – |
 | P09 | Editor | Inhaltsableitungen und Markdown | `PLANNED` | – |
@@ -638,6 +638,7 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 | 2026-09-12 | P02 | Cloudflare-Access-JWT-Prüfung mit JWKS-Signatur-, Issuer-, Audience-, Ablauf- und Gültigkeitsbeginnprüfung, zentrale private/public API-Grenze, Loopback-Bypass, Origin-Prüfung, Request-ID, Security-Header, standardisierte API-Fehler und bereinigte Static-Asset-Weiterleitung umgesetzt | `npm ci --ignore-scripts --no-audit --no-fund`, `npm run typecheck`, `npx tsc -p tsconfig.worker.json --noEmit`, `npm test` (8 Tests), `npm run build`, `npm run lint`, `npm run format:check`, `git diff --check`, lokaler Dev-/Preview-HTTP-Smoke für `/app`, `/api/health`, Static Assets und unbekannte API-Pfade erfolgreich | Produktion ohne Access-Konfiguration bleibt für private Pfade bei `503 SETUP_REQUIRED`; öffentliche Health-/Asset-Pfade bleiben inhaltsfrei erreichbar; P03 ist `NEXT` |
 | 2026-09-12 | P03 | Vitest-4-Workers-Integration mit lokalen D1-/R2-Bindings, React-Testing-Library-Clienttest, Playwright-Chromium-Smoke und CI-Qualitätsworkflow umgesetzt | `npm ci --ignore-scripts --no-audit --no-fund`, `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test` (11 Tests in 3 Testdateien), `npm run build`, `npm run test:e2e` (1 Browser-Smoke), `git diff --check` erfolgreich | `npm test` läuft in Workers- und JSDOM-Projekten; P04 ist `NEXT` |
 | 2026-09-12 | P04 | Drizzle-Schema für `pages`, `assets`, `page_assets` und `page_links`, reproduzierbare D1-Migrationen, externe FTS5-Tabelle mit Synchronisationstriggern, Testfixtures und Worker-Integrity-Tests umgesetzt | `npm run db:migrate:local` (3 Migrationen), erneutes `npm run db:migrate:local` ohne offene Migrationen, `npm run db:generate`, `npx drizzle-kit check --config drizzle.config.ts`, `npm run ci` (15 Tests) und `git diff --check` erfolgreich | `content_markdown` wird nicht gespeichert; P05 ist `NEXT` |
+| 2026-09-12 | P05 | Pages-Domain mit Raw-D1-Repository, Service- und Zod-Verträgen, sicherer Pages-HTTP-API, eindeutigen Slugs, serverseitigem Plaintext, optimistischen Revisionen, Größenlimit und Soft Delete umgesetzt | `npm run db:generate` (keine Schemaänderung), `npm run ci` (19 Tests), `npm run test:e2e` (1 Browser-Smoke) und `git diff --check` erfolgreich | Move-API bleibt gemäß Scope P07 vorbehalten; P06 ist `NEXT` |
 
 ## 9. Regeln zur Pflege dieses Dokuments
 
