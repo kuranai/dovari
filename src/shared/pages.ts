@@ -441,6 +441,18 @@ export const deletePageRequestSchema = z
   })
   .strict();
 
+export const movePageRequestSchema = z
+  .object({
+    parentId: pageIdSchema.nullable(),
+    beforeId: pageIdSchema.optional(),
+    afterId: pageIdSchema.optional(),
+  })
+  .strict()
+  .refine((value) => value.beforeId === undefined || value.afterId === undefined, {
+    message: 'A move can use either beforeId or afterId, not both.',
+    path: ['beforeId'],
+  });
+
 export const pageSummarySchema = z
   .object({
     id: pageIdSchema,
@@ -533,5 +545,6 @@ export type CreatePageRequest = z.infer<typeof createPageRequestSchema>;
 export type UpdatePageRequest = z.infer<typeof updatePageRequestSchema>;
 export type UpdatePageContentRequest = z.infer<typeof updatePageContentRequestSchema>;
 export type DeletePageRequest = z.infer<typeof deletePageRequestSchema>;
+export type MovePageRequest = z.infer<typeof movePageRequestSchema>;
 export type PagesListResponse = z.infer<typeof pagesListResponseSchema>;
 export type PageResponse = z.infer<typeof pageResponseSchema>;

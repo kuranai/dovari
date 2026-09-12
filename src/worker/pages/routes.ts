@@ -6,6 +6,7 @@ import {
   createPageRequestSchema,
   deletePageRequestSchema,
   MAX_PAGE_REQUEST_BYTES,
+  movePageRequestSchema,
   pageIdSchema,
   updatePageContentRequestSchema,
   updatePageRequestSchema,
@@ -152,6 +153,14 @@ export function registerPageRoutes(app: Hono<WorkerApp>) {
         'INVALID_DOCUMENT',
       );
       const page = await service.updateContent(pageId(context), input);
+      return context.json({ page });
+    }),
+  );
+
+  app.post('/api/private/pages/:id/move', (context) =>
+    withPageErrors(context, async (service) => {
+      const input = await parseJsonBody(context, movePageRequestSchema);
+      const page = await service.move(pageId(context), input);
       return context.json({ page });
     }),
   );

@@ -26,13 +26,14 @@ type PageListState = 'loading' | 'error' | 'ready';
 
 export interface WorkspaceOutletContext {
   actionError: string | null;
-  createPage: () => Promise<void>;
+  createPage: (parentId?: string | null) => Promise<void>;
   deletePage: (page: PageDetail) => Promise<void>;
   isCreating: boolean;
   listError: string | null;
   listState: PageListState;
-  onPageUpdated: (page: PageDetail) => void;
+  onPageUpdated: (page: PageSummary) => void;
   pages: PageSummary[];
+  refreshPages: () => Promise<void>;
   retryPages: () => void;
 }
 
@@ -108,7 +109,7 @@ function WorkspaceLanding() {
 
 function PageRoute() {
   const { pageId } = useParams();
-  const { deletePage, onPageUpdated } = useOutletContext<WorkspaceOutletContext>();
+  const { deletePage, onPageUpdated, pages } = useOutletContext<WorkspaceOutletContext>();
 
   if (!pageId) {
     return <Navigate replace to="/app" />;
@@ -120,6 +121,7 @@ function PageRoute() {
       onPageDeleted={deletePage}
       onPageUpdated={onPageUpdated}
       pageId={pageId}
+      pageSummary={pages.find((page) => page.id === pageId)}
     />
   );
 }
@@ -127,6 +129,9 @@ function PageRoute() {
 function Sidebar({
   isCreating,
   onCreate,
+  onCreateChild,
+  onPageUpdated,
+  onPagesChanged,
   pages,
   state,
   error,
@@ -135,6 +140,9 @@ function Sidebar({
   error: string | null;
   isCreating: boolean;
   onCreate: () => void;
+  onCreateChild: (parentId: string) => void;
+  onPageUpdated: (page: PageSummary) => void;
+  onPagesChanged: () => Promise<void>;
   onRetry: () => void;
   pages: PageSummary[];
   state: PageListState;
@@ -169,7 +177,14 @@ function Sidebar({
       {state === 'ready' && pages.length === 0 ? (
         <p className="sidebar-state">No pages yet.</p>
       ) : null}
-      {state === 'ready' && pages.length > 0 ? <PageTree pages={pages} /> : null}
+      {state === 'ready' && pages.length > 0 ? (
+        <PageTree
+          onCreateChild={onCreateChild}
+          onPageUpdated={onPageUpdated}
+          onPagesChanged={onPagesChanged}
+          pages={pages}
+        />
+      ) : null}
 
       <div className="sidebar-footer">
         <button
@@ -198,27 +213,30 @@ function Workspace() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const controller = new AbortController();
+  const loadPages = useCallback(async (signal?: AbortSignal) => {
     setListState('loading');
     setListError(null);
 
-    fetchPages(controller.signal)
-      .then((response) => {
-        if (!controller.signal.aborted) {
-          setPages(response.pages);
-          setListState('ready');
-        }
-      })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
-          setListError(pageErrorMessage(error, 'The page list could not be loaded.'));
-          setListState('error');
-        }
-      });
+    try {
+      const response = await fetchPages(signal);
+      if (!signal?.aborted) {
+        setPages(response.pages);
+        setListState('ready');
+      }
+    } catch (error: unknown) {
+      if (!signal?.aborted) {
+        setListError(pageErrorMessage(error, 'The page list could not be loaded.'));
+        setListState('error');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadPages(controller.signal);
 
     return () => controller.abort();
-  }, [reloadKey]);
+  }, [loadPages, reloadKey]);
 
   useEffect(() => {
     if (listState !== 'ready') {
@@ -230,23 +248,26 @@ function Workspace() {
     }
   }, [listState, location.pathname, navigate, pages]);
 
-  const createPage = useCallback(async () => {
-    if (isCreating) {
-      return;
-    }
+  const createPage = useCallback(
+    async (parentId: string | null = null) => {
+      if (isCreating) {
+        return;
+      }
 
-    setIsCreating(true);
-    setActionError(null);
-    try {
-      const response = await createPageRequest();
-      setPages((currentPages) => [...currentPages, response.page]);
-      navigate(workspacePath(response.page.id));
-    } catch (error: unknown) {
-      setActionError(pageErrorMessage(error, 'The new page could not be created.'));
-    } finally {
-      setIsCreating(false);
-    }
-  }, [isCreating, navigate]);
+      setIsCreating(true);
+      setActionError(null);
+      try {
+        const response = await createPageRequest({ parentId, title: 'Untitled' });
+        setPages((currentPages) => [...currentPages, response.page]);
+        navigate(workspacePath(response.page.id));
+      } catch (error: unknown) {
+        setActionError(pageErrorMessage(error, 'The new page could not be created.'));
+      } finally {
+        setIsCreating(false);
+      }
+    },
+    [isCreating, navigate],
+  );
 
   useEffect(() => {
     function handleNewPageShortcut(event: KeyboardEvent) {
@@ -260,7 +281,7 @@ function Workspace() {
     return () => window.removeEventListener('keydown', handleNewPageShortcut);
   }, [createPage]);
 
-  const onPageUpdated = useCallback((updatedPage: PageDetail) => {
+  const onPageUpdated = useCallback((updatedPage: PageSummary) => {
     setPages((currentPages) =>
       currentPages.map((page) => (page.id === updatedPage.id ? updatedPage : page)),
     );
@@ -275,6 +296,9 @@ function Workspace() {
     [navigate],
   );
 
+  const refreshPages = useCallback(async () => {
+    await loadPages();
+  }, [loadPages]);
   const retryPages = useCallback(() => setReloadKey((value) => value + 1), []);
   const context: WorkspaceOutletContext = {
     actionError,
@@ -285,6 +309,7 @@ function Workspace() {
     listState,
     onPageUpdated,
     pages,
+    refreshPages,
     retryPages,
   };
 
@@ -315,7 +340,10 @@ function Workspace() {
         <Sidebar
           error={listError}
           isCreating={isCreating}
-          onCreate={() => void createPage()}
+          onCreate={() => void createPage(null)}
+          onCreateChild={(parentId) => void createPage(parentId)}
+          onPageUpdated={onPageUpdated}
+          onPagesChanged={refreshPages}
           onRetry={retryPages}
           pages={pages}
           state={listState}

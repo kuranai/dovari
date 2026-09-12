@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import type { PageDetail } from '../../../shared/pages';
+import type { PageDetail, PageSummary } from '../../../shared/pages';
 import { fetchPage, pageErrorMessage, updatePageTitle } from './api';
 
 type PageLoadState =
@@ -11,7 +11,8 @@ type PageLoadState =
 export interface PageViewProps {
   pageId: string;
   onPageDeleted: (page: PageDetail) => Promise<void>;
-  onPageUpdated: (page: PageDetail) => void;
+  onPageUpdated: (page: PageSummary) => void;
+  pageSummary?: PageSummary;
 }
 
 function LoadingPage() {
@@ -210,7 +211,7 @@ function PageDetailContent({
   );
 }
 
-export function PageView({ pageId, onPageDeleted, onPageUpdated }: PageViewProps) {
+export function PageView({ pageId, onPageDeleted, onPageUpdated, pageSummary }: PageViewProps) {
   const [reloadKey, setReloadKey] = useState(0);
   const [state, setState] = useState<PageLoadState>({ status: 'loading' });
 
@@ -240,6 +241,29 @@ export function PageView({ pageId, onPageDeleted, onPageUpdated }: PageViewProps
 
     return () => controller.abort();
   }, [pageId, reloadKey]);
+
+  useEffect(() => {
+    if (state.status !== 'ready' || pageSummary?.id !== state.page.id) {
+      return;
+    }
+
+    if (
+      state.page.title === pageSummary.title &&
+      state.page.slug === pageSummary.slug &&
+      state.page.parentId === pageSummary.parentId &&
+      state.page.position === pageSummary.position &&
+      state.page.revision === pageSummary.revision &&
+      state.page.updatedAt === pageSummary.updatedAt
+    ) {
+      return;
+    }
+
+    setState((currentState) =>
+      currentState.status === 'ready'
+        ? { ...currentState, page: { ...currentState.page, ...pageSummary } }
+        : currentState,
+    );
+  }, [pageSummary, state]);
 
   if (state.status === 'loading') {
     return <LoadingPage />;

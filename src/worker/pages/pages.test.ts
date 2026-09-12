@@ -4,7 +4,12 @@ import { applyD1Migrations } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
-import { MAX_PAGE_ROW_BYTES, type PageDetail, type TiptapDocument } from '../../shared/pages';
+import {
+  MAX_PAGE_ROW_BYTES,
+  type PageDetail,
+  type PageSummary,
+  type TiptapDocument,
+} from '../../shared/pages';
 import { app } from '../index';
 import type { WorkerBindings } from '../types';
 
@@ -154,6 +159,103 @@ describe('Pages HTTP API', () => {
     expect(list.pages.map((page) => page.id)).toEqual([parent.id, duplicate.id, child.id]);
   });
 
+  it('moves pages before, after, and into siblings while normalizing positions', async () => {
+    const first = await createPage('First');
+    const second = await createPage('Second');
+    const third = await createPage('Third');
+    const child = await createPage('Child', first.id);
+
+    const moveAfter = await request(`/api/private/pages/${second.id}/move`, {
+      body: JSON.stringify({ afterId: third.id, parentId: null }),
+      method: 'POST',
+    });
+    expect(moveAfter.status).toBe(200);
+    expect(((await moveAfter.json()) as { page: PageDetail }).page).toMatchObject({
+      id: second.id,
+      parentId: null,
+      position: 2,
+      revision: 2,
+    });
+
+    const moveBefore = await request(`/api/private/pages/${second.id}/move`, {
+      body: JSON.stringify({ beforeId: first.id, parentId: null }),
+      method: 'POST',
+    });
+    expect(moveBefore.status).toBe(200);
+    expect(((await moveBefore.json()) as { page: PageDetail }).page).toMatchObject({
+      id: second.id,
+      parentId: null,
+      position: 0,
+      revision: 3,
+    });
+
+    const moveInto = await request(`/api/private/pages/${third.id}/move`, {
+      body: JSON.stringify({ parentId: first.id }),
+      method: 'POST',
+    });
+    expect(moveInto.status).toBe(200);
+    expect(((await moveInto.json()) as { page: PageDetail }).page).toMatchObject({
+      id: third.id,
+      parentId: first.id,
+      position: 1,
+      revision: 4,
+    });
+
+    const list = (await (await request('/api/private/pages')).json()) as {
+      pages: PageSummary[];
+    };
+    expect(
+      list.pages
+        .filter((page) => page.parentId === null)
+        .sort((a, b) => a.position - b.position)
+        .map((page) => [page.id, page.position]),
+    ).toEqual([
+      [second.id, 0],
+      [first.id, 1],
+    ]);
+    expect(
+      list.pages
+        .filter((page) => page.parentId === first.id)
+        .sort((a, b) => a.position - b.position)
+        .map((page) => [page.id, page.position]),
+    ).toEqual([
+      [child.id, 0],
+      [third.id, 1],
+    ]);
+  });
+
+  it('rejects self and descendant cycles and invalid move targets', async () => {
+    const parent = await createPage('Cycle parent');
+    const child = await createPage('Cycle child', parent.id);
+    const grandchild = await createPage('Cycle grandchild', child.id);
+    const other = await createPage('Other root');
+
+    const selfMove = await request(`/api/private/pages/${parent.id}/move`, {
+      body: JSON.stringify({ parentId: parent.id }),
+      method: 'POST',
+    });
+    expect(selfMove.status).toBe(422);
+    await expect(selfMove.json()).resolves.toMatchObject({ error: { code: 'PAGE_CYCLE' } });
+
+    const descendantMove = await request(`/api/private/pages/${parent.id}/move`, {
+      body: JSON.stringify({ parentId: grandchild.id }),
+      method: 'POST',
+    });
+    expect(descendantMove.status).toBe(422);
+    await expect(descendantMove.json()).resolves.toMatchObject({
+      error: { code: 'PAGE_CYCLE' },
+    });
+
+    const invalidTarget = await request(`/api/private/pages/${child.id}/move`, {
+      body: JSON.stringify({ beforeId: other.id, parentId: parent.id }),
+      method: 'POST',
+    });
+    expect(invalidTarget.status).toBe(422);
+    await expect(invalidTarget.json()).resolves.toMatchObject({
+      error: { code: 'MOVE_TARGET_INVALID' },
+    });
+  });
+
   it('rejects stale writes without overwriting the current page', async () => {
     const page = await createPage('Conflict Test');
     const content: TiptapDocument = {
@@ -187,6 +289,34 @@ describe('Pages HTTP API', () => {
       revision: 2,
       title: 'Conflict Test',
     });
+  });
+
+  it('keeps sibling positions contiguous after delete and create', async () => {
+    const parent = await createPage('Position parent');
+    const first = await createPage('First child', parent.id);
+    const second = await createPage('Second child', parent.id);
+    const third = await createPage('Third child', parent.id);
+
+    const deleteResponse = await request(`/api/private/pages/${second.id}`, {
+      body: JSON.stringify({ baseRevision: second.revision }),
+      method: 'DELETE',
+    });
+    expect(deleteResponse.status).toBe(200);
+
+    const fourth = await createPage('Fourth child', parent.id);
+    const list = (await (await request('/api/private/pages')).json()) as {
+      pages: PageSummary[];
+    };
+    expect(
+      list.pages
+        .filter((page) => page.parentId === parent.id)
+        .sort((a, b) => a.position - b.position)
+        .map((page) => [page.id, page.position]),
+    ).toEqual([
+      [first.id, 0],
+      [third.id, 1],
+      [fourth.id, 2],
+    ]);
   });
 
   it('rejects invalid documents and rows that exceed the D1 safety limit', async () => {

@@ -71,8 +71,26 @@ export interface NewPageRecord {
   updatedAt: string;
 }
 
+export interface PageTreeUpdate {
+  id: string;
+  parentId: string | null;
+  position: number;
+  revision: number;
+  updatedAt: string;
+}
+
 export class PageRepository {
   constructor(private readonly db: D1Database) {}
+
+  private treeUpdateStatement(update: PageTreeUpdate) {
+    return this.db
+      .prepare(
+        `UPDATE pages
+         SET parent_id = ?, position = ?, revision = revision + 1, updated_at = ?
+         WHERE id = ? AND revision = ? AND deleted_at IS NULL`,
+      )
+      .bind(update.parentId, update.position, update.updatedAt, update.id, update.revision);
+  }
 
   async listActive() {
     const result = await this.db
@@ -119,6 +137,56 @@ export class PageRepository {
     return row !== null;
   }
 
+  async listActiveChildren(parentId: string | null) {
+    const parentClause = parentId === null ? 'parent_id IS NULL' : 'parent_id = ?';
+    const statement = this.db.prepare(
+      `SELECT ${PAGE_COLUMNS}
+       FROM pages
+       WHERE deleted_at IS NULL AND ${parentClause}
+       ORDER BY position ASC, title COLLATE NOCASE, id`,
+    );
+    const result =
+      parentId === null
+        ? await statement.all<PageDatabaseRow>()
+        : await statement.bind(parentId).all<PageDatabaseRow>();
+
+    return result.results.map(toPageRecord);
+  }
+
+  async isInAncestorChain(startPageId: string, possibleAncestorId: string) {
+    const row = await this.db
+      .prepare(
+        `WITH RECURSIVE ancestors(id, parent_id) AS (
+           SELECT id, parent_id
+           FROM pages
+           WHERE id = ? AND deleted_at IS NULL
+           UNION
+           SELECT parent.id, parent.parent_id
+           FROM pages AS parent
+           INNER JOIN ancestors ON ancestors.parent_id = parent.id
+           WHERE parent.deleted_at IS NULL
+         )
+         SELECT id
+         FROM ancestors
+         WHERE id = ?
+         LIMIT 1`,
+      )
+      .bind(startPageId, possibleAncestorId)
+      .first<{ id: string }>();
+
+    return row !== null;
+  }
+
+  async updateTree(updates: PageTreeUpdate[]) {
+    if (updates.length === 0) {
+      return [];
+    }
+
+    const statements = updates.map((update) => this.treeUpdateStatement(update));
+
+    return this.db.batch(statements);
+  }
+
   async insert(page: NewPageRecord) {
     const parentFilter = page.parentId === null ? 'parent_id IS NULL' : 'parent_id = ?';
     const bindings =
@@ -140,9 +208,9 @@ export class PageRepository {
             page.contentJson,
             page.contentText,
             page.parentId,
-            page.parentId,
             page.createdAt,
             page.updatedAt,
+            page.parentId,
           ];
 
     const result = await this.db

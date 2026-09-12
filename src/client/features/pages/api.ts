@@ -2,9 +2,11 @@ import { z } from 'zod';
 
 import {
   createPageRequestSchema,
+  movePageRequestSchema,
   pageResponseSchema,
   pagesListResponseSchema,
   type CreatePageRequest,
+  type MovePageRequest,
   type PageResponse,
   type PagesListResponse,
 } from '../../../shared/pages';
@@ -130,6 +132,18 @@ export function deletePage(id: string, baseRevision: number) {
   });
 }
 
+export function movePage(id: string, input: MovePageRequest) {
+  const parsed = movePageRequestSchema.parse(input);
+  return request<PageResponse>(
+    `/api/private/pages/${encodeURIComponent(id)}/move`,
+    pageResponseSchema,
+    {
+      body: JSON.stringify(parsed),
+      method: 'POST',
+    },
+  );
+}
+
 export function pageErrorMessage(error: unknown, fallback: string) {
   if (!(error instanceof PageApiError)) {
     if (error instanceof TypeError) {
@@ -148,6 +162,13 @@ export function pageErrorMessage(error: unknown, fallback: string) {
       return 'This page no longer exists.';
     case 'SLUG_CONFLICT':
       return 'That page name is already in use. Choose another name.';
+    case 'PAGE_CYCLE':
+      return 'A page cannot be moved into itself or one of its child pages.';
+    case 'PARENT_NOT_FOUND':
+      return 'The selected parent page no longer exists.';
+    case 'MOVE_TARGET_NOT_FOUND':
+    case 'MOVE_TARGET_INVALID':
+      return 'That move target is no longer available. Refresh the page tree and try again.';
     default:
       return error.message || fallback;
   }

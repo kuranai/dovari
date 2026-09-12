@@ -7,6 +7,7 @@ import {
   tiptapDocumentSchema,
   type CreatePageRequest,
   type DeletePageRequest,
+  type MovePageRequest,
   type PageDetail,
   type PageSummary,
   type TiptapDocument,
@@ -14,7 +15,7 @@ import {
   type UpdatePageRequest,
 } from '../../shared/pages';
 import { PageError } from './errors';
-import { PageRepository, type PageRecord } from './repository';
+import { PageRepository, type PageRecord, type PageTreeUpdate } from './repository';
 
 const MAX_SLUG_ATTEMPTS = 1_000;
 
@@ -105,6 +106,38 @@ function toDetail(page: PageRecord): PageDetail {
 export class PageService {
   constructor(private readonly repository: PageRepository) {}
 
+  private async normalizeSiblings(parentId: string | null, siblings?: PageRecord[]) {
+    const currentSiblings = siblings ?? (await this.repository.listActiveChildren(parentId));
+    const updates: PageTreeUpdate[] = currentSiblings.flatMap((page, position) =>
+      page.position === position
+        ? []
+        : [
+            {
+              id: page.id,
+              parentId,
+              position,
+              revision: page.revision,
+              updatedAt: timestamp(page.updatedAt),
+            },
+          ],
+    );
+
+    if (updates.length === 0) {
+      return;
+    }
+
+    await this.repository.updateTree(updates);
+    const normalized = await this.repository.listActiveChildren(parentId);
+    if (
+      normalized.length !== currentSiblings.length ||
+      normalized.some(
+        (page, position) => page.id !== currentSiblings[position]?.id || page.position !== position,
+      )
+    ) {
+      throw new PageError(409, 'PAGE_CONFLICT', 'The page tree changed in another tab.');
+    }
+  }
+
   async list(): Promise<PageSummary[]> {
     const pages = await this.repository.listActive();
     return pages.map(toSummary);
@@ -135,6 +168,8 @@ export class PageService {
     if (input.parentId !== null && !(await this.repository.hasActiveParent(input.parentId))) {
       throw new PageError(422, 'PARENT_NOT_FOUND', 'The selected parent page does not exist.');
     }
+
+    await this.normalizeSiblings(input.parentId);
 
     const now = timestamp();
     const id = crypto.randomUUID();
@@ -277,6 +312,149 @@ export class PageService {
     return toDetail(page);
   }
 
+  async move(id: string, input: MovePageRequest): Promise<PageDetail> {
+    const current = await this.repository.findById(id);
+    if (!current) {
+      throw pageNotFound();
+    }
+
+    if (input.parentId !== null) {
+      const parent = await this.repository.findById(input.parentId);
+      if (!parent) {
+        throw new PageError(422, 'PARENT_NOT_FOUND', 'The selected parent page does not exist.');
+      }
+
+      if (await this.repository.isInAncestorChain(input.parentId, id)) {
+        throw new PageError(422, 'PAGE_CYCLE', 'A page cannot be moved into itself or its child.');
+      }
+    }
+
+    const anchorId = input.beforeId ?? input.afterId;
+    let anchor: PageRecord | null = null;
+    if (anchorId !== undefined) {
+      anchor = await this.repository.findById(anchorId);
+      if (!anchor) {
+        throw new PageError(
+          422,
+          'MOVE_TARGET_NOT_FOUND',
+          'The selected move target does not exist.',
+        );
+      }
+      if (anchor.id === current.id || anchor.parentId !== input.parentId) {
+        throw new PageError(
+          422,
+          'MOVE_TARGET_INVALID',
+          'The selected move target must be a sibling in the destination.',
+        );
+      }
+    }
+
+    const sourceSiblings = await this.repository.listActiveChildren(current.parentId);
+    const destinationSiblings =
+      current.parentId === input.parentId
+        ? sourceSiblings
+        : await this.repository.listActiveChildren(input.parentId);
+    const sourceWithoutCurrent = sourceSiblings.filter((page) => page.id !== current.id);
+    const destinationWithoutCurrent = destinationSiblings.filter((page) => page.id !== current.id);
+
+    if (!sourceSiblings.some((page) => page.id === current.id)) {
+      throw new PageError(500, 'INTERNAL_ERROR', 'Internal server error.');
+    }
+
+    const insertionIndex =
+      anchor === null
+        ? destinationWithoutCurrent.length
+        : destinationWithoutCurrent.findIndex((page) => page.id === anchor?.id) +
+          (input.afterId === undefined ? 0 : 1);
+    if (insertionIndex < 0) {
+      throw new PageError(
+        422,
+        'MOVE_TARGET_INVALID',
+        'The selected move target must be a sibling in the destination.',
+      );
+    }
+
+    const nextDestination = [...destinationWithoutCurrent];
+    nextDestination.splice(insertionIndex, 0, current);
+
+    const desired = new Map<string, { parentId: string | null; position: number }>();
+    sourceWithoutCurrent.forEach((page, position) => {
+      desired.set(page.id, { parentId: current.parentId, position });
+    });
+    nextDestination.forEach((page, position) => {
+      desired.set(page.id, { parentId: input.parentId, position });
+    });
+
+    const updates = Array.from(desired, ([pageId, next]) => {
+      const page =
+        pageId === current.id
+          ? current
+          : (sourceSiblings.find((sibling) => sibling.id === pageId) ??
+            destinationSiblings.find((sibling) => sibling.id === pageId));
+      if (!page) {
+        throw new PageError(500, 'INTERNAL_ERROR', 'Internal server error.');
+      }
+
+      if (page.parentId === next.parentId && page.position === next.position) {
+        return null;
+      }
+
+      return {
+        id: page.id,
+        parentId: next.parentId,
+        position: next.position,
+        revision: page.revision,
+        updatedAt: timestamp(page.updatedAt),
+      };
+    }).filter((update): update is NonNullable<typeof update> => update !== null);
+
+    if (updates.length === 0) {
+      return toDetail(current);
+    }
+
+    await this.repository.updateTree(updates);
+    const sourceAfter = await this.repository.listActiveChildren(current.parentId);
+    const destinationAfter =
+      current.parentId === input.parentId
+        ? sourceAfter
+        : await this.repository.listActiveChildren(input.parentId);
+    const expectedSourceIds = sourceWithoutCurrent.map((page) => page.id);
+    const expectedDestinationIds = nextDestination.map((page) => page.id);
+    const matchesTree = (
+      actual: PageRecord[],
+      expectedIds: string[],
+      expectedParentId: string | null,
+    ) =>
+      actual.length === expectedIds.length &&
+      actual.every(
+        (page, position) =>
+          page.id === expectedIds[position] &&
+          page.parentId === expectedParentId &&
+          page.position === position,
+      );
+    const sourceMatches = matchesTree(sourceAfter, expectedSourceIds, current.parentId);
+    const destinationMatches = matchesTree(
+      destinationAfter,
+      expectedDestinationIds,
+      input.parentId,
+    );
+    const sameParent = current.parentId === input.parentId;
+    const treeMatches = sameParent ? destinationMatches : sourceMatches && destinationMatches;
+    if (!treeMatches) {
+      const latest = await this.repository.findById(id);
+      if (!latest) {
+        throw pageNotFound();
+      }
+      throw pageConflict(latest);
+    }
+
+    const moved = await this.repository.findById(id);
+    if (!moved) {
+      throw new PageError(500, 'INTERNAL_ERROR', 'Internal server error.');
+    }
+    return toDetail(moved);
+  }
+
   async delete(id: string, input?: DeletePageRequest): Promise<PageDetail> {
     const current = await this.repository.findById(id);
     if (!current) {
@@ -288,6 +466,10 @@ export class PageService {
 
     const deletedAt = timestamp(current.updatedAt);
     const baseRevision = input?.baseRevision ?? current.revision;
+    const siblings = await this.repository.listActiveChildren(current.parentId);
+    if (!siblings.some((page) => page.id === current.id)) {
+      throw new PageError(500, 'INTERNAL_ERROR', 'Internal server error.');
+    }
     const changes = await this.repository.softDelete(id, baseRevision, deletedAt);
     if (changes < 1) {
       const latest = await this.repository.findById(id);
@@ -296,6 +478,10 @@ export class PageService {
       }
       throw pageConflict(latest);
     }
+    await this.normalizeSiblings(
+      current.parentId,
+      siblings.filter((page) => page.id !== current.id),
+    );
 
     const deleted = await this.repository.findById(id, true);
     if (!deleted) {
