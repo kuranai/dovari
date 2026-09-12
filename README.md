@@ -46,11 +46,30 @@ for development. Use `--remote` explicitly when a command is intended to access 
 ## Quality checks
 
 ```sh
+npm run ci
+```
+
+The individual checks are also available when iterating locally:
+
+```sh
 npm run build
 npm run typecheck
 npm run lint
 npm run format:check
+npm test
 ```
+
+`npm test` runs Worker integration tests in the local Workers runtime and client tests in JSDOM.
+The Worker suite uses isolated local D1 and R2 bindings. Install the Chromium browser once before
+running the production-preview smoke test:
+
+```sh
+npx playwright install chromium
+npm run test:e2e
+```
+
+The E2E command builds the production Worker, starts `vite preview` on a loopback host, and checks
+that the app shell loads through the Worker routing path.
 
 The source tree keeps client code under `src/client`, Worker code under `src/worker`, and
 dependency-free shared contracts under `src/shared`. The Worker classifies private, public,

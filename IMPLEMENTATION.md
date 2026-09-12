@@ -2,9 +2,9 @@
 
 **Dieses Dokument ist die kanonische Quelle für den aktuellen Implementierungsstand.**  
 **Letzte Aktualisierung:** 12. September 2026
-**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen
+**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen
 **Aktuelle Phase:** keine
-**Nächste Phase:** P03 – Testsystem vervollständigen und CI-Qualitätsgates
+**Nächste Phase:** P04 – D1-Schema und Migrationen
 
 ## 1. Zweck
 
@@ -92,8 +92,8 @@ Ist die Phase nicht fertig, bleibt sie `IN PROGRESS`. Bei einem echten externen 
 | P00 | Grundlage | Projekt-Scaffold | `DONE` | `npm ci`, Dev-Smoke-Test, Build, Typecheck, Lint und Format-Check erfolgreich |
 | P01 | Grundlage | Cloudflare-Laufzeit und Bindings | `DONE` | Vite-/Cloudflare-Worker, Hono-Routing, lokale D1-/R2-Bindings, SPA-Fallback, Health-Smoke und generierte Binding-Typen umgesetzt und verifiziert |
 | P02 | Grundlage | Authentifizierung und Security-Basis | `DONE` | Access-JWT, Fail-Closed-Routing, Origin-Schutz, Security-Header und Worker-Sicherheitstests umgesetzt und verifiziert |
-| P03 | Grundlage | Testsystem vervollständigen und CI-Qualitätsgates | `NEXT` | – |
-| P04 | Seiten | D1-Schema und Migrationen | `PLANNED` | – |
+| P03 | Grundlage | Testsystem vervollständigen und CI-Qualitätsgates | `DONE` | Vitest-Worker-/Clienttests, lokale D1-/R2-Binding-Tests, Playwright-Smoke und CI-Gates umgesetzt und verifiziert |
+| P04 | Seiten | D1-Schema und Migrationen | `NEXT` | – |
 | P05 | Seiten | Pages Domain und HTTP-API | `PLANNED` | – |
 | P06 | Seiten | App-Shell, Sidebar und Page CRUD | `PLANNED` | – |
 | P07 | Navigation | Seitenhierarchie und Sortierung | `PLANNED` | – |
@@ -636,6 +636,7 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 | 2026-09-12 | P00 | React-/Vite-/TypeScript-Scaffold mit minimaler Dovari-App-Shell und vorbereiteten Client-/Worker-/Shared-Grenzen umgesetzt | `npm ci --ignore-scripts --no-audit --no-fund`, Dev-Server plus HTTP-Smoke-Test, `npm run build`, `npm run typecheck`, `npm run lint` und `npm run format:check` erfolgreich | Cloudflare-Bindings, Hono-Routing und Produktfeatures bleiben P01 bzw. späteren Phasen vorbehalten; P01 ist `NEXT` |
 | 2026-09-12 | P01 | Cloudflare-Vite-Worker mit Hono, zentraler Pfadklassifikation, `STATIC_ASSETS`, lokalen D1-/R2-Bindings, `/api/health`, SPA-Fallback und Wrangler-Typgenerierung umgesetzt | `npm ci --ignore-scripts --no-audit --no-fund`, `npm run types:generate`, `npm run db:migrate:local`, `npm run build`, `npm run typecheck`, `npx tsc -p tsconfig.worker.json --noEmit`, `npm run lint`, `npm run format:check`, Dev-/Preview-HTTP-Smokes und `npx wrangler deploy --dry-run` erfolgreich | `/api/health` meldet nur `{status:"ok"}` nach nicht-sensitiver D1-/R2-Probe; Konfiguration enthält keine Remote-/Preview-IDs und setzt lokale Entwicklung explizit auf `remote: false`; P02 ist `DONE`, P03 ist `NEXT` |
 | 2026-09-12 | P02 | Cloudflare-Access-JWT-Prüfung mit JWKS-Signatur-, Issuer-, Audience-, Ablauf- und Gültigkeitsbeginnprüfung, zentrale private/public API-Grenze, Loopback-Bypass, Origin-Prüfung, Request-ID, Security-Header, standardisierte API-Fehler und bereinigte Static-Asset-Weiterleitung umgesetzt | `npm ci --ignore-scripts --no-audit --no-fund`, `npm run typecheck`, `npx tsc -p tsconfig.worker.json --noEmit`, `npm test` (8 Tests), `npm run build`, `npm run lint`, `npm run format:check`, `git diff --check`, lokaler Dev-/Preview-HTTP-Smoke für `/app`, `/api/health`, Static Assets und unbekannte API-Pfade erfolgreich | Produktion ohne Access-Konfiguration bleibt für private Pfade bei `503 SETUP_REQUIRED`; öffentliche Health-/Asset-Pfade bleiben inhaltsfrei erreichbar; P03 ist `NEXT` |
+| 2026-09-12 | P03 | Vitest-4-Workers-Integration mit lokalen D1-/R2-Bindings, React-Testing-Library-Clienttest, Playwright-Chromium-Smoke und CI-Qualitätsworkflow umgesetzt | `npm ci --ignore-scripts --no-audit --no-fund`, `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test` (11 Tests in 3 Testdateien), `npm run build`, `npm run test:e2e` (1 Browser-Smoke), `git diff --check` erfolgreich | `npm test` läuft in Workers- und JSDOM-Projekten; P04 ist `NEXT` |
 
 ## 9. Regeln zur Pflege dieses Dokuments
 
