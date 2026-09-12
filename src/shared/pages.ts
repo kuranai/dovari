@@ -59,6 +59,13 @@ function isUuid(value: unknown) {
   return typeof value === 'string' && z.string().uuid().safeParse(value).success;
 }
 
+function hasUnsafeControlCharacters(value: string) {
+  return [...value].some((character) => {
+    const code = character.charCodeAt(0);
+    return code <= 31 || code === 127;
+  });
+}
+
 function addIssue(
   issues: DocumentValidationIssue[],
   path: Array<string | number>,
@@ -84,6 +91,10 @@ function validateLinkAttributes(
     return;
   }
 
+  if (hasUnsafeControlCharacters(attrs.href)) {
+    addIssue(issues, [...path, 'href'], 'A link href cannot contain control characters.');
+  }
+
   try {
     const protocol = new URL(attrs.href, 'https://dovari.invalid').protocol;
     if (!['http:', 'https:', 'mailto:'].includes(protocol)) {
@@ -95,8 +106,12 @@ function validateLinkAttributes(
 
   for (const key of ['target', 'rel', 'class']) {
     const value = attrs[key];
-    if (value !== undefined && value !== null && typeof value !== 'string') {
-      addIssue(issues, [...path, key], 'Link attributes must be strings or null.');
+    if (value !== undefined && value !== null) {
+      if (typeof value !== 'string') {
+        addIssue(issues, [...path, key], 'Link attributes must be strings or null.');
+      } else if (value.length > 200 || hasUnsafeControlCharacters(value)) {
+        addIssue(issues, [...path, key], 'Link attributes contain invalid characters.');
+      }
     }
   }
 }
@@ -160,7 +175,7 @@ function validateAssetAttributes(
     if (
       value !== undefined &&
       value !== null &&
-      (typeof value !== 'string' || value.length > 500)
+      (typeof value !== 'string' || value.length > 500 || hasUnsafeControlCharacters(value))
     ) {
       addIssue(issues, [...path, key], 'Asset text attributes must be short strings or null.');
     }
@@ -186,6 +201,8 @@ function validateNode(
   context: 'root' | 'block' | 'inline' | 'code',
   depth: number,
   issues: DocumentValidationIssue[],
+  parentType: string | null,
+  ancestors: WeakSet<object>,
 ) {
   if (depth > MAX_DOCUMENT_DEPTH) {
     addIssue(issues, path, 'The document is nested too deeply.');
@@ -197,200 +214,268 @@ function validateNode(
     return;
   }
 
-  if (!hasOnlyKeys(value, ['type', 'attrs', 'content', 'text', 'marks'])) {
-    addIssue(issues, path, 'A document node contains unsupported fields.');
-  }
-
-  const type = value.type;
-  const childPath = [...path, 'content'];
-
-  if (type === 'text') {
-    if (!['inline', 'code'].includes(context)) {
-      addIssue(issues, path, 'Text nodes are only allowed inside text content.');
-    }
-    if (typeof value.text !== 'string' || value.text.length === 0) {
-      addIssue(issues, [...path, 'text'], 'Text nodes must contain text.');
-    }
-    if (value.attrs !== undefined || value.content !== undefined) {
-      addIssue(issues, path, 'Text nodes cannot contain attributes or child nodes.');
-    }
-    if (value.marks !== undefined) {
-      if (context === 'code') {
-        addIssue(issues, [...path, 'marks'], 'Code block text cannot contain marks.');
-      } else {
-        validateMarks(value.marks, [...path, 'marks'], issues);
-      }
-    }
+  if (ancestors.has(value)) {
+    addIssue(issues, path, 'The document contains a cyclic node reference.');
     return;
   }
 
-  if (value.text !== undefined || value.marks !== undefined) {
-    addIssue(issues, path, 'Only text nodes may contain text or marks.');
-  }
+  ancestors.add(value);
 
-  const hasContent = value.content !== undefined;
-  const requireContent = (childrenContext: 'block' | 'inline' | 'code') => {
-    if (!hasContent) {
-      addIssue(issues, childPath, 'This node must contain a content array.');
+  try {
+    if (!hasOnlyKeys(value, ['type', 'attrs', 'content', 'text', 'marks'])) {
+      addIssue(issues, path, 'A document node contains unsupported fields.');
+    }
+
+    const type = value.type;
+    const childPath = [...path, 'content'];
+
+    if (type === 'text') {
+      if (!['inline', 'code'].includes(context)) {
+        addIssue(issues, path, 'Text nodes are only allowed inside text content.');
+      }
+      if (typeof value.text !== 'string' || value.text.length === 0) {
+        addIssue(issues, [...path, 'text'], 'Text nodes must contain text.');
+      }
+      if (value.attrs !== undefined || value.content !== undefined) {
+        addIssue(issues, path, 'Text nodes cannot contain attributes or child nodes.');
+      }
+      if (value.marks !== undefined) {
+        if (context === 'code') {
+          if (!Array.isArray(value.marks) || value.marks.length > 0) {
+            addIssue(issues, [...path, 'marks'], 'Code block text cannot contain marks.');
+          }
+        } else {
+          validateMarks(value.marks, [...path, 'marks'], issues);
+        }
+      }
       return;
     }
-    if (!Array.isArray(value.content)) {
-      addIssue(issues, childPath, 'Node content must be an array.');
-      return;
+
+    if (value.text !== undefined || value.marks !== undefined) {
+      addIssue(issues, path, 'Only text nodes may contain text or marks.');
     }
-    value.content.forEach((child, index) =>
-      validateNode(child, [...childPath, index], childrenContext, depth + 1, issues),
-    );
-  };
-  const optionalContent = (childrenContext: 'block' | 'inline' | 'code') => {
-    if (hasContent) {
+
+    const hasContent = value.content !== undefined;
+    const visitContent = (
+      childrenContext: 'block' | 'inline' | 'code',
+      required: boolean,
+      requireNonEmpty = false,
+      requireFirstParagraph = false,
+      allowedChildTypes?: readonly string[],
+    ) => {
+      if (!hasContent) {
+        if (required) {
+          addIssue(issues, childPath, 'This node must contain a content array.');
+        }
+        return;
+      }
       if (!Array.isArray(value.content)) {
         addIssue(issues, childPath, 'Node content must be an array.');
         return;
       }
-      value.content.forEach((child, index) =>
-        validateNode(child, [...childPath, index], childrenContext, depth + 1, issues),
-      );
-    }
-  };
-  const noContent = () => {
-    if (hasContent) {
-      addIssue(issues, childPath, 'This node cannot contain child nodes.');
-    }
-  };
-  const noAttrs = () => {
-    if (value.attrs !== undefined) {
-      addIssue(issues, [...path, 'attrs'], 'This node does not accept attributes.');
-    }
-  };
-  const requireBlockContext = () => {
-    if (!['root', 'block'].includes(context)) {
-      addIssue(issues, path, `The node '${type}' is not allowed here.`);
-    }
-  };
 
-  switch (type) {
-    case 'doc':
-      if (context !== 'root') {
-        addIssue(issues, path, 'A document node is only allowed at the root.');
+      if (requireNonEmpty && value.content.length === 0) {
+        addIssue(issues, childPath, 'This node must contain at least one child.');
       }
-      noAttrs();
-      requireContent('block');
-      break;
-    case 'paragraph':
-      requireBlockContext();
-      noAttrs();
-      optionalContent('inline');
-      break;
-    case 'heading':
-      requireBlockContext();
-      if (
-        !isRecord(value.attrs) ||
-        !hasOnlyKeys(value.attrs, ['level']) ||
-        !Number.isInteger(value.attrs.level) ||
-        ![1, 2, 3].includes(value.attrs.level as number)
-      ) {
-        addIssue(issues, [...path, 'attrs'], 'Heading level must be 1, 2, or 3.');
+
+      if (requireFirstParagraph && value.content[0] !== undefined) {
+        if (!isRecord(value.content[0]) || value.content[0].type !== 'paragraph') {
+          addIssue(issues, [...childPath, 0], 'A list item must start with a paragraph.');
+        }
       }
-      optionalContent('inline');
-      break;
-    case 'bulletList':
-      requireBlockContext();
-      noAttrs();
-      requireContent('block');
-      break;
-    case 'orderedList':
-      requireBlockContext();
-      if (
-        value.attrs !== undefined &&
-        (!isRecord(value.attrs) ||
-          !hasOnlyKeys(value.attrs, ['start']) ||
-          (value.attrs.start !== undefined &&
-            value.attrs.start !== null &&
-            (!Number.isInteger(value.attrs.start) || (value.attrs.start as number) < 0)))
-      ) {
-        addIssue(issues, [...path, 'attrs'], 'Ordered-list attributes are invalid.');
+
+      value.content.forEach((child, index) =>
+        (() => {
+          if (
+            allowedChildTypes !== undefined &&
+            (!isRecord(child) ||
+              typeof child.type !== 'string' ||
+              !allowedChildTypes.includes(child.type))
+          ) {
+            addIssue(
+              issues,
+              [...childPath, index, 'type'],
+              `Only ${allowedChildTypes.join(' or ')} nodes are allowed here.`,
+            );
+          }
+
+          validateNode(
+            child,
+            [...childPath, index],
+            childrenContext,
+            depth + 1,
+            issues,
+            type,
+            ancestors,
+          );
+        })(),
+      );
+    };
+    const requireContent = (
+      childrenContext: 'block' | 'inline' | 'code',
+      requireNonEmpty = false,
+      requireFirstParagraph = false,
+      allowedChildTypes?: readonly string[],
+    ) =>
+      visitContent(
+        childrenContext,
+        true,
+        requireNonEmpty,
+        requireFirstParagraph,
+        allowedChildTypes,
+      );
+    const optionalContent = (childrenContext: 'block' | 'inline' | 'code') =>
+      visitContent(childrenContext, false);
+    const noContent = () => {
+      if (hasContent) {
+        addIssue(issues, childPath, 'This node cannot contain child nodes.');
       }
-      requireContent('block');
-      break;
-    case 'taskList':
-      requireBlockContext();
-      noAttrs();
-      requireContent('block');
-      break;
-    case 'listItem':
-      if (context !== 'block') {
-        addIssue(issues, path, 'List items are only allowed inside lists.');
+    };
+    const noAttrs = () => {
+      if (value.attrs !== undefined) {
+        addIssue(issues, [...path, 'attrs'], 'This node does not accept attributes.');
       }
-      noAttrs();
-      requireContent('block');
-      break;
-    case 'taskItem':
-      if (context !== 'block') {
-        addIssue(issues, path, 'Task items are only allowed inside task lists.');
+    };
+    const requireBlockContext = () => {
+      if (!['root', 'block'].includes(context)) {
+        addIssue(issues, path, `The node '${type}' is not allowed here.`);
       }
-      if (
-        !isRecord(value.attrs) ||
-        !hasOnlyKeys(value.attrs, ['checked']) ||
-        typeof value.attrs.checked !== 'boolean'
-      ) {
-        addIssue(issues, [...path, 'attrs'], 'Task-item attributes are invalid.');
-      }
-      requireContent('block');
-      break;
-    case 'blockquote':
-      requireBlockContext();
-      noAttrs();
-      requireContent('block');
-      break;
-    case 'horizontalRule':
-      requireBlockContext();
-      noAttrs();
-      noContent();
-      break;
-    case 'hardBreak':
-      if (context !== 'inline') {
-        addIssue(issues, path, 'Hard breaks are only allowed inside text content.');
-      }
-      noAttrs();
-      noContent();
-      break;
-    case 'codeBlock':
-      requireBlockContext();
-      if (
-        value.attrs !== undefined &&
-        (!isRecord(value.attrs) ||
-          !hasOnlyKeys(value.attrs, ['language']) ||
-          (value.attrs.language !== undefined &&
-            value.attrs.language !== null &&
-            typeof value.attrs.language !== 'string'))
-      ) {
-        addIssue(issues, [...path, 'attrs'], 'Code-block attributes are invalid.');
-      }
-      optionalContent('code');
-      break;
-    case 'assetImage':
-      if (!['block', 'inline'].includes(context)) {
-        addIssue(issues, path, 'Asset images are not allowed here.');
-      }
-      validateAssetAttributes(value.attrs, [...path, 'attrs'], issues, false);
-      noContent();
-      break;
-    case 'attachment':
-      if (!['block', 'inline'].includes(context)) {
-        addIssue(issues, path, 'Attachments are not allowed here.');
-      }
-      validateAssetAttributes(value.attrs, [...path, 'attrs'], issues, true);
-      noContent();
-      break;
-    default:
-      addIssue(issues, [...path, 'type'], `The node '${type}' is not allowed.`);
+    };
+
+    if (context === 'root' && type !== 'doc') {
+      addIssue(issues, [...path, 'type'], 'The root node must be a document node.');
+    }
+
+    switch (type) {
+      case 'doc':
+        if (context !== 'root' || parentType !== null) {
+          addIssue(issues, path, 'A document node is only allowed at the root.');
+        }
+        noAttrs();
+        requireContent('block');
+        break;
+      case 'paragraph':
+        requireBlockContext();
+        noAttrs();
+        optionalContent('inline');
+        break;
+      case 'heading':
+        requireBlockContext();
+        if (
+          value.attrs !== undefined &&
+          (!isRecord(value.attrs) ||
+            !hasOnlyKeys(value.attrs, ['level']) ||
+            !Number.isInteger(value.attrs.level) ||
+            ![1, 2, 3].includes(value.attrs.level as number))
+        ) {
+          addIssue(issues, [...path, 'attrs'], 'Heading level must be 1, 2, or 3.');
+        }
+        optionalContent('inline');
+        break;
+      case 'bulletList':
+        requireBlockContext();
+        noAttrs();
+        requireContent('block', true, false, ['listItem']);
+        break;
+      case 'orderedList':
+        requireBlockContext();
+        if (
+          value.attrs !== undefined &&
+          (!isRecord(value.attrs) ||
+            !hasOnlyKeys(value.attrs, ['start']) ||
+            (value.attrs.start !== undefined &&
+              value.attrs.start !== null &&
+              (!Number.isInteger(value.attrs.start) || (value.attrs.start as number) < 0)))
+        ) {
+          addIssue(issues, [...path, 'attrs'], 'Ordered-list attributes are invalid.');
+        }
+        requireContent('block', true, false, ['listItem']);
+        break;
+      case 'taskList':
+        requireBlockContext();
+        noAttrs();
+        requireContent('block', true, false, ['taskItem']);
+        break;
+      case 'listItem':
+        if (context !== 'block' || !['bulletList', 'orderedList'].includes(parentType ?? '')) {
+          addIssue(issues, path, 'List items are only allowed inside bullet or ordered lists.');
+        }
+        noAttrs();
+        requireContent('block', true, true);
+        break;
+      case 'taskItem':
+        if (context !== 'block' || parentType !== 'taskList') {
+          addIssue(issues, path, 'Task items are only allowed inside task lists.');
+        }
+        if (
+          value.attrs !== undefined &&
+          (!isRecord(value.attrs) ||
+            !hasOnlyKeys(value.attrs, ['checked']) ||
+            typeof value.attrs.checked !== 'boolean')
+        ) {
+          addIssue(issues, [...path, 'attrs'], 'Task-item attributes are invalid.');
+        }
+        requireContent('block', true, true);
+        break;
+      case 'blockquote':
+        requireBlockContext();
+        noAttrs();
+        requireContent('block', true);
+        break;
+      case 'horizontalRule':
+        requireBlockContext();
+        noAttrs();
+        noContent();
+        break;
+      case 'hardBreak':
+        if (context !== 'inline') {
+          addIssue(issues, path, 'Hard breaks are only allowed inside text content.');
+        }
+        noAttrs();
+        noContent();
+        break;
+      case 'codeBlock':
+        requireBlockContext();
+        if (
+          value.attrs !== undefined &&
+          (!isRecord(value.attrs) ||
+            !hasOnlyKeys(value.attrs, ['language']) ||
+            (value.attrs.language !== undefined &&
+              value.attrs.language !== null &&
+              (typeof value.attrs.language !== 'string' ||
+                value.attrs.language.length > 100 ||
+                hasUnsafeControlCharacters(value.attrs.language) ||
+                /\s/.test(value.attrs.language))))
+        ) {
+          addIssue(issues, [...path, 'attrs'], 'Code-block attributes are invalid.');
+        }
+        optionalContent('code');
+        break;
+      case 'assetImage':
+        if (!['block', 'inline'].includes(context)) {
+          addIssue(issues, path, 'Asset images are not allowed here.');
+        }
+        validateAssetAttributes(value.attrs, [...path, 'attrs'], issues, false);
+        noContent();
+        break;
+      case 'attachment':
+        if (!['block', 'inline'].includes(context)) {
+          addIssue(issues, path, 'Attachments are not allowed here.');
+        }
+        validateAssetAttributes(value.attrs, [...path, 'attrs'], issues, true);
+        noContent();
+        break;
+      default:
+        addIssue(issues, [...path, 'type'], `The node '${type}' is not allowed.`);
+    }
+  } finally {
+    ancestors.delete(value);
   }
 }
 
 export function validateTiptapDocument(value: unknown): DocumentValidationIssue[] {
   const issues: DocumentValidationIssue[] = [];
-  validateNode(value, [], 'root', 0, issues);
+  validateNode(value, [], 'root', 0, issues, null, new WeakSet<object>());
   return issues;
 }
 
@@ -479,37 +564,265 @@ export const pagesListResponseSchema = z
 export const pageResponseSchema = z.object({ page: pageDetailSchema }).strict();
 
 export function derivePlainText(document: TiptapDocument): string {
-  const nodeText = (node: TiptapNode): string => {
-    if (node.type === 'text') {
-      return node.text ?? '';
+  const inlineText = (node: TiptapNode): string => {
+    switch (node.type) {
+      case 'text':
+        return node.text ?? '';
+      case 'assetImage': {
+        const alt = node.attrs?.alt;
+        return typeof alt === 'string' ? alt : '';
+      }
+      case 'attachment': {
+        const filename = node.attrs?.filename;
+        return typeof filename === 'string' ? filename : '';
+      }
+      case 'hardBreak':
+        return '\n';
+      default:
+        return (node.content ?? []).map(inlineText).join('');
     }
-
-    if (node.type === 'assetImage') {
-      const alt = node.attrs?.alt;
-      return typeof alt === 'string' ? alt : '';
-    }
-
-    if (node.type === 'attachment') {
-      const filename = node.attrs?.filename;
-      return typeof filename === 'string' ? filename : '';
-    }
-
-    if (node.type === 'horizontalRule') {
-      return '';
-    }
-
-    if (node.type === 'hardBreak') {
-      return '\n';
-    }
-
-    const children = node.content ?? [];
-    const separator = node.type === 'codeBlock' ? '' : '\n';
-    return children.map(nodeText).join(separator);
   };
 
-  return nodeText(document)
+  const blockText = (node: TiptapNode): string => {
+    switch (node.type) {
+      case 'text':
+      case 'assetImage':
+      case 'attachment':
+      case 'hardBreak':
+        return inlineText(node);
+      case 'horizontalRule':
+        return '';
+      case 'paragraph':
+      case 'heading':
+      case 'codeBlock':
+        return (node.content ?? []).map(inlineText).join('');
+      default:
+        return (node.content ?? []).map(blockText).join('\n');
+    }
+  };
+
+  return blockText(document)
+    .replace(/\r\n?/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function normalizeLineEndings(value: string) {
+  return value.replace(/\r\n?/g, '\n');
+}
+
+function stringAttribute(node: TiptapNode, name: string) {
+  const value = node.attrs?.[name];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function numberAttribute(node: TiptapNode, name: string) {
+  const value = node.attrs?.[name];
+  return typeof value === 'number' && Number.isInteger(value) ? value : undefined;
+}
+
+function booleanAttribute(node: TiptapNode, name: string) {
+  return node.attrs?.[name] === true;
+}
+
+function escapeMarkdownText(value: string) {
+  return normalizeLineEndings(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/([`*_[\]~])/g, '\\$1')
+    .replace(/</g, '\\<')
+    .replace(/>/g, '\\>')
+    .replace(/&/g, '\\&')
+    .replace(/^( {0,3})(#{1,6})(?=\s)/gm, '$1\\$2')
+    .replace(/^( {0,3})([-+])(?=\s)/gm, '$1\\$2')
+    .replace(/^( {0,3})(\d+)\.(?=\s)/gm, '$1$2\\.');
+}
+
+function escapeMarkdownCodeSpan(value: string) {
+  const normalized = normalizeLineEndings(value);
+  const longestBacktickRun = Math.max(
+    0,
+    ...(normalized.match(/`+/g) ?? []).map((run) => run.length),
+  );
+  const delimiter = '`'.repeat(longestBacktickRun + 1);
+  const padding = normalized.startsWith(' ') || normalized.endsWith(' ') ? ' ' : '';
+  return `${delimiter}${padding}${normalized}${padding}${delimiter}`;
+}
+
+function escapeMarkdownLinkDestination(value: string) {
+  return normalizeLineEndings(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/[()]/g, '\\$&')
+    .replace(/\s/g, (character) => encodeURIComponent(character));
+}
+
+function escapeMarkdownTitle(value: string) {
+  return normalizeLineEndings(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+const markdownMarkOrder: Record<string, number> = {
+  bold: 10,
+  italic: 20,
+  strike: 30,
+  link: 40,
+};
+
+function renderMarkedText(node: TiptapNode) {
+  const source = node.text ?? '';
+  const marks = [...(node.marks ?? [])].filter((mark) => mark.type !== 'code');
+  const hasCodeMark = (node.marks ?? []).some((mark) => mark.type === 'code');
+  let rendered = hasCodeMark ? escapeMarkdownCodeSpan(source) : escapeMarkdownText(source);
+
+  marks
+    .sort(
+      (left, right) =>
+        (markdownMarkOrder[left.type] ?? 100) - (markdownMarkOrder[right.type] ?? 100),
+    )
+    .forEach((mark) => {
+      switch (mark.type) {
+        case 'bold':
+          rendered = `**${rendered}**`;
+          break;
+        case 'italic':
+          rendered = `*${rendered}*`;
+          break;
+        case 'strike':
+          rendered = `~~${rendered}~~`;
+          break;
+        case 'link': {
+          const href = typeof mark.attrs?.href === 'string' ? mark.attrs.href : '';
+          rendered = `[${rendered}](${escapeMarkdownLinkDestination(href)})`;
+          break;
+        }
+        default:
+          break;
+      }
+    });
+
+  return rendered;
+}
+
+function renderAssetPath(assetId: string) {
+  return `assets/${assetId}`;
+}
+
+function renderAssetTitle(title: string | undefined) {
+  return title === undefined ? '' : ` "${escapeMarkdownTitle(title)}"`;
+}
+
+function renderInlineMarkdown(node: TiptapNode): string {
+  switch (node.type) {
+    case 'text':
+      return renderMarkedText(node);
+    case 'hardBreak':
+      return '\\' + '\n';
+    case 'assetImage': {
+      const assetId = stringAttribute(node, 'assetId') ?? '';
+      const alt = stringAttribute(node, 'alt') ?? '';
+      const title = stringAttribute(node, 'title');
+      return `![${escapeMarkdownText(alt)}](${renderAssetPath(assetId)}${renderAssetTitle(title)})`;
+    }
+    case 'attachment': {
+      const assetId = stringAttribute(node, 'assetId') ?? '';
+      const filename = stringAttribute(node, 'filename') ?? 'Attachment';
+      const title = stringAttribute(node, 'title');
+      return `[${escapeMarkdownText(filename)}](${renderAssetPath(assetId)}${renderAssetTitle(title)})`;
+    }
+    default:
+      return (node.content ?? []).map(renderInlineMarkdown).join('');
+  }
+}
+
+function renderCodeBlock(node: TiptapNode) {
+  const code = normalizeLineEndings(
+    (node.content ?? [])
+      .map((child) => (child.type === 'text' ? (child.text ?? '') : renderInlineMarkdown(child)))
+      .join(''),
+  );
+  const longestBacktickRun = Math.max(0, ...(code.match(/`+/g) ?? []).map((run) => run.length));
+  const fence = '`'.repeat(Math.max(3, longestBacktickRun + 1));
+  const language = stringAttribute(node, 'language') ?? '';
+  const content = code.endsWith('\n') ? code : `${code}\n`;
+  return `${fence}${language}\n${content}${fence}`;
+}
+
+function renderListItem(node: TiptapNode, marker: string, indentation: string) {
+  const children = node.content ?? [];
+  const firstBlock = children[0] === undefined ? '' : renderBlockMarkdown(children[0]);
+  const firstLines = firstBlock.split('\n');
+  const contentIndent = `${indentation}${' '.repeat(marker.length + 1)}`;
+  const lines = [`${indentation}${marker} ${firstLines[0] ?? ''}`];
+
+  lines.push(...firstLines.slice(1).map((line) => `${contentIndent}${line}`));
+
+  for (const child of children.slice(1)) {
+    const childLines = renderBlockMarkdown(child).split('\n');
+    const nestedIndentation = `${indentation}  `;
+    lines.push(...childLines.map((line) => `${nestedIndentation}${line}`));
+  }
+
+  return lines.join('\n');
+}
+
+function renderListMarkdown(node: TiptapNode, indentation = '') {
+  const children = node.content ?? [];
+  const ordered = node.type === 'orderedList';
+  const task = node.type === 'taskList';
+  const start = numberAttribute(node, 'start') ?? 1;
+
+  return children
+    .map((child, index) => {
+      const marker = task
+        ? booleanAttribute(child, 'checked')
+          ? '- [x]'
+          : '- [ ]'
+        : ordered
+          ? `${start + index}.`
+          : '-';
+      return renderListItem(child, marker, indentation);
+    })
+    .join('\n');
+}
+
+function renderBlockMarkdown(node: TiptapNode): string {
+  switch (node.type) {
+    case 'doc':
+      return (node.content ?? []).map(renderBlockMarkdown).join('\n\n');
+    case 'paragraph':
+      return (node.content ?? []).map(renderInlineMarkdown).join('');
+    case 'heading': {
+      const level = numberAttribute(node, 'level') ?? 1;
+      const content = (node.content ?? []).map(renderInlineMarkdown).join('');
+      return `${'#'.repeat(level)}${content.length > 0 ? ` ${content}` : ''}`;
+    }
+    case 'bulletList':
+    case 'orderedList':
+    case 'taskList':
+      return renderListMarkdown(node);
+    case 'blockquote': {
+      const content = (node.content ?? []).map(renderBlockMarkdown).join('\n\n');
+      return content
+        .split('\n')
+        .map((line) => (line.length > 0 ? `> ${line}` : '>'))
+        .join('\n');
+    }
+    case 'horizontalRule':
+      return '---';
+    case 'codeBlock':
+      return renderCodeBlock(node);
+    case 'assetImage':
+    case 'attachment':
+      return renderInlineMarkdown(node);
+    default:
+      return (node.content ?? []).map(renderBlockMarkdown).join('\n\n');
+  }
+}
+
+export function deriveMarkdown(document: TiptapDocument): string {
+  if (validateTiptapDocument(document).length > 0) {
+    throw new Error('Cannot render an invalid Tiptap document.');
+  }
+
+  return renderBlockMarkdown(document);
 }
 
 export interface PageRowSizeInput {

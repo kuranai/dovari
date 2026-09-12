@@ -366,4 +366,89 @@ describe('Pages HTTP API', () => {
       error: { code: 'PAGE_TOO_LARGE' },
     });
   });
+
+  it('derives stable plaintext for semantic blocks and rejects unsafe document structures', async () => {
+    const page = await createPage('Derivation Test');
+
+    const semanticContent: TiptapDocument = {
+      type: 'doc',
+      content: [
+        {
+          type: 'taskList',
+          content: [
+            {
+              type: 'taskItem',
+              attrs: { checked: true },
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Done' }] }],
+            },
+          ],
+        },
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'Read ' },
+            {
+              type: 'text',
+              marks: [{ type: 'link', attrs: { href: 'https://example.com' } }],
+              text: 'the docs',
+            },
+            { type: 'hardBreak' },
+            { type: 'text', text: 'next' },
+          ],
+        },
+        {
+          type: 'codeBlock',
+          attrs: { language: 'ts' },
+          content: [{ type: 'text', text: 'const answer = 42;' }],
+        },
+      ],
+    };
+
+    const validResponse = await request(`/api/private/pages/${page.id}/content`, {
+      body: JSON.stringify({ baseRevision: page.revision, content: semanticContent }),
+      method: 'PUT',
+    });
+    expect(validResponse.status).toBe(200);
+    await expect(validResponse.json()).resolves.toMatchObject({
+      page: { contentText: 'Done\nRead the docs\nnext\nconst answer = 42;', revision: 2 },
+    });
+
+    const invalidStructures = [
+      {
+        type: 'doc',
+        content: [
+          {
+            type: 'bulletList',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'not an item' }] }],
+          },
+        ],
+      },
+      {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              {
+                type: 'text',
+                marks: [{ type: 'link', attrs: { href: 'javascript:alert(1)' } }],
+                text: 'unsafe',
+              },
+            ],
+          },
+        ],
+      },
+    ];
+
+    for (const content of invalidStructures) {
+      const invalidResponse = await request(`/api/private/pages/${page.id}/content`, {
+        body: JSON.stringify({ baseRevision: 2, content }),
+        method: 'PUT',
+      });
+      expect(invalidResponse.status).toBe(422);
+      await expect(invalidResponse.json()).resolves.toMatchObject({
+        error: { code: 'INVALID_DOCUMENT' },
+      });
+    }
+  });
 });
