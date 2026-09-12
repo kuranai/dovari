@@ -1,7 +1,8 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 
 import type { PageDetail, PageSummary } from '../../../shared/pages';
 import { fetchPage, pageErrorMessage, updatePageTitle } from './api';
+import { usePageAutosave, type AutosaveSnapshot } from './editor/autosave';
 
 const PageEditor = lazy(async () => {
   const module = await import('./editor/PageEditor');
@@ -119,14 +120,112 @@ function RenameForm({
   );
 }
 
-function PageContentEditor({ page }: { page: PageDetail }) {
+function autosaveStatusLabel(snapshot: AutosaveSnapshot) {
+  if (snapshot.recoveryAvailable) {
+    return 'Draft found';
+  }
+
+  switch (snapshot.status) {
+    case 'dirty':
+      return 'Unsaved changes';
+    case 'waiting':
+      return 'Waiting to save…';
+    case 'saving':
+      return 'Saving…';
+    case 'saved':
+      return 'Saved';
+    case 'failed':
+      return 'Not saved';
+    case 'retrying':
+      return 'Retrying…';
+    case 'conflict':
+      return 'Conflict';
+    default:
+      return 'Ready to write';
+  }
+}
+
+function PageContentEditor({
+  onPageUpdated,
+  page,
+}: {
+  onPageUpdated: (page: PageDetail) => void;
+  page: PageDetail;
+}) {
   const [content, setContent] = useState(page.content);
-  const [hasLocalChanges, setHasLocalChanges] = useState(false);
+  const [conflictActionError, setConflictActionError] = useState<string | null>(null);
+  const [copyNotice, setCopyNotice] = useState<string | null>(null);
+  const [isLoadingServer, setIsLoadingServer] = useState(false);
+
+  const handleSaved = useCallback(
+    (savedPage: PageDetail, isCurrentContent: boolean) => {
+      if (isCurrentContent) {
+        setContent(savedPage.content);
+      }
+      onPageUpdated(savedPage);
+    },
+    [onPageUpdated],
+  );
+  const handleContentAvailable = useCallback((nextContent: PageDetail['content']) => {
+    setContent(nextContent);
+  }, []);
+  const autosave = usePageAutosave(page, handleSaved, handleContentAvailable);
 
   function handleContentChange(nextContent: PageDetail['content']) {
     setContent(nextContent);
-    setHasLocalChanges(true);
+    autosave.change(nextContent);
   }
+
+  async function handleRecoverDraft() {
+    const recoveredContent = await autosave.recoverDraft();
+    if (recoveredContent !== null) {
+      setContent(recoveredContent);
+    }
+  }
+
+  async function handleDiscardDraft() {
+    await autosave.discardDraft();
+    setContent(page.content);
+  }
+
+  async function handleLoadServerVersion() {
+    setIsLoadingServer(true);
+    setConflictActionError(null);
+    setCopyNotice(null);
+    try {
+      const response = await fetchPage(page.id);
+      await autosave.resetFromServer(response.page);
+      setContent(response.page.content);
+      onPageUpdated(response.page);
+    } catch (error: unknown) {
+      setConflictActionError(pageErrorMessage(error, 'The server version could not be loaded.'));
+    } finally {
+      setIsLoadingServer(false);
+    }
+  }
+
+  async function handleCopyMyVersion() {
+    setConflictActionError(null);
+    try {
+      if (!navigator.clipboard) {
+        throw new Error('Clipboard access is unavailable.');
+      }
+      await navigator.clipboard.writeText(JSON.stringify(autosave.getCurrentContent(), null, 2));
+      setCopyNotice('Your version is copied to the clipboard.');
+    } catch {
+      setCopyNotice('Your version could not be copied automatically.');
+    }
+  }
+
+  const statusClassName = [
+    'editor-status',
+    autosave.snapshot.hasUnconfirmedChanges ? 'is-local' : '',
+    autosave.snapshot.status === 'failed' || autosave.snapshot.status === 'conflict'
+      ? 'is-error'
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <section aria-labelledby="page-editor-title" className="page-editor-section">
@@ -135,10 +234,76 @@ function PageContentEditor({ page }: { page: PageDetail }) {
           <span className="state-kicker">Content</span>
           <h2 id="page-editor-title">Write in context.</h2>
         </div>
-        <span className={hasLocalChanges ? 'editor-status is-local' : 'editor-status'}>
-          {hasLocalChanges ? 'Changes are local' : 'Ready to write'}
+        <span aria-live="polite" className={statusClassName}>
+          {autosaveStatusLabel(autosave.snapshot)}
         </span>
       </div>
+      {autosave.snapshot.recoveryAvailable ? (
+        <div className="editor-save-notice editor-recovery-notice" role="status">
+          <div>
+            <strong>We found unsaved changes from an earlier session.</strong>
+            <p>Restore them to continue editing, or discard the local draft.</p>
+          </div>
+          <div className="editor-save-actions">
+            <button
+              className="button button-primary"
+              onClick={() => void handleRecoverDraft()}
+              type="button"
+            >
+              Restore draft
+            </button>
+            <button
+              className="button button-quiet"
+              onClick={() => void handleDiscardDraft()}
+              type="button"
+            >
+              Discard draft
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {autosave.snapshot.status === 'failed' ? (
+        <div className="editor-save-notice editor-save-error" role="alert">
+          <p>{autosave.snapshot.errorMessage ?? "We couldn't save this page."}</p>
+          <button className="button button-secondary" onClick={autosave.retry} type="button">
+            Retry
+          </button>
+        </div>
+      ) : null}
+      {autosave.snapshot.status === 'conflict' ? (
+        <div className="editor-save-notice editor-save-error" role="alert">
+          <div>
+            <strong>We couldn’t save this page.</strong>
+            <p>{autosave.snapshot.errorMessage}</p>
+            {autosave.snapshot.conflictRevision !== null ? (
+              <small>Server revision: {autosave.snapshot.conflictRevision}</small>
+            ) : null}
+          </div>
+          <div className="editor-save-actions">
+            <button
+              className="button button-secondary"
+              disabled={isLoadingServer}
+              onClick={() => void handleLoadServerVersion()}
+              type="button"
+            >
+              {isLoadingServer ? 'Loading…' : 'Load server version'}
+            </button>
+            <button
+              className="button button-quiet"
+              onClick={() => void handleCopyMyVersion()}
+              type="button"
+            >
+              Copy my version
+            </button>
+          </div>
+          {copyNotice ? <p className="editor-save-feedback">{copyNotice}</p> : null}
+        </div>
+      ) : null}
+      {conflictActionError ? (
+        <p className="inline-error" role="alert">
+          {conflictActionError}
+        </p>
+      ) : null}
       <Suspense
         fallback={
           <p className="page-editor-loading" role="status">
@@ -221,7 +386,7 @@ function PageDetailContent({
           {error}
         </p>
       ) : null}
-      <PageContentEditor page={page} />
+      <PageContentEditor onPageUpdated={onPageUpdated} page={page} />
     </article>
   );
 }

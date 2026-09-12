@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 
 import type { TiptapDocument } from '../../../../shared/pages';
@@ -42,6 +42,19 @@ export function PageEditor({ content, onChange }: PageEditorProps) {
     },
     [],
   );
+
+  useEffect(() => {
+    if (!editor) {
+      return;
+    }
+
+    const currentContent = serializeEditorDocument(editor.getJSON());
+    if (currentContent && JSON.stringify(currentContent) === JSON.stringify(content)) {
+      return;
+    }
+
+    editor.commands.setContent(safeEditorDocument(content), { emitUpdate: false });
+  }, [content, editor]);
 
   return (
     <section aria-label="Page editor" className="page-editor">

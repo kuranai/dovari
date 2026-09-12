@@ -5,10 +5,12 @@ import {
   movePageRequestSchema,
   pageResponseSchema,
   pagesListResponseSchema,
+  updatePageContentRequestSchema,
   type CreatePageRequest,
   type MovePageRequest,
   type PageResponse,
   type PagesListResponse,
+  type TiptapDocument,
 } from '../../../shared/pages';
 
 interface ApiErrorBody {
@@ -123,6 +125,18 @@ export function updatePageTitle(id: string, baseRevision: number, title: string)
     body: JSON.stringify({ baseRevision, title }),
     method: 'PATCH',
   });
+}
+
+export function updatePageContent(id: string, baseRevision: number, content: TiptapDocument) {
+  const parsed = updatePageContentRequestSchema.parse({ baseRevision, content });
+  return request<PageResponse>(
+    `/api/private/pages/${encodeURIComponent(id)}/content`,
+    pageResponseSchema,
+    {
+      body: JSON.stringify(parsed),
+      method: 'PUT',
+    },
+  );
 }
 
 export function deletePage(id: string, baseRevision: number) {
