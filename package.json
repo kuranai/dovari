@@ -16,6 +16,7 @@
     "test:e2e": "node scripts/run-e2e.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
     "types:generate": "wrangler types --env-interface CloudflareBindings",
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -25,6 +26,7 @@
     "deploy": "npm run db:migrate:remote && npm run build && wrangler deploy"
   },
   "dependencies": {
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.13.7",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
@@ -41,6 +43,7 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^5.0.2",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^9.31.0",
     "globals": "^16.3.0",
     "jsdom": "^26.1.0",

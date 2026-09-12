@@ -13,6 +13,16 @@ npm run db:migrate:local
 npm run dev
 ```
 
+The relational schema is declared in `src/worker/db/schema.ts`. Generate a new Drizzle migration
+with `npm run db:generate`; the generated SQL in `migrations/` is what Wrangler applies. The FTS5
+virtual table and synchronization triggers are kept in the custom SQL migration
+`migrations/0001_pages_fts.sql`. Apply the same checked-in migrations to a configured remote D1
+only when intended:
+
+```sh
+npm run db:migrate:remote
+```
+
 The development server prints the local URL, normally `http://localhost:5173`. The Vite dev server
 uses the same Worker entrypoint as the production build. Local D1 and R2 storage are used by
 default. For the local authentication bypass, copy the ignored example file:

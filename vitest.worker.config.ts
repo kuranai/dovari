@@ -1,11 +1,17 @@
-import { cloudflareTest } from '@cloudflare/vitest-plugin';
+import { cloudflareTest, readD1Migrations } from '@cloudflare/vitest-plugin';
+import { resolve } from 'node:path';
 import { defineProject } from 'vitest/config';
 
 export default defineProject({
   plugins: [
-    cloudflareTest({
+    cloudflareTest(async () => ({
+      miniflare: {
+        bindings: {
+          DOVARI_TEST_D1_MIGRATIONS: JSON.stringify(await readD1Migrations(resolve('migrations'))),
+        },
+      },
       wrangler: { configPath: './wrangler.jsonc' },
-    }),
+    })),
   ],
   test: {
     fileParallelism: false,

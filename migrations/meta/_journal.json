@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1789228384393,
+      "tag": "0000_initial_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789228419167,
+      "tag": "0001_pages_fts",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789229084732,
+      "tag": "0002_pages_updated_at_desc",
+      "breakpoints": true
+    }
+  ]
+}
