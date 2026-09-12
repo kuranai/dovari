@@ -7,6 +7,7 @@ import {
   securityHeadersMiddleware,
 } from './middleware/security';
 import { classifyPath, isApiPath } from './routing';
+import { registerAssetRoutes } from './assets/routes';
 import { registerPageRoutes } from './pages/routes';
 import type { WorkerApp } from './types';
 
@@ -43,6 +44,7 @@ export function createApp() {
   });
 
   registerPageRoutes(app);
+  registerAssetRoutes(app);
 
   app.all('*', async (c) => {
     const pathname = new URL(c.req.url).pathname;

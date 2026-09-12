@@ -147,3 +147,20 @@ header and the JSON response:
   "requestId": "..."
 }
 ```
+
+## Assets API
+
+Assets are uploaded through the authenticated private API as the raw request body:
+
+```text
+POST   /api/private/assets
+GET    /api/private/assets/:id
+GET    /api/private/assets/:id/content
+DELETE /api/private/assets/:id
+```
+
+The upload uses `Content-Type` and the percent-encoded `X-Dovari-Filename` header. An optional
+`X-Dovari-Page-Id` associates the asset with an active page. PNG, JPEG, WebP, GIF, PDF, plain text,
+Markdown, ZIP, and generic `application/octet-stream` files are supported up to 25 MiB. SVG and
+HTML are rejected, R2 remains private, and deletion is a metadata-only soft delete until a later
+garbage-collection phase.

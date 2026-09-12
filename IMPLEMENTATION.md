@@ -2,9 +2,9 @@
 
 **Dieses Dokument ist die kanonische Quelle für den aktuellen Implementierungsstand.**  
 **Letzte Aktualisierung:** 12. September 2026
-**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen, P06 abgeschlossen, P07 abgeschlossen, P08 abgeschlossen, P09 abgeschlossen, P10 abgeschlossen
+**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen, P06 abgeschlossen, P07 abgeschlossen, P08 abgeschlossen, P09 abgeschlossen, P10 abgeschlossen, P11 abgeschlossen
 **Aktuelle Phase:** keine
-**Nächste Phase:** P11 – R2 Asset API
+**Nächste Phase:** P12 – Screenshot Paste und Drag & Drop
 
 ## 1. Zweck
 
@@ -100,8 +100,8 @@ Ist die Phase nicht fertig, bleibt sie `IN PROGRESS`. Bei einem echten externen 
 | P08 | Editor | Tiptap-Grundeditor | `DONE` | Tiptap-3-Grundeditor mit Allowlist, Toolbar, Placeholder, sicherem Link-Dialog, lokalem JSON-Roundtrip und fokussierten Editor-Tests umgesetzt und verifiziert |
 | P09 | Editor | Inhaltsableitungen und Markdown | `DONE` | Serverseitige Tiptap-Schema-Validierung, deterministische Plaintext-/Markdown-Ableitung und Roundtrip-/Snapshot-Tests umgesetzt und verifiziert |
 | P10 | Editor | Autosave, Konflikte und Draft Recovery | `DONE` | Autosave-Queue, Retry/Backoff, Konfliktoberfläche, IndexedDB-Drafts und Recovery umgesetzt und verifiziert |
-| P11 | Assets | R2 Asset API | `NEXT` | – |
-| P12 | Assets | Screenshot Paste und Drag & Drop | `PLANNED` | – |
+| P11 | Assets | R2 Asset API | `DONE` | Streaming-Upload, R2-/D1-Rollback, sichere Auslieferung, Conditional Requests, Range und Soft Delete umgesetzt und verifiziert |
+| P12 | Assets | Screenshot Paste und Drag & Drop | `NEXT` | – |
 | P13 | Assets | Asset-Referenzen und robuste Fehlerpfade | `PLANNED` | – |
 | P14 | Suche | D1 FTS5 und Search API | `PLANNED` | – |
 | P15 | Suche | Command Palette und Tastenkürzel | `PLANNED` | – |
@@ -644,6 +644,7 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 | 2026-09-12 | P08 | Tiptap-3-Grundeditor mit dokumentnaher Komponentenstruktur, sicherer Extension-Allowlist, Toolbar für Grundformatierungen, Placeholder, Link-Dialog und lokalem `content_json`-Bearbeiten umgesetzt; der Editor wird als eigener Bundle-Chunk geladen | `npm run ci` (Format-Check, Lint, Typecheck, 31 Vitest-Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | Autosave, Bilder, Wiki Links und Slash Commands bleiben gemäß Scope späteren Phasen vorbehalten; P09 ist `NEXT` |
 | 2026-09-12 | P09 | Serverseitige Tiptap-Schema-Validierung um Root-, Listen-, Task-, Link- und Strukturgrenzen erweitert; deterministische Plaintext- und Markdown-Ableitung für alle erlaubten Nodes umgesetzt; `content_markdown` bleibt ungespeichert | `npm run ci` (Format-Check, Lint, Typecheck, 34 Vitest-Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | Markdown nutzt bis zur späteren Exportphase deterministische `assets/<assetId>`-Referenzen; P10 ist `NEXT` |
 | 2026-09-12 | P10 | Seitenbezogener Autosave-Zustandsautomat mit 750-ms-Debounce, genau einer laufenden Anfrage, Retry/Backoff für transiente Fehler, sichtbaren Save-/Fehler-/Konfliktzuständen, IndexedDB-Drafts, Reload-Recovery und `beforeunload`-Warnung umgesetzt | `npm run typecheck`, `npm test` (39 Tests), `npm run lint`, `npm run format:check`, `npm run build`, `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | Content-Saves verwenden weiterhin optimistische Revisionen; automatisches Merge und echtes Offline Editing bleiben außerhalb des Scopes; P11 ist `NEXT` |
+| 2026-09-12 | P11 | Private R2-Asset-API mit 25-MiB-Streaming-Upload, Dateinamen-/MIME-/Magic-Byte-Prüfung, UUID-Keys, D1-Metadaten-Rollback, ETag-/Range-Download und Soft Delete umgesetzt | `npm run ci` (44 Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | R2 bleibt privat; SVG/HTML werden abgewiesen und physische Garbage Collection sowie Editorintegration bleiben gemäß Scope P13 bzw. P12 vorbehalten; P12 ist `NEXT` |
 
 ## 9. Regeln zur Pflege dieses Dokuments
 
