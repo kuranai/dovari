@@ -1,7 +1,8 @@
 # Dovari
 
 Dovari is a small, browser-first personal knowledge base. The React/Vite SPA and its Cloudflare
-Worker now run together locally; product features are added in later phases.
+Worker now run together locally, with a sidebar and browser-based page CRUD for the first wiki
+workflow.
 
 ## Local development
 
@@ -83,8 +84,14 @@ that the app shell loads through the Worker routing path.
 
 The source tree keeps client code under `src/client`, Worker code under `src/worker`, and shared
 contracts under `src/shared`. The Worker classifies private, public, static, health, and unknown
-paths centrally. Private application and API paths require the security boundary described below;
-the Pages API is the first product API and the browser UI follows in a later phase.
+paths centrally. Private application and API paths require the security boundary described below.
+
+## Browser page workflow
+
+Open `/app` to load the private workspace. The sidebar reads page metadata from the Pages API and
+opens each page at the stable client-side URL `/app/pages/<page-id>` without a full reload. `New
+page` creates an `Untitled` page, and the page view supports renaming and soft deletion. Content is
+currently shown as a safe text/JSON placeholder; the rich-text editor is added in a later phase.
 
 ## Pages API
 
