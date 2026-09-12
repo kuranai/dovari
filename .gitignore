@@ -15,5 +15,5 @@ playwright-report/
 test-results/
 coverage/
 
-# Wrangler local state (introduced in a later phase)
+# Wrangler local state
 .wrangler/

@@ -1,10 +1,10 @@
 # Dovari – Implementierungsstatus und Phasenplan
 
 **Dieses Dokument ist die kanonische Quelle für den aktuellen Implementierungsstand.**  
-**Letzte Aktualisierung:** 12. September 2026  
-**Gesamtstatus:** P00 abgeschlossen, P01 bereit  
-**Aktuelle Phase:** keine  
-**Nächste Phase:** P01 – Cloudflare-Laufzeit und Bindings
+**Letzte Aktualisierung:** 12. September 2026
+**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen
+**Aktuelle Phase:** keine
+**Nächste Phase:** P02 – Authentifizierung und Security-Basis
 
 ## 1. Zweck
 
@@ -90,8 +90,8 @@ Ist die Phase nicht fertig, bleibt sie `IN PROGRESS`. Bei einem echten externen 
 | Phase | Meilenstein | Titel | Status | Ergebnis/Evidenz |
 |---|---|---|---|---|
 | P00 | Grundlage | Projekt-Scaffold | `DONE` | `npm ci`, Dev-Smoke-Test, Build, Typecheck, Lint und Format-Check erfolgreich |
-| P01 | Grundlage | Cloudflare-Laufzeit und Bindings | `NEXT` | – |
-| P02 | Grundlage | Authentifizierung und Security-Basis | `PLANNED` | – |
+| P01 | Grundlage | Cloudflare-Laufzeit und Bindings | `DONE` | Vite-/Cloudflare-Worker, Hono-Routing, lokale D1-/R2-Bindings, SPA-Fallback, Health-Smoke und generierte Binding-Typen umgesetzt und verifiziert |
+| P02 | Grundlage | Authentifizierung und Security-Basis | `NEXT` | – |
 | P03 | Grundlage | Testsystem vervollständigen und CI-Qualitätsgates | `PLANNED` | – |
 | P04 | Seiten | D1-Schema und Migrationen | `PLANNED` | – |
 | P05 | Seiten | Pages Domain und HTTP-API | `PLANNED` | – |
@@ -634,6 +634,7 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 | Datum | Phase | Ergebnis | Verifikation | Hinweise |
 |---|---|---|---|---|
 | 2026-09-12 | P00 | React-/Vite-/TypeScript-Scaffold mit minimaler Dovari-App-Shell und vorbereiteten Client-/Worker-/Shared-Grenzen umgesetzt | `npm ci --ignore-scripts --no-audit --no-fund`, Dev-Server plus HTTP-Smoke-Test, `npm run build`, `npm run typecheck`, `npm run lint` und `npm run format:check` erfolgreich | Cloudflare-Bindings, Hono-Routing und Produktfeatures bleiben P01 bzw. späteren Phasen vorbehalten; P01 ist `NEXT` |
+| 2026-09-12 | P01 | Cloudflare-Vite-Worker mit Hono, zentraler Pfadklassifikation, `STATIC_ASSETS`, lokalen D1-/R2-Bindings, `/api/health`, SPA-Fallback und Wrangler-Typgenerierung umgesetzt | `npm ci --ignore-scripts --no-audit --no-fund`, `npm run types:generate`, `npm run db:migrate:local`, `npm run build`, `npm run typecheck`, `npx tsc -p tsconfig.worker.json --noEmit`, `npm run lint`, `npm run format:check`, Dev-/Preview-HTTP-Smokes und `npx wrangler deploy --dry-run` erfolgreich | `/api/health` meldet nur `{status:"ok"}` nach nicht-sensitiver D1-/R2-Probe; Konfiguration enthält keine Remote-/Preview-IDs und setzt lokale Entwicklung explizit auf `remote: false`; P02 ist `NEXT` |
 
 ## 9. Regeln zur Pflege dieses Dokuments
 

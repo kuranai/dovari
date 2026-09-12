@@ -17,5 +17,12 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src/client", "src/shared", "src/worker", "vite.config.ts", "eslint.config.js"]
+  "include": [
+    "src/client",
+    "src/shared",
+    "src/worker",
+    "worker-configuration.d.ts",
+    "vite.config.ts",
+    "eslint.config.js"
+  ]
 }

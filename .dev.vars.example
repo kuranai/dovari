@@ -1,0 +1,3 @@
+# Optional local Worker variables.
+# No secrets are required to run P01 locally.
+DOVARI_ENV=local

@@ -8,7 +8,7 @@ export function App() {
           </span>
           <span>Dovari</span>
         </a>
-        <span className="phase-label">Project foundation</span>
+        <span className="phase-label">Cloudflare foundation</span>
       </header>
 
       <main className="app-main">
@@ -16,8 +16,8 @@ export function App() {
           <p className="eyebrow">A quiet place for useful things</p>
           <h1 id="welcome-title">Your knowledge base starts here.</h1>
           <p className="welcome-copy">
-            The Dovari workspace is ready for the next phase. Pages, search, and the editor will
-            arrive as the foundation grows.
+            The Dovari workspace is running through a local Cloudflare Worker. Pages, search, and
+            the editor will arrive as the foundation grows.
           </p>
         </section>
       </main>

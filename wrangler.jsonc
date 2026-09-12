@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "dovari",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2026-09-12",
+  "assets": {
+    "binding": "STATIC_ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true,
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "dovari",
+      "migrations_dir": "migrations",
+      "remote": false,
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "ASSETS",
+      "bucket_name": "dovari-assets",
+      "remote": false,
+    },
+  ],
+  "observability": {
+    "enabled": true,
+  },
+}
