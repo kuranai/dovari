@@ -43,7 +43,8 @@ a {
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
-summary:focus-visible {
+summary:focus-visible,
+.page-editor-content:focus-visible {
   outline: 3px solid #9a6bff;
   outline-offset: 3px;
 }
@@ -581,24 +582,24 @@ kbd {
   font-size: 0.82rem;
 }
 
-.content-placeholder {
-  padding-top: 42px;
+.page-editor-section {
+  padding-top: 38px;
 }
 
-.content-placeholder-heading {
+.page-editor-heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
 }
 
-.content-placeholder h2 {
+.page-editor-heading h2 {
   margin: 9px 0 0;
   font-size: 1.2rem;
   letter-spacing: -0.03em;
 }
 
-.placeholder-badge {
+.editor-status {
   padding: 5px 8px;
   border: 1px solid #e4e4dd;
   border-radius: 999px;
@@ -607,18 +608,270 @@ kbd {
   white-space: nowrap;
 }
 
-.page-content-text,
-.page-content-empty {
-  max-width: 65ch;
-  margin: 28px 0 0;
-  color: #4f4f48;
-  font-size: 1.05rem;
-  line-height: 1.75;
-  white-space: pre-wrap;
+.editor-status.is-local {
+  border-color: #d9cffa;
+  color: #7157b0;
+  background: #f8f5ff;
 }
 
-.page-content-empty {
+.page-editor {
+  margin-top: 22px;
+  border: 1px solid #deded7;
+  border-radius: 12px;
+  background: #fffffd;
+  box-shadow: 0 12px 35px rgb(36 36 33 / 4%);
+}
+
+.editor-toolbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 9px;
+  border-bottom: 1px solid #e8e8e1;
+  background: #fafaf7;
+}
+
+.editor-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.editor-toolbar-history {
+  margin-left: auto;
+}
+
+.editor-toolbar-separator {
+  width: 1px;
+  height: 22px;
+  margin: 0 2px;
+  background: #deded7;
+}
+
+.editor-toolbar-button {
+  display: inline-flex;
+  min-width: 30px;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #65655c;
+  background: transparent;
+  font-size: 0.76rem;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.editor-toolbar-button:hover:not(:disabled) {
+  color: #242421;
+  background: #e9e9e3;
+}
+
+.editor-toolbar-button.is-active {
+  border-color: #d9cffa;
+  color: #5e439c;
+  background: #f0ebff;
+}
+
+.editor-toolbar-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.editor-link-form {
+  display: flex;
+  width: 100%;
+  align-items: end;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding: 10px 4px 2px;
+  border-top: 1px solid #e8e8e1;
+}
+
+.editor-link-form label {
+  width: 100%;
+  color: #6e6e63;
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+
+.editor-link-form input {
+  min-width: 180px;
+  flex: 1;
+  padding: 7px 9px;
+  border: 1px solid #cfcfc6;
+  border-radius: 6px;
+  color: #242421;
+  background: #fffffd;
+  font-size: 0.82rem;
+}
+
+.editor-link-form .button {
+  min-height: 32px;
+  padding: 6px 9px;
+  font-size: 0.76rem;
+}
+
+.editor-link-error {
+  width: 100%;
+  margin: 0;
+  color: #a04a44;
+  font-size: 0.76rem;
+}
+
+.page-editor-surface {
+  min-height: 420px;
+  padding: 28px clamp(18px, 4vw, 42px) 42px;
+}
+
+.page-editor-loading {
+  margin: 0;
+  padding: 28px;
   color: #89897f;
+  font-size: 0.88rem;
+}
+
+.page-editor-content {
+  min-height: 340px;
+  color: #363630;
+  font-size: 1.04rem;
+  line-height: 1.72;
+  outline: 0;
+  overflow-wrap: anywhere;
+}
+
+.page-editor-content p,
+.page-editor-content ul,
+.page-editor-content ol,
+.page-editor-content blockquote,
+.page-editor-content pre,
+.page-editor-content h1,
+.page-editor-content h2,
+.page-editor-content h3 {
+  margin-top: 0;
+}
+
+.page-editor-content p,
+.page-editor-content ul,
+.page-editor-content ol,
+.page-editor-content blockquote,
+.page-editor-content pre,
+.page-editor-content h1,
+.page-editor-content h2,
+.page-editor-content h3,
+.page-editor-content hr {
+  margin-bottom: 1.05em;
+}
+
+.page-editor-content h1,
+.page-editor-content h2,
+.page-editor-content h3 {
+  color: #242421;
+  line-height: 1.15;
+  letter-spacing: -0.04em;
+}
+
+.page-editor-content h1 {
+  font-size: 2.1rem;
+}
+
+.page-editor-content h2 {
+  font-size: 1.6rem;
+}
+
+.page-editor-content h3 {
+  font-size: 1.3rem;
+}
+
+.page-editor-content ul,
+.page-editor-content ol {
+  padding-left: 1.5em;
+}
+
+.page-editor-content blockquote {
+  padding-left: 18px;
+  border-left: 3px solid #cfcfc6;
+  color: #65655c;
+}
+
+.page-editor-content pre {
+  overflow-x: auto;
+  padding: 15px 17px;
+  border: 1px solid #deded7;
+  border-radius: 8px;
+  color: #f5f5ed;
+  background: #2f2f2b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
+.page-editor-content code {
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: #5e439c;
+  background: #f0ebff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.88em;
+}
+
+.page-editor-content pre code {
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  font-size: inherit;
+}
+
+.page-editor-content a {
+  color: #5e439c;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.page-editor-content hr {
+  border: 0;
+  border-top: 1px solid #d8d8d0;
+}
+
+.page-editor-content ul[data-type='taskList'] {
+  padding: 0;
+  list-style: none;
+}
+
+.page-editor-content li[data-type='taskItem'] {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.page-editor-content li[data-type='taskItem'] > label {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding-top: 5px;
+}
+
+.page-editor-content li[data-type='taskItem'] > label input {
+  width: 15px;
+  height: 15px;
+  accent-color: #7157b0;
+}
+
+.page-editor-content li[data-type='taskItem'] > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.page-editor-content p.is-editor-empty:first-child::before {
+  float: left;
+  height: 0;
+  color: #aaa99e;
+  content: attr(data-placeholder);
+  pointer-events: none;
 }
 
 .content-json {
@@ -679,7 +932,7 @@ kbd {
   }
 
   .page-detail-header,
-  .content-placeholder-heading {
+  .page-editor-heading {
     flex-direction: column;
   }
 

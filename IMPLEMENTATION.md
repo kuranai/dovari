@@ -2,9 +2,9 @@
 
 **Dieses Dokument ist die kanonische Quelle für den aktuellen Implementierungsstand.**  
 **Letzte Aktualisierung:** 12. September 2026
-**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen, P06 abgeschlossen, P07 abgeschlossen
+**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen, P06 abgeschlossen, P07 abgeschlossen, P08 abgeschlossen
 **Aktuelle Phase:** keine
-**Nächste Phase:** P08 – Tiptap-Grundeditor
+**Nächste Phase:** P09 – Inhaltsableitungen und Markdown
 
 ## 1. Zweck
 
@@ -97,8 +97,8 @@ Ist die Phase nicht fertig, bleibt sie `IN PROGRESS`. Bei einem echten externen 
 | P05 | Seiten | Pages Domain und HTTP-API | `DONE` | Pages-Repository/-Service, Zod-Verträge, CRUD, Slugs, Plaintext, Konflikte, Limits und Soft Delete umgesetzt und verifiziert |
 | P06 | Seiten | App-Shell, Sidebar und Page CRUD | `DONE` | React-Router-App-Shell, Sidebar, Page-URLs und browserseitiger Page-CRUD umgesetzt und verifiziert |
 | P07 | Navigation | Seitenhierarchie und Sortierung | `DONE` | Move-API mit rekursiver Zyklusprüfung, atomare Geschwisternormalisierung, einklappbarer Baum, Child-Erstellung, Inline-Rename, Pointer-DnD und Tastaturalternative umgesetzt und verifiziert |
-| P08 | Editor | Tiptap-Grundeditor | `NEXT` | – |
-| P09 | Editor | Inhaltsableitungen und Markdown | `PLANNED` | – |
+| P08 | Editor | Tiptap-Grundeditor | `DONE` | Tiptap-3-Grundeditor mit Allowlist, Toolbar, Placeholder, sicherem Link-Dialog, lokalem JSON-Roundtrip und fokussierten Editor-Tests umgesetzt und verifiziert |
+| P09 | Editor | Inhaltsableitungen und Markdown | `NEXT` | – |
 | P10 | Editor | Autosave, Konflikte und Draft Recovery | `PLANNED` | – |
 | P11 | Assets | R2 Asset API | `PLANNED` | – |
 | P12 | Assets | Screenshot Paste und Drag & Drop | `PLANNED` | – |
@@ -641,6 +641,7 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 | 2026-09-12 | P05 | Pages-Domain mit Raw-D1-Repository, Service- und Zod-Verträgen, sicherer Pages-HTTP-API, eindeutigen Slugs, serverseitigem Plaintext, optimistischen Revisionen, Größenlimit und Soft Delete umgesetzt | `npm run db:generate` (keine Schemaänderung), `npm run ci` (19 Tests), `npm run test:e2e` (1 Browser-Smoke) und `git diff --check` erfolgreich | Move-API bleibt gemäß Scope P07 vorbehalten; P06 ist `NEXT` |
 | 2026-09-12 | P06 | React-Router-App-Shell mit stabilen `/app/pages/:id`-URLs, Sidebar aus Page-Metadaten, getrenntem Detail-Laden, Create/Rename/Delete, Ctrl/Cmd+N, Loading-/Empty-/Error-States und sicherem Text-/JSON-Platzhalter umgesetzt | `npm run ci` (Format-Check, Lint, Typecheck, 21 Vitest-Tests und Produktionsbuild) sowie `npm run test:e2e` (1 Browser-CRUD-Smoke) erfolgreich | Die Seitenbaum-Bewegung und Sortier-API bleiben gemäß Scope P07 vorbehalten; P07 ist `NEXT` |
 | 2026-09-12 | P07 | Move-API mit rekursiver Zyklusprüfung, atomarer Hierarchie-/Geschwisternormalisierung, einklappbarem Seitenbaum, Create Child, Inline Rename, Pointer-Drag-and-Drop und Tastaturalternative umgesetzt | `npm run ci` (Format-Check, Lint, Typecheck, 26 Vitest-Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | Child-Erstellung korrigiert zusätzlich die bestehende Parent-Binding-Reihenfolge; P08 ist `NEXT` |
+| 2026-09-12 | P08 | Tiptap-3-Grundeditor mit dokumentnaher Komponentenstruktur, sicherer Extension-Allowlist, Toolbar für Grundformatierungen, Placeholder, Link-Dialog und lokalem `content_json`-Bearbeiten umgesetzt; der Editor wird als eigener Bundle-Chunk geladen | `npm run ci` (Format-Check, Lint, Typecheck, 31 Vitest-Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | Autosave, Bilder, Wiki Links und Slash Commands bleiben gemäß Scope späteren Phasen vorbehalten; P09 ist `NEXT` |
 
 ## 9. Regeln zur Pflege dieses Dokuments
 

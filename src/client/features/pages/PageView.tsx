@@ -1,7 +1,12 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 
 import type { PageDetail, PageSummary } from '../../../shared/pages';
 import { fetchPage, pageErrorMessage, updatePageTitle } from './api';
+
+const PageEditor = lazy(async () => {
+  const module = await import('./editor/PageEditor');
+  return { default: module.PageEditor };
+});
 
 type PageLoadState =
   | { status: 'loading' }
@@ -114,28 +119,38 @@ function RenameForm({
   );
 }
 
-function ContentPlaceholder({ page }: { page: PageDetail }) {
-  const contentJson = JSON.stringify(page.content, null, 2);
+function PageContentEditor({ page }: { page: PageDetail }) {
+  const [content, setContent] = useState(page.content);
+  const [hasLocalChanges, setHasLocalChanges] = useState(false);
+
+  function handleContentChange(nextContent: PageDetail['content']) {
+    setContent(nextContent);
+    setHasLocalChanges(true);
+  }
 
   return (
-    <section aria-labelledby="content-placeholder-title" className="content-placeholder">
-      <div className="content-placeholder-heading">
+    <section aria-labelledby="page-editor-title" className="page-editor-section">
+      <div className="page-editor-heading">
         <div>
           <span className="state-kicker">Content</span>
-          <h2 id="content-placeholder-title">A simple page for now</h2>
+          <h2 id="page-editor-title">Write in context.</h2>
         </div>
-        <span className="placeholder-badge">Editor coming next</span>
+        <span className={hasLocalChanges ? 'editor-status is-local' : 'editor-status'}>
+          {hasLocalChanges ? 'Changes are local' : 'Ready to write'}
+        </span>
       </div>
-      {page.contentText ? (
-        <p className="page-content-text">{page.contentText}</p>
-      ) : (
-        <p className="page-content-empty">
-          This page is empty. The rich-text editor will arrive in the next phase.
-        </p>
-      )}
+      <Suspense
+        fallback={
+          <p className="page-editor-loading" role="status">
+            Loading editor…
+          </p>
+        }
+      >
+        <PageEditor content={content} onChange={handleContentChange} />
+      </Suspense>
       <details className="content-json">
-        <summary>View content JSON</summary>
-        <pre>{contentJson}</pre>
+        <summary>View current document JSON</summary>
+        <pre>{JSON.stringify(content, null, 2)}</pre>
       </details>
     </section>
   );
@@ -206,7 +221,7 @@ function PageDetailContent({
           {error}
         </p>
       ) : null}
-      <ContentPlaceholder page={page} />
+      <PageContentEditor page={page} />
     </article>
   );
 }
