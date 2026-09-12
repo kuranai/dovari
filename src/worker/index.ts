@@ -1,44 +1,75 @@
 import { Hono } from 'hono';
 
-import { classifyPath } from './routing';
+import {
+  accessMiddleware,
+  apiError,
+  requestIdMiddleware,
+  securityHeadersMiddleware,
+} from './middleware/security';
+import { classifyPath, isApiPath } from './routing';
+import type { WorkerApp } from './types';
 
-type Bindings = CloudflareBindings;
-
-const app = new Hono<{ Bindings: Bindings }>();
-
-async function checkBindings(env: Bindings) {
+async function checkBindings(env: WorkerApp['Bindings']) {
   await Promise.all([
     env.DB.prepare('SELECT 1').first(),
     env.ASSETS.head('__dovari_binding_probe__'),
   ]);
 }
 
-app.on(['GET', 'HEAD'], '/api/health', async (c) => {
-  try {
-    await checkBindings(c.env);
-    return c.json({ status: 'ok' });
-  } catch {
-    return c.json({ status: 'unavailable' }, 503);
-  }
-});
+function fetchStaticAssets(request: Request, assets: Fetcher) {
+  const headers = new Headers(request.headers);
+  headers.delete('Authorization');
+  headers.delete('Cf-Access-Jwt-Assertion');
+  headers.delete('Cookie');
 
-app.all('*', async (c) => {
-  const pathname = new URL(c.req.url).pathname;
-  const classification = classifyPath(pathname);
+  return assets.fetch(new Request(request, { headers }));
+}
 
-  if (classification.kind === 'private' && classification.area === 'app') {
-    if (pathname === '/') {
-      return c.redirect('/app', 302);
+export function createApp() {
+  const app = new Hono<WorkerApp>();
+
+  app.use('*', requestIdMiddleware);
+  app.use('*', securityHeadersMiddleware);
+  app.use('*', accessMiddleware);
+
+  app.on(['GET', 'HEAD'], '/api/health', async (c) => {
+    try {
+      await checkBindings(c.env);
+      return c.json({ status: 'ok' });
+    } catch {
+      return apiError(c, 503, 'HEALTH_UNAVAILABLE', 'Service unavailable.');
+    }
+  });
+
+  app.all('*', async (c) => {
+    const pathname = new URL(c.req.url).pathname;
+    const classification = classifyPath(pathname);
+
+    if (classification.kind === 'private' && classification.area === 'app') {
+      if (pathname === '/') {
+        return c.redirect('/app', 302);
+      }
+
+      return fetchStaticAssets(c.req.raw, c.env.STATIC_ASSETS);
     }
 
-    return c.env.STATIC_ASSETS.fetch(c.req.raw);
-  }
+    if (classification.kind === 'static') {
+      return fetchStaticAssets(c.req.raw, c.env.STATIC_ASSETS);
+    }
 
-  if (classification.kind === 'static') {
-    return c.env.STATIC_ASSETS.fetch(c.req.raw);
-  }
+    if (isApiPath(pathname)) {
+      return apiError(c, 404, 'NOT_FOUND', 'Not found.');
+    }
 
-  return new Response('Not Found', { status: 404 });
-});
+    return new Response('Not Found', { status: 404 });
+  });
 
+  app.onError((_error, c) => apiError(c, 500, 'INTERNAL_ERROR', 'Internal server error.'));
+
+  return app;
+}
+
+const app = createApp();
+
+export { app };
 export default app;

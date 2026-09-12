@@ -13,28 +13,52 @@ function isStaticAssetPath(pathname: string) {
   return pathname.startsWith('/assets/') || /\/[^/]+\.[^/]+$/.test(pathname);
 }
 
+function decodePathname(pathname: string) {
+  try {
+    return decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+}
+
+export function isApiPath(pathname: string) {
+  const decodedPathname = decodePathname(pathname);
+  return (
+    decodedPathname !== null && (decodedPathname === '/api' || decodedPathname.startsWith('/api/'))
+  );
+}
+
 export function classifyPath(pathname: string): RouteClassification {
-  if (pathname === '/api/health') {
+  const decodedPathname = decodePathname(pathname);
+  if (decodedPathname === null) {
+    return { kind: 'unknown' };
+  }
+
+  if (decodedPathname === '/api/health') {
     return { kind: 'health' };
   }
 
-  if (isPathOrChild(pathname, '/app') || pathname === '/') {
+  if (isPathOrChild(decodedPathname, '/app') || decodedPathname === '/') {
     return { kind: 'private', area: 'app' };
   }
 
-  if (isPathOrChild(pathname, '/api/private')) {
+  if (isPathOrChild(decodedPathname, '/api/private')) {
     return { kind: 'private', area: 'api' };
   }
 
-  if (isPathOrChild(pathname, '/p')) {
+  if (isPathOrChild(decodedPathname, '/p')) {
     return { kind: 'public', area: 'page' };
   }
 
-  if (isPathOrChild(pathname, '/api/public')) {
+  if (isPathOrChild(decodedPathname, '/api/public')) {
     return { kind: 'public', area: 'api' };
   }
 
-  if (isStaticAssetPath(pathname)) {
+  if (isApiPath(decodedPathname)) {
+    return { kind: 'unknown' };
+  }
+
+  if (isStaticAssetPath(decodedPathname)) {
     return { kind: 'static' };
   }
 

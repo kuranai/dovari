@@ -15,8 +15,17 @@ npm run dev
 
 The development server prints the local URL, normally `http://localhost:5173`. The Vite dev server
 uses the same Worker entrypoint as the production build. Local D1 and R2 storage are used by
-default; no Cloudflare account or secrets are required for this phase. Copy `.dev.vars.example` to
-`.dev.vars` only when you need local Worker variables.
+default. For the local authentication bypass, copy the ignored example file:
+
+```sh
+cp .dev.vars.example .dev.vars
+```
+
+The bypass is accepted only for `localhost`, `127.0.0.1`, and `[::1]`; it is never accepted for a
+remote hostname. `.dev.vars` must not be used in a deployed Worker.
+
+The local-only CSP permits inline styles because Vite injects styles for HMR during development;
+the production CSP does not contain `unsafe-inline`.
 
 After changing the Worker or Wrangler configuration, regenerate the committed binding types:
 
@@ -45,5 +54,43 @@ npm run format:check
 
 The source tree keeps client code under `src/client`, Worker code under `src/worker`, and
 dependency-free shared contracts under `src/shared`. The Worker classifies private, public,
-static, health, and unknown paths centrally; authentication and product APIs are introduced in
-later phases.
+static, health, and unknown paths centrally. Private application and API paths now require the
+security boundary described below; product APIs are introduced in later phases.
+
+## Cloudflare Access setup
+
+Production protects only the private application and API:
+
+```text
+/app/*
+/api/private/*
+```
+
+Create a Cloudflare Access Self-hosted application for the deployed hostname and configure an
+explicit Allow policy for the intended editors. Use concrete email addresses or groups. GitHub
+may be selected as an identity provider inside Access; Dovari does not implement a separate GitHub
+OAuth or session stack.
+
+After creating the Access application, configure these Worker variables in the Cloudflare
+dashboard under Variables and Secrets (or through the corresponding Wrangler commands):
+
+```text
+DOVARI_ENV=production
+ACCESS_TEAM_DOMAIN=https://your-team.cloudflareaccess.com
+ACCESS_AUD=<the Access application audience tag>
+```
+
+The Worker validates `Cf-Access-Jwt-Assertion` on every private request, including the signature
+against the team JWKS, issuer, audience, expiration, and not-before claims. A missing or malformed
+production configuration returns `503 SETUP_REQUIRED` before D1 or R2 is touched. Health and
+content-free static assets remain public.
+
+API errors use one shape and include the request identifier in both the `X-Request-ID` response
+header and the JSON response:
+
+```json
+{
+  "error": { "code": "AUTH_REQUIRED", "message": "Authentication is required." },
+  "requestId": "..."
+}
+```
