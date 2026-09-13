@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  collectWikiLinkReferences,
   deriveMarkdown,
   derivePlainText,
   validateTiptapDocument,
@@ -157,6 +158,23 @@ describe('Tiptap content derivations', () => {
           },
         ],
       },
+      {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              {
+                type: 'wikiLink',
+                attrs: {
+                  targetPageId: 'not-a-uuid',
+                  targetTitle: 'Missing target',
+                },
+              },
+            ],
+          },
+        ],
+      },
       { type: 'doc', content: [{ type: 'unknownNode' }] },
     ];
 
@@ -166,5 +184,54 @@ describe('Tiptap content derivations', () => {
         'Cannot render an invalid Tiptap document.',
       );
     }
+  });
+
+  it('validates, derives, and de-duplicates stable wiki-link references', () => {
+    const targetPageId = '22222222-2222-4222-8222-222222222222';
+    const document: TiptapDocument = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'Read ' },
+            {
+              type: 'wikiLink',
+              attrs: { targetPageId, targetTitle: 'Cloudflare   Workers' },
+            },
+            { type: 'text', text: ' and ' },
+            {
+              type: 'wikiLink',
+              attrs: { targetPageId: null, targetTitle: 'Cloudflare Workers' },
+            },
+            { type: 'text', text: '.' },
+            {
+              type: 'wikiLink',
+              attrs: { targetPageId: null, targetTitle: 'Unresolved Page' },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(validateTiptapDocument(document)).toEqual([]);
+    expect(derivePlainText(document)).toBe(
+      'Read Cloudflare   Workers and Cloudflare Workers.Unresolved Page',
+    );
+    expect(deriveMarkdown(document)).toBe(
+      'Read [[Cloudflare   Workers]] and [[Cloudflare Workers]].[[Unresolved Page]]',
+    );
+    expect(collectWikiLinkReferences(document)).toEqual([
+      {
+        targetPageId,
+        targetTitle: 'Cloudflare Workers',
+        targetTitleNormalized: 'cloudflare workers',
+      },
+      {
+        targetPageId: null,
+        targetTitle: 'Unresolved Page',
+        targetTitleNormalized: 'unresolved page',
+      },
+    ]);
   });
 });

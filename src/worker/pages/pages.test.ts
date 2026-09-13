@@ -251,6 +251,111 @@ describe('Pages HTTP API', () => {
     await expect(env.ASSETS.head(secondAsset!.object_key)).resolves.not.toBeNull();
   });
 
+  it('atomically derives stable page links and exposes backlinks', async () => {
+    const target = await createPage('Wiki target');
+    const source = await createPage('Wiki source');
+    const unresolvedTitle = 'A page to create later';
+    const content: TiptapDocument = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'wikiLink',
+              attrs: { targetPageId: target.id, targetTitle: target.title },
+            },
+            {
+              type: 'wikiLink',
+              attrs: { targetPageId: null, targetTitle: unresolvedTitle },
+            },
+            {
+              type: 'wikiLink',
+              attrs: { targetPageId: target.id, targetTitle: target.title },
+            },
+          ],
+        },
+      ],
+    };
+
+    const saveResponse = await request(`/api/private/pages/${source.id}/content`, {
+      body: JSON.stringify({ baseRevision: source.revision, content }),
+      method: 'PUT',
+    });
+    expect(saveResponse.status).toBe(200);
+
+    const links = await env.DB.prepare(
+      `SELECT target_page_id, target_title, target_title_normalized
+       FROM page_links
+       WHERE source_page_id = ?
+       ORDER BY target_title_normalized`,
+    )
+      .bind(source.id)
+      .all<{
+        target_page_id: string | null;
+        target_title: string;
+        target_title_normalized: string;
+      }>();
+    expect(links.results).toEqual([
+      {
+        target_page_id: null,
+        target_title: unresolvedTitle,
+        target_title_normalized: 'a page to create later',
+      },
+      {
+        target_page_id: target.id,
+        target_title: target.title,
+        target_title_normalized: 'wiki target',
+      },
+    ]);
+
+    const backlinksResponse = await request(`/api/private/pages/${target.id}/backlinks`);
+    expect(backlinksResponse.status).toBe(200);
+    await expect(backlinksResponse.json()).resolves.toMatchObject({
+      backlinks: [expect.objectContaining({ id: source.id, title: source.title })],
+    });
+
+    const renamedTargetResponse = await request(`/api/private/pages/${target.id}`, {
+      body: JSON.stringify({ baseRevision: target.revision, title: 'Renamed wiki target' }),
+      method: 'PATCH',
+    });
+    expect(renamedTargetResponse.status).toBe(200);
+
+    const storedSource = (await (await request(`/api/private/pages/${source.id}`)).json()) as {
+      page: PageDetail;
+    };
+    expect(storedSource.page.content).toEqual(content);
+
+    const clearedContent: TiptapDocument = { type: 'doc', content: [{ type: 'paragraph' }] };
+    const clearResponse = await request(`/api/private/pages/${source.id}/content`, {
+      body: JSON.stringify({ baseRevision: 2, content: clearedContent }),
+      method: 'PUT',
+    });
+    expect(clearResponse.status).toBe(200);
+    await expect(
+      env.DB.prepare('SELECT id FROM page_links WHERE source_page_id = ?').bind(source.id).all(),
+    ).resolves.toMatchObject({ results: [] });
+  });
+
+  it('searches active page titles for wiki-link autocomplete', async () => {
+    const matching = await createPage('Cloudflare Workers');
+    await createPage('Cloudflare R2');
+    const deleted = await createPage('Cloudflare D1');
+    const deleteResponse = await request(`/api/private/pages/${deleted.id}`, {
+      body: JSON.stringify({ baseRevision: deleted.revision }),
+      method: 'DELETE',
+    });
+    expect(deleteResponse.status).toBe(200);
+
+    const response = await request('/api/private/wiki-links?q=cloudfl&limit=10');
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      pages: Array<PageSummary & { content?: unknown }>;
+    };
+    expect(body.pages.map((page) => page.title)).toEqual(['Cloudflare R2', matching.title]);
+    expect(body.pages.every((page) => page.content === undefined)).toBe(true);
+  });
+
   it('keeps references stable when a stale content save races with a confirmed save', async () => {
     const page = await createPage('Asset conflict');
     const assetId = await createAsset();

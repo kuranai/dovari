@@ -7,9 +7,13 @@ import {
   deletePageRequestSchema,
   MAX_PAGE_REQUEST_BYTES,
   movePageRequestSchema,
+  normalizeWikiLinkTitle,
+  PAGE_TITLE_MAX_LENGTH,
   pageIdSchema,
   updatePageContentRequestSchema,
   updatePageRequestSchema,
+  WIKI_LINK_SEARCH_DEFAULT_LIMIT,
+  WIKI_LINK_SEARCH_MAX_RESULTS,
 } from '../../shared/pages';
 import { apiError } from '../middleware/security';
 import type { WorkerApp } from '../types';
@@ -103,6 +107,32 @@ function pageId(context: Context<WorkerApp>) {
   return parsed.data;
 }
 
+function parseWikiLinkSearchRequest(context: Context<WorkerApp>) {
+  const rawQuery = context.req.query('q') ?? '';
+  const containsControlCharacters = [...rawQuery].some((character) => {
+    const code = character.charCodeAt(0);
+    return code <= 31 || code === 127;
+  });
+  if (rawQuery.length > PAGE_TITLE_MAX_LENGTH || containsControlCharacters) {
+    throw new PageError(400, 'INVALID_REQUEST', 'The wiki-link query is invalid.');
+  }
+
+  const rawLimit = context.req.query('limit');
+  if (rawLimit !== undefined && !/^\d+$/u.test(rawLimit)) {
+    throw new PageError(400, 'INVALID_REQUEST', 'The wiki-link limit is invalid.');
+  }
+
+  const parsedLimit = rawLimit === undefined ? WIKI_LINK_SEARCH_DEFAULT_LIMIT : Number(rawLimit);
+  if (!Number.isSafeInteger(parsedLimit) || parsedLimit < 1) {
+    throw new PageError(400, 'INVALID_REQUEST', 'The wiki-link limit is invalid.');
+  }
+
+  return {
+    limit: Math.min(parsedLimit, WIKI_LINK_SEARCH_MAX_RESULTS),
+    query: normalizeWikiLinkTitle(rawQuery),
+  };
+}
+
 async function withPageErrors(
   context: Context<WorkerApp>,
   operation: (service: PageService) => Promise<Response>,
@@ -118,6 +148,14 @@ async function withPageErrors(
 }
 
 export function registerPageRoutes(app: Hono<WorkerApp>) {
+  app.get('/api/private/wiki-links', (context) =>
+    withPageErrors(context, async (service) => {
+      context.header('Cache-Control', 'no-store');
+      const input = parseWikiLinkSearchRequest(context);
+      return context.json({ pages: await service.searchWikiLinks(input.query, input.limit) });
+    }),
+  );
+
   app.get('/api/private/pages', (context) =>
     withPageErrors(context, async (service) => context.json({ pages: await service.list() })),
   );
@@ -134,6 +172,13 @@ export function registerPageRoutes(app: Hono<WorkerApp>) {
     withPageErrors(context, async (service) => {
       const page = await service.get(pageId(context));
       return context.json({ page });
+    }),
+  );
+
+  app.get('/api/private/pages/:id/backlinks', (context) =>
+    withPageErrors(context, async (service) => {
+      context.header('Cache-Control', 'no-store');
+      return context.json({ backlinks: await service.backlinks(pageId(context)) });
     }),
   );
 

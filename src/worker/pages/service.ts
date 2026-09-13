@@ -1,6 +1,7 @@
 import {
   derivePlainText,
   collectAssetIds,
+  collectWikiLinkReferences,
   estimatePageRowBytes,
   emptyDocument,
   MAX_PAGE_ROW_BYTES,
@@ -16,7 +17,12 @@ import {
   type UpdatePageRequest,
 } from '../../shared/pages';
 import { PageError } from './errors';
-import { PageRepository, type PageRecord, type PageTreeUpdate } from './repository';
+import {
+  PageRepository,
+  type PageLinkRecord,
+  type PageRecord,
+  type PageTreeUpdate,
+} from './repository';
 
 const MAX_SLUG_ATTEMPTS = 1_000;
 
@@ -141,6 +147,20 @@ export class PageService {
 
   async list(): Promise<PageSummary[]> {
     const pages = await this.repository.listActive();
+    return pages.map(toSummary);
+  }
+
+  async searchWikiLinks(query: string, limit: number): Promise<PageSummary[]> {
+    const pages = await this.repository.searchActiveTitles(query, limit);
+    return pages.map(toSummary);
+  }
+
+  async backlinks(id: string): Promise<PageSummary[]> {
+    if (!(await this.repository.findById(id))) {
+      throw pageNotFound();
+    }
+
+    const pages = await this.repository.listBacklinks(id);
     return pages.map(toSummary);
   }
 
@@ -293,11 +313,26 @@ export class PageService {
       );
     }
 
+    const linkReferences = collectWikiLinkReferences(input.content);
+    const activeTargetIds = await this.repository.findActiveIds(
+      linkReferences.flatMap((link) => (link.targetPageId === null ? [] : [link.targetPageId])),
+    );
+    const wikiLinks: PageLinkRecord[] = linkReferences.map((link) => ({
+      ...link,
+      id: crypto.randomUUID(),
+      targetPageId:
+        link.targetPageId !== null && activeTargetIds.has(link.targetPageId)
+          ? link.targetPageId
+          : null,
+      createdAt: updatedAt,
+    }));
+
     const changes = await this.repository.updateContent(id, input.baseRevision, {
       contentJson,
       contentText,
       updatedAt,
       assetIds: collectAssetIds(input.content),
+      wikiLinks,
     });
     if (changes < 1) {
       const latest = await this.repository.findById(id);

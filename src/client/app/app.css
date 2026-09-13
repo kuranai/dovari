@@ -932,6 +932,78 @@ kbd {
   text-underline-offset: 3px;
 }
 
+.page-editor-content .wiki-link {
+  color: #5e439c;
+  font-weight: 600;
+  text-decoration-style: dashed;
+}
+
+.page-editor-content .wiki-link-unresolved {
+  color: #a04a44;
+  text-decoration: underline dashed;
+  text-underline-offset: 3px;
+}
+
+.wiki-link-autocomplete {
+  position: fixed;
+  z-index: 20;
+  display: grid;
+  min-width: 250px;
+  max-width: min(360px, calc(100vw - 24px));
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid #d8d8d0;
+  border-radius: 9px;
+  background: #fffffd;
+  box-shadow: 0 18px 45px rgb(36 36 33 / 18%);
+}
+
+.wiki-link-option {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #363630;
+  background: transparent;
+  text-align: left;
+}
+
+.wiki-link-option:hover,
+.wiki-link-option.is-active {
+  border-color: #e1dbf5;
+  color: #4c387e;
+  background: #f8f5ff;
+}
+
+.wiki-link-option small {
+  overflow: hidden;
+  color: #96968c;
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wiki-link-create-option {
+  color: #5e439c;
+  font-weight: 650;
+}
+
+.wiki-link-autocomplete-state,
+.wiki-link-autocomplete-error {
+  margin: 0;
+  padding: 8px 10px;
+  color: #85857a;
+  font-size: 0.8rem;
+}
+
+.wiki-link-autocomplete-error {
+  color: #a04a44;
+}
+
 .page-editor-content hr {
   border: 0;
   border-top: 1px solid #d8d8d0;
@@ -1146,6 +1218,61 @@ kbd {
   background: #f7f7f5;
   font-size: 0.76rem;
   line-height: 1.6;
+}
+
+.page-backlinks {
+  margin-top: 38px;
+  padding-top: 24px;
+  border-top: 1px solid #e8e8e1;
+}
+
+.page-backlinks-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.page-backlinks-heading h2 {
+  margin: 8px 0 0;
+  color: #363630;
+  font-size: 1.15rem;
+  letter-spacing: -0.03em;
+}
+
+.page-backlinks-state {
+  margin: 14px 0 0;
+  color: #85857a;
+  font-size: 0.84rem;
+}
+
+.page-backlinks-error {
+  color: #a04a44;
+}
+
+.page-backlinks-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.page-backlinks-list a {
+  display: inline-flex;
+  padding: 7px 10px;
+  border: 1px solid #deded7;
+  border-radius: 999px;
+  color: #5e439c;
+  background: #fafaf7;
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+.page-backlinks-list a:hover {
+  border-color: #cfc2f1;
+  background: #f8f5ff;
 }
 
 .workspace-notice {

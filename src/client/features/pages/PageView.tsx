@@ -1,7 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import type { PageDetail, PageSummary } from '../../../shared/pages';
-import { fetchPage, pageErrorMessage, updatePageTitle } from './api';
+import { fetchBacklinks, fetchPage, pageErrorMessage, updatePageTitle } from './api';
 import { usePageAutosave, type AutosaveSnapshot } from './editor/autosave';
 
 const PageEditor = lazy(async () => {
@@ -17,6 +18,8 @@ type PageLoadState =
 export interface PageViewProps {
   pageId: string;
   onPageDeleted: (page: PageDetail) => Promise<void>;
+  onPageCreated?: (page: PageSummary) => void;
+  onNavigateToPage?: (pageId: string) => void;
   onPageUpdated: (page: PageSummary) => void;
   pageSummary?: PageSummary;
 }
@@ -146,9 +149,13 @@ function autosaveStatusLabel(snapshot: AutosaveSnapshot) {
 }
 
 function PageContentEditor({
+  onNavigateToPage,
+  onPageCreated,
   onPageUpdated,
   page,
 }: {
+  onNavigateToPage?: (pageId: string) => void;
+  onPageCreated?: (page: PageSummary) => void;
   onPageUpdated: (page: PageDetail) => void;
   page: PageDetail;
 }) {
@@ -311,7 +318,13 @@ function PageContentEditor({
           </p>
         }
       >
-        <PageEditor content={content} onChange={handleContentChange} pageId={page.id} />
+        <PageEditor
+          content={content}
+          onChange={handleContentChange}
+          onNavigateToPage={onNavigateToPage}
+          onPageCreated={onPageCreated}
+          pageId={page.id}
+        />
       </Suspense>
       <details className="content-json">
         <summary>View current document JSON</summary>
@@ -322,10 +335,14 @@ function PageContentEditor({
 }
 
 function PageDetailContent({
+  onNavigateToPage,
+  onPageCreated,
   page,
   onPageDeleted,
   onPageUpdated,
 }: {
+  onNavigateToPage?: (pageId: string) => void;
+  onPageCreated?: (page: PageSummary) => void;
   page: PageDetail;
   onPageDeleted: (page: PageDetail) => Promise<void>;
   onPageUpdated: (page: PageDetail) => void;
@@ -386,12 +403,89 @@ function PageDetailContent({
           {error}
         </p>
       ) : null}
-      <PageContentEditor onPageUpdated={onPageUpdated} page={page} />
+      <PageContentEditor
+        onNavigateToPage={onNavigateToPage}
+        onPageCreated={onPageCreated}
+        onPageUpdated={onPageUpdated}
+        page={page}
+      />
+      <Backlinks pageId={page.id} />
     </article>
   );
 }
 
-export function PageView({ pageId, onPageDeleted, onPageUpdated, pageSummary }: PageViewProps) {
+function Backlinks({ pageId }: { pageId: string }) {
+  const [state, setState] = useState<
+    | { status: 'loading' }
+    | { status: 'error'; message: string }
+    | { status: 'ready'; pages: PageSummary[] }
+  >({ status: 'loading' });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ status: 'loading' });
+
+    fetchBacklinks(pageId, controller.signal)
+      .then((response) => {
+        if (!controller.signal.aborted) {
+          setState({ status: 'ready', pages: response.backlinks });
+        }
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setState({
+            status: 'error',
+            message: pageErrorMessage(error, 'Backlinks could not be loaded.'),
+          });
+        }
+      });
+
+    return () => controller.abort();
+  }, [pageId]);
+
+  return (
+    <section aria-labelledby="page-backlinks-title" className="page-backlinks">
+      <div className="page-backlinks-heading">
+        <div>
+          <span className="state-kicker">Connections</span>
+          <h2 id="page-backlinks-title">Referenced by</h2>
+        </div>
+        {state.status === 'ready' && state.pages.length > 0 ? (
+          <span className="page-count">{state.pages.length}</span>
+        ) : null}
+      </div>
+      {state.status === 'loading' ? (
+        <p className="page-backlinks-state">Loading backlinks…</p>
+      ) : null}
+      {state.status === 'error' ? (
+        <p className="page-backlinks-state page-backlinks-error" role="alert">
+          {state.message}
+        </p>
+      ) : null}
+      {state.status === 'ready' && state.pages.length === 0 ? (
+        <p className="page-backlinks-state">No pages link here yet.</p>
+      ) : null}
+      {state.status === 'ready' && state.pages.length > 0 ? (
+        <ul className="page-backlinks-list">
+          {state.pages.map((backlink) => (
+            <li key={backlink.id}>
+              <Link to={`/app/pages/${backlink.id}`}>{backlink.title}</Link>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+export function PageView({
+  pageId,
+  onPageCreated,
+  onNavigateToPage,
+  onPageDeleted,
+  onPageUpdated,
+  pageSummary,
+}: PageViewProps) {
   const [reloadKey, setReloadKey] = useState(0);
   const [state, setState] = useState<PageLoadState>({ status: 'loading' });
 
@@ -458,6 +552,8 @@ export function PageView({ pageId, onPageDeleted, onPageUpdated, pageSummary }: 
   return (
     <PageDetailContent
       key={state.page.id}
+      onNavigateToPage={onNavigateToPage}
+      onPageCreated={onPageCreated}
       onPageDeleted={onPageDeleted}
       onPageUpdated={handlePageUpdated}
       page={state.page}

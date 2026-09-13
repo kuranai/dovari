@@ -1,3 +1,5 @@
+import type { WikiLinkReference } from '../../shared/pages';
+
 export interface PageRecord {
   searchId: number;
   id: string;
@@ -79,6 +81,11 @@ export interface PageTreeUpdate {
   updatedAt: string;
 }
 
+export interface PageLinkRecord extends WikiLinkReference {
+  id: string;
+  createdAt: string;
+}
+
 export class PageRepository {
   constructor(private readonly db: D1Database) {}
 
@@ -149,6 +156,75 @@ export class PageRepository {
       parentId === null
         ? await statement.all<PageDatabaseRow>()
         : await statement.bind(parentId).all<PageDatabaseRow>();
+
+    return result.results.map(toPageRecord);
+  }
+
+  async findActiveIds(ids: string[]) {
+    if (ids.length === 0) {
+      return new Set<string>();
+    }
+
+    const activeIds = new Set<string>();
+    for (let offset = 0; offset < ids.length; offset += 900) {
+      const chunk = ids.slice(offset, offset + 900);
+      const placeholders = chunk.map(() => '?').join(', ');
+      const result = await this.db
+        .prepare(`SELECT id FROM pages WHERE deleted_at IS NULL AND id IN (${placeholders})`)
+        .bind(...chunk)
+        .all<{ id: string }>();
+      result.results.forEach((row) => activeIds.add(row.id));
+    }
+
+    return activeIds;
+  }
+
+  async searchActiveTitles(query: string, limit: number) {
+    const result = await this.db
+      .prepare(
+        `SELECT ${PAGE_COLUMNS}
+         FROM pages
+         WHERE deleted_at IS NULL
+           AND instr(lower(title), lower(?)) > 0
+         ORDER BY
+           CASE WHEN lower(title) = lower(?) THEN 0
+                WHEN lower(title) LIKE lower(?) || '%' THEN 1
+                ELSE 2 END,
+           title COLLATE NOCASE,
+           id
+         LIMIT ?`,
+      )
+      .bind(query, query, query, limit)
+      .all<PageDatabaseRow>();
+
+    return result.results.map(toPageRecord);
+  }
+
+  async listBacklinks(targetPageId: string) {
+    const result = await this.db
+      .prepare(
+        `SELECT DISTINCT
+           pages.search_id,
+           pages.id,
+           pages.title,
+           pages.slug,
+           pages.content_json,
+           pages.content_text,
+           pages.parent_id,
+           pages.position,
+           pages.revision,
+           pages.created_at,
+           pages.updated_at,
+           pages.deleted_at
+         FROM page_links
+         INNER JOIN pages ON pages.id = page_links.source_page_id
+         WHERE page_links.target_page_id = ?
+           AND pages.deleted_at IS NULL
+         ORDER BY pages.title COLLATE NOCASE, pages.id
+         LIMIT 100`,
+      )
+      .bind(targetPageId)
+      .all<PageDatabaseRow>();
 
     return result.results.map(toPageRecord);
   }
@@ -247,7 +323,13 @@ export class PageRepository {
   async updateContent(
     id: string,
     baseRevision: number,
-    values: { contentJson: string; contentText: string; updatedAt: string; assetIds: string[] },
+    values: {
+      contentJson: string;
+      contentText: string;
+      updatedAt: string;
+      assetIds: string[];
+      wikiLinks?: PageLinkRecord[];
+    },
   ) {
     const nextRevision = baseRevision + 1;
     const saveMarker = `
@@ -287,6 +369,40 @@ export class PageRepository {
              AND EXISTS (SELECT 1 FROM assets WHERE id = ?)`,
           )
           .bind(id, assetId, id, nextRevision, values.updatedAt, values.contentJson, assetId),
+      ),
+      this.db
+        .prepare(
+          `DELETE FROM page_links
+           WHERE source_page_id = ?
+             AND EXISTS (
+               SELECT 1 FROM pages
+               WHERE ${saveMarker}
+             )`,
+        )
+        .bind(id, id, nextRevision, values.updatedAt, values.contentJson),
+      ...(values.wikiLinks ?? []).map((link) =>
+        this.db
+          .prepare(
+            `INSERT INTO page_links
+              (id, source_page_id, target_page_id, target_title, target_title_normalized, created_at)
+             SELECT ?, ?, ?, ?, ?, ?
+             WHERE EXISTS (
+               SELECT 1 FROM pages
+               WHERE ${saveMarker}
+             )`,
+          )
+          .bind(
+            link.id,
+            id,
+            link.targetPageId,
+            link.targetTitle,
+            link.targetTitleNormalized,
+            link.createdAt,
+            id,
+            nextRevision,
+            values.updatedAt,
+            values.contentJson,
+          ),
       ),
     ];
 

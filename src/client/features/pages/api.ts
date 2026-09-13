@@ -4,13 +4,17 @@ import {
   createPageRequestSchema,
   movePageRequestSchema,
   pageResponseSchema,
+  pageBacklinksResponseSchema,
   pagesListResponseSchema,
   updatePageContentRequestSchema,
+  wikiLinkSearchResponseSchema,
   type CreatePageRequest,
   type MovePageRequest,
+  type PageBacklinksResponse,
   type PageResponse,
   type PagesListResponse,
   type TiptapDocument,
+  type WikiLinkSearchResponse,
 } from '../../../shared/pages';
 
 interface ApiErrorBody {
@@ -104,6 +108,23 @@ export async function request<T>(
 
 export function fetchPages(signal?: AbortSignal) {
   return request<PagesListResponse>('/api/private/pages', pagesListResponseSchema, { signal });
+}
+
+export function searchWikiLinkPages(query: string, signal?: AbortSignal) {
+  const params = new URLSearchParams({ q: query, limit: '8' });
+  return request<WikiLinkSearchResponse>(
+    `/api/private/wiki-links?${params.toString()}`,
+    wikiLinkSearchResponseSchema,
+    { signal },
+  );
+}
+
+export function fetchBacklinks(id: string, signal?: AbortSignal) {
+  return request<PageBacklinksResponse>(
+    `/api/private/pages/${encodeURIComponent(id)}/backlinks`,
+    pageBacklinksResponseSchema,
+    { signal },
+  );
 }
 
 export function fetchPage(id: string, signal?: AbortSignal) {

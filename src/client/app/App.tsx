@@ -110,7 +110,9 @@ function WorkspaceLanding() {
 
 function PageRoute() {
   const { pageId } = useParams();
-  const { deletePage, onPageUpdated, pages } = useOutletContext<WorkspaceOutletContext>();
+  const { deletePage, onPageUpdated, pages, refreshPages } =
+    useOutletContext<WorkspaceOutletContext>();
+  const navigate = useNavigate();
 
   if (!pageId) {
     return <Navigate replace to="/app" />;
@@ -119,6 +121,8 @@ function PageRoute() {
   return (
     <PageView
       key={pageId}
+      onNavigateToPage={(targetPageId) => navigate(workspacePath(targetPageId))}
+      onPageCreated={() => void refreshPages()}
       onPageDeleted={deletePage}
       onPageUpdated={onPageUpdated}
       pageId={pageId}

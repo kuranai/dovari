@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { AssetResponse } from '../../../../shared/assets';
-import type { TiptapDocument } from '../../../../shared/pages';
+import type { PageDetail, PageSummary, TiptapDocument } from '../../../../shared/pages';
 import { AssetUploadError, type UploadAsset } from '../../assets/api';
 import { PageEditor } from './PageEditor';
 
@@ -394,6 +394,153 @@ describe('PageEditor', () => {
         'true',
       ),
     );
+  });
+
+  it('opens wiki-link autocomplete and selects an existing page with the keyboard', async () => {
+    const onChange = vi.fn();
+    const target: PageSummary = {
+      id: '66666666-6666-4666-8666-666666666666',
+      parentId: null,
+      position: 0,
+      revision: 1,
+      slug: 'cloudflare-workers',
+      title: 'Cloudflare Workers',
+      updatedAt: '2026-09-13T00:00:00.000Z',
+    };
+    const searchWikiLinks = vi.fn().mockResolvedValue({ pages: [target] });
+    render(
+      <PageEditor
+        content={{ type: 'doc', content: [{ type: 'paragraph' }] }}
+        onChange={onChange}
+        searchWikiLinkPages={searchWikiLinks}
+      />,
+    );
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [],
+        getData: (type: string) => (type === 'text/plain' ? '[[' : ''),
+      },
+    });
+
+    const listbox = await screen.findByRole('listbox', { name: 'Wiki link suggestions' });
+    expect(listbox.textContent).toContain('Cloudflare Workers');
+    expect(searchWikiLinks).toHaveBeenCalledWith('', expect.any(AbortSignal));
+
+    fireEvent.keyDown(editor, { key: 'Enter' });
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalled();
+      expect(onChange.mock.lastCall?.[0]).toMatchObject({
+        content: [
+          {
+            content: [
+              { attrs: { targetPageId: target.id, targetTitle: target.title }, type: 'wikiLink' },
+            ],
+            type: 'paragraph',
+          },
+        ],
+        type: 'doc',
+      });
+    });
+    expect(screen.queryByRole('listbox', { name: 'Wiki link suggestions' })).toBeNull();
+  });
+
+  it('creates a page from an unresolved wiki-link suggestion', async () => {
+    const createdPage: PageDetail = {
+      content: { type: 'doc', content: [] },
+      contentText: '',
+      createdAt: '2026-09-13T00:00:00.000Z',
+      deletedAt: null,
+      id: '77777777-7777-4777-8777-777777777777',
+      parentId: null,
+      position: 0,
+      revision: 1,
+      slug: 'new-page',
+      title: 'New Page',
+      updatedAt: '2026-09-13T00:00:00.000Z',
+    };
+    const createWikiLinkPage = vi.fn().mockResolvedValue({ page: createdPage });
+    const onPageCreated = vi.fn();
+    const onChange = vi.fn();
+    render(
+      <PageEditor
+        content={{ type: 'doc', content: [{ type: 'paragraph' }] }}
+        createWikiLinkPage={createWikiLinkPage}
+        onChange={onChange}
+        onPageCreated={onPageCreated}
+        searchWikiLinkPages={vi.fn().mockResolvedValue({ pages: [] })}
+      />,
+    );
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [],
+        getData: (type: string) => (type === 'text/plain' ? '[[New Page' : ''),
+      },
+    });
+
+    const createOption = await screen.findByRole('option', { name: 'Create “New Page”' });
+    fireEvent.click(createOption);
+    await waitFor(() =>
+      expect(createWikiLinkPage).toHaveBeenCalledWith({ parentId: null, title: 'New Page' }),
+    );
+    expect(onPageCreated).toHaveBeenCalledWith(createdPage);
+    await waitFor(() =>
+      expect(onChange.mock.lastCall?.[0]).toMatchObject({
+        content: [
+          {
+            content: [
+              {
+                attrs: { targetPageId: createdPage.id, targetTitle: createdPage.title },
+                type: 'wikiLink',
+              },
+            ],
+            type: 'paragraph',
+          },
+        ],
+      }),
+    );
+  });
+
+  it('renders unresolved links and navigates resolved wiki links by page id', async () => {
+    const onNavigateToPage = vi.fn();
+    render(
+      <PageEditor
+        content={{
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [
+                {
+                  attrs: {
+                    targetPageId: '88888888-8888-4888-8888-888888888888',
+                    targetTitle: 'Stable target',
+                  },
+                  type: 'wikiLink',
+                },
+                {
+                  attrs: { targetPageId: null, targetTitle: 'Missing page' },
+                  type: 'wikiLink',
+                },
+              ],
+            },
+          ],
+        }}
+        onNavigateToPage={onNavigateToPage}
+      />,
+    );
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    expect(editor.querySelector('.wiki-link-unresolved')?.textContent).toContain(
+      '[[Missing page]]',
+    );
+    const resolved = editor.querySelector('[data-dovari-wiki-link-id]');
+    expect(resolved).not.toBeNull();
+    fireEvent.click(resolved!);
+    expect(onNavigateToPage).toHaveBeenCalledWith('88888888-8888-4888-8888-888888888888');
   });
 
   it('falls back to an empty document for unknown nodes', async () => {

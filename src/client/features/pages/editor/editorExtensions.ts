@@ -7,6 +7,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { validateTiptapDocument, type TiptapDocument } from '../../../../shared/pages';
 import { Attachment, AssetImage } from './assetNodes';
 import { AssetUploadController, createAssetUploadExtension } from './assetUpload';
+import { WikiLink } from './wikiLinks';
 
 export interface PageEditorExtensionOptions {
   assetUpload?: AssetUploadController;
@@ -28,6 +29,7 @@ const supportedNodeTypes = new Set([
   'codeBlock',
   'assetImage',
   'attachment',
+  'wikiLink',
 ]);
 
 const supportedMarkTypes = new Set(['bold', 'italic', 'strike', 'code', 'link']);
@@ -118,6 +120,7 @@ export function createPageEditorExtensions(options: PageEditorExtensionOptions =
     }),
     AssetImage,
     Attachment,
+    WikiLink,
   ];
 
   if (options.assetUpload) {

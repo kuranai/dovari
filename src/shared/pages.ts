@@ -5,6 +5,8 @@ export const PAGE_SLUG_MAX_LENGTH = 200;
 export const MAX_PAGE_ROW_BYTES = 1_800_000;
 export const MAX_PAGE_REQUEST_BYTES = MAX_PAGE_ROW_BYTES + 64_000;
 export const MAX_DOCUMENT_DEPTH = 100;
+export const WIKI_LINK_SEARCH_DEFAULT_LIMIT = 8;
+export const WIKI_LINK_SEARCH_MAX_RESULTS = 20;
 export const emptyDocument = '{"type":"doc","content":[]}';
 
 export interface TiptapMark {
@@ -23,6 +25,12 @@ export interface TiptapNode {
 export interface TiptapDocument {
   type: 'doc';
   content: TiptapNode[];
+}
+
+export interface WikiLinkReference {
+  targetPageId: string | null;
+  targetTitle: string;
+  targetTitleNormalized: string;
 }
 
 export interface PageSummary {
@@ -64,6 +72,14 @@ function hasUnsafeControlCharacters(value: string) {
     const code = character.charCodeAt(0);
     return code <= 31 || code === 127;
   });
+}
+
+export function normalizeWikiLinkTitle(value: string) {
+  return value.normalize('NFKC').trim().replace(/\s+/gu, ' ').toLowerCase();
+}
+
+function normalizedWikiLinkTitle(value: string) {
+  return value.trim().replace(/\s+/gu, ' ');
 }
 
 function addIssue(
@@ -192,6 +208,34 @@ function validateAssetAttributes(
         addIssue(issues, [...path, key], 'Asset dimensions must be positive integers.');
       }
     }
+  }
+}
+
+function validateWikiLinkAttributes(
+  attrs: unknown,
+  path: Array<string | number>,
+  issues: DocumentValidationIssue[],
+) {
+  if (!isRecord(attrs) || !hasOnlyKeys(attrs, ['targetPageId', 'targetTitle'])) {
+    addIssue(issues, path, 'Wiki-link attributes are invalid.');
+    return;
+  }
+
+  if (
+    attrs.targetPageId !== null &&
+    attrs.targetPageId !== undefined &&
+    !isUuid(attrs.targetPageId)
+  ) {
+    addIssue(issues, [...path, 'targetPageId'], 'A wiki link must reference a valid page UUID.');
+  }
+
+  if (
+    typeof attrs.targetTitle !== 'string' ||
+    attrs.targetTitle.trim().length === 0 ||
+    attrs.targetTitle.length > PAGE_TITLE_MAX_LENGTH ||
+    hasUnsafeControlCharacters(attrs.targetTitle)
+  ) {
+    addIssue(issues, [...path, 'targetTitle'], 'A wiki link must contain a valid page title.');
   }
 }
 
@@ -465,6 +509,13 @@ function validateNode(
         validateAssetAttributes(value.attrs, [...path, 'attrs'], issues, true);
         noContent();
         break;
+      case 'wikiLink':
+        if (context !== 'inline') {
+          addIssue(issues, path, 'Wiki links are only allowed inside text content.');
+        }
+        validateWikiLinkAttributes(value.attrs, [...path, 'attrs'], issues);
+        noContent();
+        break;
       default:
         addIssue(issues, [...path, 'type'], `The node '${type}' is not allowed.`);
     }
@@ -500,6 +551,40 @@ export function collectAssetIds(document: TiptapDocument) {
   }
 
   return [...assetIds];
+}
+
+export function collectWikiLinkReferences(document: TiptapDocument): WikiLinkReference[] {
+  const links = new Map<string, WikiLinkReference>();
+
+  const visit = (node: TiptapNode) => {
+    if (node.type === 'wikiLink') {
+      const rawTitle = node.attrs?.targetTitle;
+      const targetTitle = typeof rawTitle === 'string' ? normalizedWikiLinkTitle(rawTitle) : '';
+      const targetTitleNormalized = normalizeWikiLinkTitle(targetTitle);
+      if (targetTitle.length > 0 && targetTitleNormalized.length > 0) {
+        const rawTargetPageId = node.attrs?.targetPageId;
+        const targetPageId = typeof rawTargetPageId === 'string' ? rawTargetPageId : null;
+        const previous = links.get(targetTitleNormalized);
+        if (!previous || (previous.targetPageId === null && targetPageId !== null)) {
+          links.set(targetTitleNormalized, {
+            targetPageId,
+            targetTitle,
+            targetTitleNormalized,
+          });
+        }
+      }
+    }
+
+    for (const child of node.content ?? []) {
+      visit(child);
+    }
+  };
+
+  for (const node of document.content) {
+    visit(node);
+  }
+
+  return [...links.values()];
 }
 
 export const tiptapDocumentSchema = z.custom<TiptapDocument>(
@@ -586,6 +671,14 @@ export const pagesListResponseSchema = z
 
 export const pageResponseSchema = z.object({ page: pageDetailSchema }).strict();
 
+export const wikiLinkSearchResponseSchema = z
+  .object({ pages: z.array(pageSummarySchema).max(WIKI_LINK_SEARCH_MAX_RESULTS) })
+  .strict();
+
+export const pageBacklinksResponseSchema = z
+  .object({ backlinks: z.array(pageSummarySchema).max(100) })
+  .strict();
+
 export function derivePlainText(document: TiptapDocument): string {
   const inlineText = (node: TiptapNode): string => {
     switch (node.type) {
@@ -599,6 +692,10 @@ export function derivePlainText(document: TiptapDocument): string {
         const filename = node.attrs?.filename;
         return typeof filename === 'string' ? filename : '';
       }
+      case 'wikiLink': {
+        const title = node.attrs?.targetTitle;
+        return typeof title === 'string' ? title : '';
+      }
       case 'hardBreak':
         return '\n';
       default:
@@ -611,6 +708,7 @@ export function derivePlainText(document: TiptapDocument): string {
       case 'text':
       case 'assetImage':
       case 'attachment':
+      case 'wikiLink':
       case 'hardBreak':
         return inlineText(node);
       case 'horizontalRule':
@@ -750,6 +848,10 @@ function renderInlineMarkdown(node: TiptapNode): string {
       const title = stringAttribute(node, 'title');
       return `[${escapeMarkdownText(filename)}](${renderAssetPath(assetId)}${renderAssetTitle(title)})`;
     }
+    case 'wikiLink': {
+      const title = stringAttribute(node, 'targetTitle') ?? '';
+      return `[[${escapeMarkdownText(title)}]]`;
+    }
     default:
       return (node.content ?? []).map(renderInlineMarkdown).join('');
   }
@@ -834,6 +936,7 @@ function renderBlockMarkdown(node: TiptapNode): string {
       return renderCodeBlock(node);
     case 'assetImage':
     case 'attachment':
+    case 'wikiLink':
       return renderInlineMarkdown(node);
     default:
       return (node.content ?? []).map(renderBlockMarkdown).join('\n\n');
@@ -884,3 +987,5 @@ export type DeletePageRequest = z.infer<typeof deletePageRequestSchema>;
 export type MovePageRequest = z.infer<typeof movePageRequestSchema>;
 export type PagesListResponse = z.infer<typeof pagesListResponseSchema>;
 export type PageResponse = z.infer<typeof pageResponseSchema>;
+export type WikiLinkSearchResponse = z.infer<typeof wikiLinkSearchResponseSchema>;
+export type PageBacklinksResponse = z.infer<typeof pageBacklinksResponseSchema>;
