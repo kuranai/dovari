@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   BrowserRouter,
   Link,
@@ -21,6 +21,7 @@ import {
 } from '../features/pages/api';
 import { PageTree } from '../features/pages/PageTree';
 import { PageView } from '../features/pages/PageView';
+import { CommandPalette } from '../features/search/CommandPalette';
 
 type PageListState = 'loading' | 'error' | 'ready';
 
@@ -209,7 +210,10 @@ function Workspace() {
   const [listError, setListError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const paletteReturnFocusRef = useRef<HTMLElement | null>(null);
+  const paletteTriggerRef = useRef<HTMLButtonElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -269,17 +273,57 @@ function Workspace() {
     [isCreating, navigate],
   );
 
+  const openPalette = useCallback(() => {
+    if (isPaletteOpen) {
+      return;
+    }
+
+    const activeElement = document.activeElement;
+    paletteReturnFocusRef.current =
+      activeElement instanceof HTMLElement && activeElement !== document.body
+        ? activeElement
+        : paletteTriggerRef.current;
+    setActionError(null);
+    setIsPaletteOpen(true);
+  }, [isPaletteOpen]);
+
+  const closePalette = useCallback(() => {
+    setIsPaletteOpen(false);
+  }, []);
+
   useEffect(() => {
-    function handleNewPageShortcut(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'n') {
+    if (isPaletteOpen || paletteReturnFocusRef.current === null) {
+      return;
+    }
+
+    const returnFocusElement = paletteReturnFocusRef.current;
+    paletteReturnFocusRef.current = null;
+    if (returnFocusElement.isConnected) {
+      returnFocusElement.focus({ preventScroll: true });
+    } else {
+      paletteTriggerRef.current?.focus({ preventScroll: true });
+    }
+  }, [isPaletteOpen]);
+
+  useEffect(() => {
+    function handleGlobalShortcut(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) {
+        return;
+      }
+
+      if (event.key.toLowerCase() === 'k') {
         event.preventDefault();
+        openPalette();
+      } else if (event.key.toLowerCase() === 'n') {
+        event.preventDefault();
+        closePalette();
         void createPage();
       }
     }
 
-    window.addEventListener('keydown', handleNewPageShortcut);
-    return () => window.removeEventListener('keydown', handleNewPageShortcut);
-  }, [createPage]);
+    window.addEventListener('keydown', handleGlobalShortcut);
+    return () => window.removeEventListener('keydown', handleGlobalShortcut);
+  }, [closePalette, createPage, openPalette]);
 
   const onPageUpdated = useCallback((updatedPage: PageSummary) => {
     setPages((currentPages) =>
@@ -322,7 +366,22 @@ function Workspace() {
           </span>
           <span>Dovari</span>
         </Link>
-        <span className="phase-label">Your knowledge base</span>
+        <div className="header-actions">
+          <span className="phase-label">Your knowledge base</span>
+          <button
+            aria-haspopup="dialog"
+            aria-keyshortcuts="Control+K Meta+K"
+            aria-label="Open command palette"
+            className="palette-trigger"
+            onClick={openPalette}
+            ref={paletteTriggerRef}
+            type="button"
+          >
+            <span aria-hidden="true">⌕</span>
+            <span>Search</span>
+            <kbd>⌘K</kbd>
+          </button>
+        </div>
       </header>
       {actionError ? (
         <div className="workspace-notice" role="alert">
@@ -352,6 +411,16 @@ function Workspace() {
           <Outlet context={context} />
         </main>
       </div>
+      {isPaletteOpen ? (
+        <CommandPalette
+          canCreatePage={listState === 'ready'}
+          isCreating={isCreating}
+          onClose={closePalette}
+          onCreatePage={() => void createPage()}
+          onOpenPage={(url) => navigate(url)}
+          onPlaceholderAction={setActionError}
+        />
+      ) : null}
     </div>
   );
 }

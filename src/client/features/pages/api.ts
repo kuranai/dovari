@@ -71,7 +71,7 @@ function apiErrorFromResponse(status: number, body: unknown, requestId?: string)
   return new PageApiError(status, code, message, details, responseRequestId);
 }
 
-async function request<T>(
+export async function request<T>(
   input: RequestInfo | URL,
   schema: z.ZodType<T>,
   init: RequestInit = {},

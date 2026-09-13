@@ -2,9 +2,9 @@
 
 **Dieses Dokument ist die kanonische Quelle für den aktuellen Implementierungsstand.**  
 **Letzte Aktualisierung:** 13. September 2026
-**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen, P06 abgeschlossen, P07 abgeschlossen, P08 abgeschlossen, P09 abgeschlossen, P10 abgeschlossen, P11 abgeschlossen, P12 abgeschlossen, P13 abgeschlossen, P14 abgeschlossen
+**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen, P06 abgeschlossen, P07 abgeschlossen, P08 abgeschlossen, P09 abgeschlossen, P10 abgeschlossen, P11 abgeschlossen, P12 abgeschlossen, P13 abgeschlossen, P14 abgeschlossen, P15 abgeschlossen
 **Aktuelle Phase:** keine
-**Nächste Phase:** P15 – Command Palette und Tastenkürzel
+**Nächste Phase:** P16 – Wiki Links und Backlinks
 
 ## 1. Zweck
 
@@ -104,8 +104,8 @@ Ist die Phase nicht fertig, bleibt sie `IN PROGRESS`. Bei einem echten externen 
 | P12 | Assets | Screenshot Paste und Drag & Drop | `DONE` | Tiptap FileHandler, gemeinsame XHR-Uploadpipeline mit Fortschritt, Retry/Remove, maximal drei parallelen Uploads, Asset-Nodes und positionsstabile Einfügung umgesetzt und verifiziert |
 | P13 | Assets | Asset-Referenzen und robuste Fehlerpfade | `DONE` | Atomare `page_assets`-Synchronisation, robuste Darstellung fehlender Assets, R2-Erhalt und Race-Tests umgesetzt und verifiziert |
 | P14 | Suche | D1 FTS5 und Search API | `DONE` | Sichere FTS5-Tokenisierung, Prefixsuche, BM25-Titelgewichtung, Snippets, Breadcrumbs, Search API und FTS-Wartungswerkzeuge umgesetzt und verifiziert |
-| P15 | Suche | Command Palette und Tastenkürzel | `NEXT` | – |
-| P16 | Wiki Links | Wiki Links und Backlinks | `PLANNED` | – |
+| P15 | Suche | Command Palette und Tastenkürzel | `DONE` | Zugängliche Command Palette mit Search-Debounce, Tastaturnavigation, stale-response-Schutz, Ergebnisöffnung, Fokuswiederherstellung, Create-New-Page-/Theme-/Settings-Aktionen und Ctrl/Cmd-Shortcuts umgesetzt und verifiziert |
+| P16 | Wiki Links | Wiki Links und Backlinks | `NEXT` | – |
 | P17 | Export | Markdown- und ZIP-Export | `PLANNED` | – |
 | P18 | Produktreife | Responsive UI, Dark Mode und Accessibility | `PLANNED` | – |
 | P19 | Deployment | Deploy-to-Cloudflare und Version-1-Abnahme | `PLANNED` | – |
@@ -648,6 +648,7 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 | 2026-09-12 | P12 | Tiptap FileHandler für Screenshot-Paste und Drop mit gemeinsamer XHR-Uploadpipeline, Fortschritt, Retry/Remove, maximal drei parallelen Uploads sowie `assetImage`-/`attachment`-Nodes umgesetzt | `npm run ci` (53 Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | Blob-URLs und Uploadstatus bleiben außerhalb von `content_json`; Referenz- und Race-Aufräumung aus P12-1 ist P13-Scope; P13 ist `NEXT` |
 | 2026-09-13 | P13 | Content-Saves synchronisieren `page_assets` atomar aus dem validierten Tiptap-Dokument; entfernte Assets bleiben in D1/R2 erhalten; fehlende oder gelöschte Referenzen werden im Editor verständlich dargestellt; Upload-/Save-/Seitenwechsel-Rennen sind abgesichert | `npm run ci` (Format-Check, Lint, Typecheck, 59 Vitest-Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | Physische Garbage Collection bleibt bewusst späterer Folgearbeit vorbehalten; P14 ist `NEXT` |
 | 2026-09-13 | P14 | D1-FTS5-Search mit sicherem Token-Quoting, Prefixsuche für das letzte Token, BM25-Titelgewichtung, markierten Snippets, kanonischen URLs, Breadcrumbs, Limits/Leerzuständen und neuer Search API umgesetzt; ein kombinierter Update-Trigger hält den Index auch bei atomaren D1-Batches synchron; Rebuild-/Integrity-Werkzeuge ergänzt | `npm run db:generate`, `npx drizzle-kit check --config drizzle.config.ts`, `npm run db:migrate:local` (Migration und wiederholter Lauf), `npm run db:fts:integrity`, `npm run db:fts:rebuild`, `npm run ci` (66 Vitest-Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | Die Command Palette und Tastenkürzel bleiben gemäß Scope P15 vorbehalten; P15 ist `NEXT` |
+| 2026-09-13 | P15 | Zugängliche Command Palette mit Search-Debounce, stale-response-sicherer Ergebnisliste, Snippet-Segmenten, Tastaturnavigation, Ergebnisöffnung, Fokuswiederherstellung, Create-New-Page-/Theme-/Settings-Aktionen und Ctrl/Cmd-Kürzeln umgesetzt | `npm run ci` (Format-Check, Lint, Typecheck, 69 Vitest-Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | Theme und Einstellungen bleiben als bewusst gekennzeichnete Platzhalter im P15-Scope; P16 ist `NEXT` |
 
 ## 9. Regeln zur Pflege dieses Dokuments
 

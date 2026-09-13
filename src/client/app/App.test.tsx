@@ -291,4 +291,26 @@ describe('Dovari app shell', () => {
     ).toBeTruthy();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
+
+  it('opens the command palette from Ctrl+K, supports placeholder actions, and restores focus', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({ pages: [] }));
+
+    render(<App />);
+
+    await screen.findByRole('heading', { name: 'Start with one useful page.' });
+    const trigger = screen.getByRole('button', { name: 'Open command palette' });
+    trigger.focus();
+
+    fireEvent.keyDown(window, { ctrlKey: true, key: 'k' });
+    const input = await screen.findByRole('searchbox');
+    expect(document.activeElement).toBe(input);
+    expect(screen.getByRole('dialog', { name: 'Search or run a command' })).toBeTruthy();
+
+    fireEvent.click(screen.getByText('Toggle theme'));
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Theme controls are not available yet.',
+    );
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
 });

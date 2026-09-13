@@ -93,6 +93,42 @@ summary:focus-visible,
   font-size: 0.82rem;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.palette-trigger {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border: 1px solid #deded7;
+  border-radius: 7px;
+  color: #65655c;
+  background: #fffffd;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.palette-trigger:hover {
+  color: #242421;
+  border-color: #cfcfc6;
+  background: #f7f7f5;
+}
+
+.palette-trigger > span:first-child {
+  color: #85857a;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.palette-trigger kbd {
+  margin-left: 2px;
+}
+
 .app-workspace {
   display: grid;
   width: 100%;
@@ -1124,6 +1160,268 @@ kbd {
   font-size: 0.82rem;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.command-palette-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  padding: clamp(56px, 12vh, 124px) 20px 32px;
+  background: rgb(36 36 33 / 24%);
+}
+
+.command-palette-dialog {
+  display: flex;
+  width: min(680px, 100%);
+  max-height: min(720px, calc(100vh - 88px));
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #d8d8d0;
+  border-radius: 13px;
+  color: #242421;
+  background: #fffffd;
+  box-shadow: 0 24px 70px rgb(36 36 33 / 22%);
+}
+
+.command-palette-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 20px 14px;
+}
+
+.command-palette-heading h2 {
+  margin: 7px 0 0;
+  font-size: 1.25rem;
+  letter-spacing: -0.04em;
+}
+
+.command-palette-close {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: #85857a;
+  background: transparent;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.command-palette-close:hover {
+  color: #242421;
+  background: #f0f0eb;
+}
+
+.command-palette-search-row {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  gap: 9px;
+  margin: 0 14px;
+  padding: 7px 10px;
+  border: 1px solid #cfcfc6;
+  border-radius: 8px;
+  background: #fffffd;
+}
+
+.command-palette-search-icon {
+  color: #85857a;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.command-palette-input {
+  min-width: 0;
+  flex: 1;
+  padding: 3px 0;
+  border: 0;
+  outline: 0;
+  color: #242421;
+  background: transparent;
+  font-size: 1rem;
+}
+
+.command-palette-input::placeholder {
+  color: #aaa99e;
+}
+
+.command-palette-search-row > kbd {
+  margin-left: 0;
+}
+
+.command-palette-body {
+  min-height: 120px;
+  overflow-y: auto;
+  padding: 12px 14px 16px;
+}
+
+.command-palette-results {
+  min-height: 80px;
+}
+
+.command-palette-group + .command-palette-group {
+  margin-top: 15px;
+  padding-top: 14px;
+  border-top: 1px solid #eeeeea;
+}
+
+.command-palette-group-label {
+  margin: 0 6px 6px;
+  color: #929287;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.command-palette-list {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.command-palette-option-item {
+  min-width: 0;
+}
+
+.command-palette-option {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #242421;
+  background: transparent;
+  text-align: left;
+}
+
+.command-palette-option:hover,
+.command-palette-option.is-active {
+  border-color: #e1dbf5;
+  background: #f8f5ff;
+}
+
+.command-palette-option-main {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 3px;
+}
+
+.command-palette-option-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.88rem;
+}
+
+.command-palette-command-description,
+.command-palette-breadcrumb,
+.command-palette-snippet {
+  overflow: hidden;
+  color: #77776f;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-palette-breadcrumb {
+  color: #9a6bff;
+}
+
+.command-palette-snippet {
+  max-width: 100%;
+}
+
+.command-palette-snippet mark {
+  padding: 0 2px;
+  border-radius: 2px;
+  color: #4f397e;
+  background: #e9defe;
+}
+
+.command-palette-option kbd {
+  flex: 0 0 auto;
+}
+
+.command-palette-option-arrow {
+  flex: 0 0 auto;
+  color: #aaa99e;
+  font-size: 0.88rem;
+}
+
+.command-palette-status,
+.command-palette-empty {
+  margin: 22px 8px 10px;
+  color: #77776f;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.command-palette-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 12px 6px 4px;
+  padding: 12px;
+  border: 1px solid #ead8d5;
+  border-radius: 8px;
+  color: #8f4842;
+  background: #fff8f6;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.command-palette-error p {
+  margin: 0;
+}
+
+.command-palette-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 11px 20px;
+  border-top: 1px solid #eeeeea;
+  color: #929287;
+  font-size: 0.7rem;
+}
+
+.command-palette-footer span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.command-palette-footer kbd {
+  margin-left: 0;
+}
+
 @media (max-width: 760px) {
   .app-workspace {
     display: block;
@@ -1145,6 +1443,14 @@ kbd {
     padding: 42px 20px 64px;
   }
 
+  .command-palette-backdrop {
+    padding: 16px;
+  }
+
+  .command-palette-dialog {
+    max-height: calc(100vh - 32px);
+  }
+
   .page-detail-header,
   .page-editor-heading,
   .editor-save-notice {
@@ -1158,8 +1464,36 @@ kbd {
 }
 
 @media (max-width: 500px) {
+  .header-actions {
+    gap: 8px;
+  }
+
   .phase-label {
     font-size: 0.72rem;
+  }
+
+  .palette-trigger > span:nth-child(2) {
+    display: none;
+  }
+
+  .command-palette-footer {
+    gap: 9px;
+    justify-content: space-between;
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .command-palette-footer span {
+    font-size: 0;
+  }
+
+  .command-palette-footer kbd {
+    font-size: 0.68rem;
+  }
+
+  .command-palette-error {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .rename-form-row {
