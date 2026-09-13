@@ -54,10 +54,24 @@ function run(command, args) {
 }
 
 try {
-  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const buildCode = await run(npmCommand, ['run', 'build']);
+  const npmCli = process.env.npm_execpath;
+  if (!npmCli) {
+    throw new Error('npm_execpath is required to run the browser tests.');
+  }
+
+  const buildCode = await run(process.execPath, [npmCli, 'run', 'build']);
   const testCode =
-    buildCode === 0 ? await run('playwright', ['test', '--config', 'playwright.config.ts']) : 1;
+    buildCode === 0
+      ? await run(process.execPath, [
+          npmCli,
+          'exec',
+          '--',
+          'playwright',
+          'test',
+          '--config',
+          'playwright.config.ts',
+        ])
+      : 1;
   process.exitCode = testCode;
 } finally {
   restoreVarsFile();

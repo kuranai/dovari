@@ -6,7 +6,7 @@ workflow.
 
 ## Local development
 
-Requirements: Node.js 20.19 or newer and npm 10.8 or newer.
+Requirements: Node.js 26 or newer and npm 11 or newer.
 
 ```sh
 npm ci

@@ -62,9 +62,9 @@ describe('Dovari app shell', () => {
       await screen.findByRole('heading', { name: 'Start with one useful page.' }),
     ).toBeTruthy();
     expect(screen.getByText('No pages yet.')).toBeTruthy();
-    expect(
-      (screen.getByRole('button', { name: 'New page ⌘N' }) as HTMLButtonElement).disabled,
-    ).toBe(false);
+    expect((screen.getByRole('button', { name: 'New page' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -111,8 +111,8 @@ describe('Dovari app shell', () => {
 
     render(<App />);
 
-    await screen.findByRole('button', { name: 'New page ⌘N' });
-    fireEvent.click(screen.getByRole('button', { name: 'New page ⌘N' }));
+    await screen.findByRole('button', { name: 'New page' });
+    fireEvent.click(screen.getByRole('button', { name: 'New page' }));
 
     expect(await screen.findByRole('heading', { name: 'Untitled' })).toBeTruthy();
     expect(window.location.pathname).toBe(`/app/pages/${pageId}`);

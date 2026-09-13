@@ -303,6 +303,7 @@ function Sidebar({
 
       <div className="sidebar-footer">
         <button
+          aria-label={isCreating ? 'Creating page' : 'New page'}
           className="new-page-button"
           disabled={isCreating || state !== 'ready'}
           onClick={onCreate}

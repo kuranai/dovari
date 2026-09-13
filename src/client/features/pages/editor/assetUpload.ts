@@ -507,7 +507,7 @@ export class AssetUploadController {
         ? { alt: '', assetId: asset.id, height: null, title: null, width: null }
         : { assetId: asset.id, filename: asset.filename, title: null };
 
-    let inserted = false;
+    let inserted: boolean;
     try {
       inserted = editor.commands.insertContentAt(
         decoration.from,

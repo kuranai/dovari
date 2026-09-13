@@ -289,7 +289,7 @@ export class AssetService {
     const assetId = crypto.randomUUID();
     const now = new Date();
     const objectKey = extensionKey(now, assetId, type.extension);
-    let object: R2Object | null = null;
+    let object: R2Object | null;
     let uploadPipe: Promise<void> | undefined;
     let uploadValue: ReadableStream<Uint8Array> | ArrayBuffer;
 

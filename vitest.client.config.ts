@@ -5,6 +5,7 @@ export default defineProject({
   plugins: [react()],
   test: {
     environment: 'jsdom',
+    execArgv: ['--no-webstorage'],
     include: ['src/client/**/*.test.{ts,tsx}'],
     name: 'client',
     setupFiles: ['./test/client.setup.ts'],
