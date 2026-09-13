@@ -171,3 +171,100 @@ test('has no critical accessibility violations in the workspace shell', async ({
   );
   await page.getByRole('button', { name: 'Delete page' }).click();
 });
+
+test('supports discoverable safe links and wiki-link navigation by mouse and keyboard', async ({
+  page,
+}) => {
+  const sourceTitle = `P20 source ${Date.now()}`;
+  const targetTitle = `P20 target ${Date.now()}`;
+
+  await page.goto('/app');
+  await page.getByRole('button', { name: /New page/ }).click();
+  await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible();
+  const sourceUrl = page.url();
+  await page.getByLabel('Edit title').fill(sourceTitle);
+  await page.getByLabel('Edit title').press('Enter');
+  await expect(page.getByRole('heading', { name: sourceTitle })).toBeVisible();
+
+  await page.getByRole('button', { name: /New page/ }).click();
+  await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible();
+  const targetUrl = page.url();
+  const targetId = targetUrl.split('/').pop();
+  if (!targetId) {
+    throw new Error('The target page URL did not contain a page id.');
+  }
+  await page.getByLabel('Edit title').fill(targetTitle);
+  await page.getByLabel('Edit title').press('Enter');
+  await expect(page.getByRole('heading', { name: targetTitle })).toBeVisible();
+
+  await page.getByRole('link', { name: sourceTitle }).click();
+  await expect(page).toHaveURL(sourceUrl);
+  const editor = page.getByRole('textbox', { name: 'Page content' });
+  await editor.click();
+  await page.keyboard.type('https://example.com');
+  await page.keyboard.press('Space');
+  await expect(editor.locator('a[href="https://example.com"]')).toBeVisible();
+
+  await editor.evaluate((element) => {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData('text/plain', 'person@example.com');
+    element.dispatchEvent(
+      new ClipboardEvent('paste', {
+        bubbles: true,
+        cancelable: true,
+        clipboardData,
+      }),
+    );
+  });
+  await expect(editor.locator('a[href="mailto:person@example.com"]')).toBeVisible();
+
+  await editor.locator('a[href="https://example.com"]').click();
+  const linkDialog = page.getByRole('dialog', { name: 'Link options' });
+  await expect(linkDialog).toContainText('https://example.com');
+  await page.evaluate(() => {
+    const browserWindow = window as Window & { __dovariOpenCalls?: string[][] };
+    browserWindow.__dovariOpenCalls = [];
+    window.open = ((url, target, features) => {
+      browserWindow.__dovariOpenCalls?.push([String(url), String(target), String(features)]);
+      return null;
+    }) as typeof window.open;
+  });
+  await linkDialog.getByRole('button', { name: 'Open link' }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as Window & { __dovariOpenCalls?: string[][] }).__dovariOpenCalls ?? [],
+      ),
+    )
+    .toEqual([['https://example.com', '_blank', 'noopener,noreferrer']]);
+
+  await editor.click();
+  await editor.press('Control+A');
+  await editor.press('Backspace');
+  await page.getByRole('button', { name: 'Wiki link' }).click();
+  const wikiPicker = page.getByRole('dialog', { name: 'Wiki link picker' });
+  const wikiSearch = page.getByRole('searchbox', { name: 'Search pages to link' });
+  await wikiSearch.fill(targetTitle);
+  await expect(
+    wikiPicker.getByRole('option', { name: new RegExp(`^${targetTitle}`) }),
+  ).toBeVisible();
+  await wikiSearch.press('Enter');
+  const wikiLink = editor.locator(`[data-dovari-wiki-link-id="${targetId}"]`);
+  await expect(wikiLink).toBeVisible();
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+
+  await wikiLink.click();
+  await expect(page).toHaveURL(targetUrl);
+  await page.goto(sourceUrl);
+  const keyboardWikiLink = page
+    .getByRole('textbox', { name: 'Page content' })
+    .locator(`[data-dovari-wiki-link-id="${targetId}"]`);
+  await keyboardWikiLink.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(targetUrl);
+
+  await page.getByRole('button', { name: 'Delete page' }).click();
+  await expect(page.getByRole('heading', { name: sourceTitle })).toBeVisible();
+  await page.getByRole('button', { name: 'Delete page' }).click();
+  await expect(page.getByRole('heading', { name: 'Start with one useful page.' })).toBeVisible();
+});

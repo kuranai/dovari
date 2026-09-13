@@ -446,6 +446,64 @@ describe('PageEditor', () => {
     expect(screen.queryByRole('listbox', { name: 'Wiki link suggestions' })).toBeNull();
   });
 
+  it('offers the same wiki-link picker from the labeled toolbar entry', async () => {
+    const target: PageSummary = {
+      id: '99999999-9999-4999-8999-999999999999',
+      parentId: null,
+      position: 0,
+      revision: 1,
+      slug: 'cloudflare-workers',
+      title: 'Cloudflare Workers',
+      updatedAt: '2026-09-13T00:00:00.000Z',
+    };
+    const searchWikiLinks = vi.fn().mockResolvedValue({ pages: [target] });
+    const onChange = vi.fn();
+    render(
+      <PageEditor
+        content={{
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Link here' }] }],
+        }}
+        onChange={onChange}
+        searchWikiLinkPages={searchWikiLinks}
+      />,
+    );
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    editor.focus();
+    fireEvent.click(screen.getByRole('button', { name: 'Wiki link' }));
+
+    const picker = await screen.findByRole('dialog', { name: 'Wiki link picker' });
+    const search = screen.getByRole('searchbox', { name: 'Search pages to link' });
+    expect(picker.textContent).toContain('Type [[ in the editor');
+    expect(searchWikiLinks).toHaveBeenCalledWith('', expect.any(AbortSignal));
+
+    fireEvent.change(search, { target: { value: 'Cloudflare' } });
+    const option = await screen.findByRole('option', { name: /Cloudflare Workers/ });
+    expect(searchWikiLinks).toHaveBeenLastCalledWith('Cloudflare', expect.any(AbortSignal));
+    fireEvent.keyDown(search, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(onChange.mock.lastCall?.[0]).toMatchObject({
+        content: [
+          {
+            content: [
+              {
+                attrs: { targetPageId: target.id, targetTitle: target.title },
+                type: 'wikiLink',
+              },
+              { text: 'Link here', type: 'text' },
+            ],
+            type: 'paragraph',
+          },
+        ],
+        type: 'doc',
+      }),
+    );
+    expect(option).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Wiki link picker' })).toBeNull();
+  });
+
   it('creates a page from an unresolved wiki-link suggestion', async () => {
     const createdPage: PageDetail = {
       content: { type: 'doc', content: [] },
@@ -541,6 +599,100 @@ describe('PageEditor', () => {
     expect(resolved).not.toBeNull();
     fireEvent.click(resolved!);
     expect(onNavigateToPage).toHaveBeenCalledWith('88888888-8888-4888-8888-888888888888');
+  });
+
+  it('autolinks a pasted web address and email address', async () => {
+    const onChange = vi.fn();
+    render(
+      <PageEditor
+        content={{ type: 'doc', content: [{ type: 'paragraph' }] }}
+        onChange={onChange}
+      />,
+    );
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [],
+        getData: (type: string) => (type === 'text/plain' ? 'https://example.com/docs' : ''),
+      },
+    });
+
+    const link = await waitFor(() => {
+      const element = editor.querySelector<HTMLAnchorElement>('a');
+      expect(element).not.toBeNull();
+      return element;
+    });
+    expect(link?.getAttribute('href')).toBe('https://example.com/docs');
+    expect(link?.getAttribute('target')).toBe('_blank');
+    expect(link?.getAttribute('rel')).toContain('noopener');
+    expect(onChange).toHaveBeenCalled();
+
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [],
+        getData: (type: string) => (type === 'text/plain' ? 'person@example.com' : ''),
+      },
+    });
+    await waitFor(() =>
+      expect(editor.querySelector('a[href="mailto:person@example.com"]')).not.toBeNull(),
+    );
+  });
+
+  it('opens, edits, and removes a normal link without losing the editor selection', async () => {
+    const onChange = vi.fn();
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    render(
+      <PageEditor
+        content={{
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [
+                {
+                  marks: [{ attrs: { href: 'https://example.com' }, type: 'link' }],
+                  text: 'Documentation',
+                  type: 'text',
+                },
+              ],
+            },
+          ],
+        }}
+        onChange={onChange}
+      />,
+    );
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    const link = editor.querySelector<HTMLAnchorElement>('a[href="https://example.com"]');
+    expect(link).not.toBeNull();
+    fireEvent.click(link!);
+
+    expect((await screen.findByRole('dialog', { name: 'Link options' })).textContent).toContain(
+      'https://example.com',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open link' }));
+    expect(open).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer');
+    expect(document.activeElement).toBe(editor);
+
+    fireEvent.click(link!);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit link' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Link URL' }), {
+      target: { value: 'https://example.org/updated' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() =>
+      expect(editor.querySelector('a[href="https://example.org/updated"]')).not.toBeNull(),
+    );
+
+    const updatedLink = editor.querySelector<HTMLAnchorElement>(
+      'a[href="https://example.org/updated"]',
+    );
+    fireEvent.click(updatedLink!);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove link' }));
+    await waitFor(() => expect(editor.querySelector('a')).toBeNull());
+    expect(editor.textContent).toContain('Documentation');
+    expect(onChange).toHaveBeenCalled();
   });
 
   it('falls back to an empty document for unknown nodes', async () => {

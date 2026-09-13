@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
 
@@ -12,6 +12,12 @@ import {
   safeEditorDocument,
   serializeEditorDocument,
 } from './editorExtensions';
+import {
+  LinkPopover,
+  type EditorLinkSelection,
+  type LinkPopoverMode,
+  type LinkPopoverPosition,
+} from './LinkPopover';
 import { AssetUploadController } from './assetUpload';
 import {
   findWikiLinkQuery,
@@ -19,6 +25,7 @@ import {
   type WikiLinkQuery,
   wikiLinkTitle,
 } from './wikiLinks';
+import { WikiLinkPicker, type WikiLinkPickerOption } from './WikiLinkPicker';
 
 export interface PageEditorProps {
   content: TiptapDocument;
@@ -33,8 +40,13 @@ export interface PageEditorProps {
 }
 
 interface WikiLinkSession extends WikiLinkQuery {
-  left: number;
-  top: number;
+  position: LinkPopoverPosition;
+  source: 'autocomplete' | 'toolbar';
+}
+
+interface LinkPopoverSession extends EditorLinkSelection {
+  mode: LinkPopoverMode;
+  position: LinkPopoverPosition;
 }
 
 function containsControlCharacters(value: string) {
@@ -49,9 +61,29 @@ function sameWikiLinkSession(left: WikiLinkSession | null, right: WikiLinkSessio
     left?.from === right?.from &&
     left?.to === right?.to &&
     left?.query === right?.query &&
-    left?.left === right?.left &&
-    left?.top === right?.top
+    left?.position.left === right?.position.left &&
+    left?.position.top === right?.position.top &&
+    left?.source === right?.source
   );
+}
+
+function popupPosition(editor: Editor, position: number): LinkPopoverPosition {
+  let left = 24;
+  let top = 180;
+  try {
+    const coordinates = editor.view.coordsAtPos(position);
+    left = Math.max(12, coordinates.left);
+    top = Math.max(12, coordinates.bottom + 8);
+  } catch {
+    // JSDOM and some embedded editor hosts do not expose layout coordinates.
+  }
+
+  if (typeof window !== 'undefined') {
+    left = Math.min(left, Math.max(12, window.innerWidth - 380));
+    top = Math.min(top, Math.max(12, window.innerHeight - 260));
+  }
+
+  return { left, top };
 }
 
 function createWikiLinkNode(editor: Editor, session: WikiLinkSession, page: PageSummary) {
@@ -97,6 +129,7 @@ export function PageEditor({
   const [wikiLinkError, setWikiLinkError] = useState<string | null>(null);
   const [isSearchingWikiLinks, setIsSearchingWikiLinks] = useState(false);
   const [isCreatingWikiLink, setIsCreatingWikiLink] = useState(false);
+  const [linkPopoverSession, setLinkPopoverSession] = useState<LinkPopoverSession | null>(null);
   const assetUpload = useMemo(
     () => new AssetUploadController({ pageId, upload: uploadAsset }),
     [pageId, uploadAsset],
@@ -111,17 +144,11 @@ export function PageEditor({
       return;
     }
 
-    let left = 24;
-    let top = 180;
-    try {
-      const coordinates = currentEditor.view.coordsAtPos(query.to);
-      left = Math.max(12, coordinates.left);
-      top = Math.max(12, coordinates.bottom + 6);
-    } catch {
-      // JSDOM and some embedded editor hosts do not expose layout coordinates.
-    }
-
-    const next: WikiLinkSession = { ...query, left, top };
+    const next: WikiLinkSession = {
+      ...query,
+      position: popupPosition(currentEditor, query.to),
+      source: 'autocomplete',
+    };
     setWikiLinkSession((current) => (sameWikiLinkSession(current, next) ? current : next));
   }, []);
 
@@ -152,6 +179,63 @@ export function PageEditor({
     },
     [extensions, updateWikiLinkSession],
   );
+
+  function editorSelectionForLink(link?: HTMLAnchorElement) {
+    if (!editor) {
+      return null;
+    }
+
+    if (link) {
+      try {
+        const linkPosition = editor.view.posAtDOM(link, 0);
+        editor.chain().focus().setTextSelection(linkPosition).extendMarkRange('link').run();
+      } catch {
+        return null;
+      }
+    } else if (editor.isActive('link')) {
+      editor.chain().focus().extendMarkRange('link').run();
+    }
+
+    return {
+      from: editor.state.selection.from,
+      to: editor.state.selection.to,
+    };
+  }
+
+  function openLinkPopover(mode: LinkPopoverMode) {
+    if (!editor) {
+      return;
+    }
+
+    const selection = editorSelectionForLink();
+    if (!selection) {
+      return;
+    }
+
+    setWikiLinkSession(null);
+    setLinkPopoverSession({
+      ...selection,
+      mode,
+      position: popupPosition(editor, selection.to),
+    });
+  }
+
+  function openWikiLinkPicker() {
+    if (!editor) {
+      return;
+    }
+
+    const selection = editor.state.selection;
+    setLinkPopoverSession(null);
+    setWikiLinkError(null);
+    setWikiLinkSession({
+      from: selection.from,
+      position: popupPosition(editor, selection.to),
+      query: '',
+      source: 'toolbar',
+      to: selection.to,
+    });
+  }
 
   const normalizedQuery = normalizedWikiLinkQuery(wikiLinkSession?.query ?? '');
   const linkTitle = wikiLinkTitle(wikiLinkSession?.query ?? '');
@@ -240,7 +324,7 @@ export function PageEditor({
     }
   }
 
-  function handleEditorKeyDown(event: React.KeyboardEvent<HTMLElement>) {
+  function handleWikiLinkKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
     if (!wikiLinkSession || !editor) {
       return;
     }
@@ -272,20 +356,68 @@ export function PageEditor({
     }
   }
 
-  function handleEditorClick(event: React.MouseEvent<HTMLElement>) {
-    if (!onNavigateToPage) {
+  function handleEditorKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (!editor || !(event.target instanceof Node) || !editor.view.dom.contains(event.target)) {
       return;
     }
 
-    const target =
+    handleWikiLinkKeyDown(event);
+    if (event.defaultPrevented || wikiLinkSession) {
+      return;
+    }
+
+    const wikiLinkTarget =
       event.target instanceof Element
         ? event.target.closest<HTMLElement>('[data-dovari-wiki-link-id]')
         : null;
+    const wikiLinkPageId = wikiLinkTarget?.dataset.dovariWikiLinkId;
+    if (event.key === 'Enter' && wikiLinkPageId && onNavigateToPage) {
+      event.preventDefault();
+      onNavigateToPage(wikiLinkPageId);
+      return;
+    }
+
+    if (event.key === 'Enter' && editor.isActive('link')) {
+      event.preventDefault();
+      openLinkPopover('view');
+    }
+  }
+
+  function handleEditorClick(event: React.MouseEvent<HTMLElement>) {
+    if (!editor || !(event.target instanceof Element)) {
+      return;
+    }
+
+    const target = event.target.closest<HTMLElement>('[data-dovari-wiki-link-id]');
     const targetPageId = target?.dataset.dovariWikiLinkId;
     if (targetPageId) {
-      event.preventDefault();
-      onNavigateToPage(targetPageId);
+      if (onNavigateToPage) {
+        event.preventDefault();
+        onNavigateToPage(targetPageId);
+      }
+      return;
     }
+
+    const link = event.target.closest<HTMLAnchorElement>('a[href]');
+    if (
+      !link ||
+      !editor.view.dom.contains(link) ||
+      link.classList.contains('asset-attachment-node')
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    const selection = editorSelectionForLink(link);
+    if (!selection) {
+      return;
+    }
+    setWikiLinkSession(null);
+    setLinkPopoverSession({
+      ...selection,
+      mode: 'view',
+      position: popupPosition(editor, selection.to),
+    });
   }
 
   useEffect(() => () => assetUpload.dispose(), [assetUpload]);
@@ -313,67 +445,48 @@ export function PageEditor({
       {editor ? (
         <>
           <div className="page-editor-topbar">
-            <EditorToolbar editor={editor} />
+            <EditorToolbar
+              editor={editor}
+              onOpenLink={() => openLinkPopover('edit')}
+              onOpenWikiLink={openWikiLinkPicker}
+            />
             {toolbarAccessory}
           </div>
           <div className="page-editor-surface">
             <EditorContent editor={editor} />
           </div>
           {wikiLinkSession ? (
-            <div
-              aria-label="Wiki link suggestions"
-              className="wiki-link-autocomplete"
-              role="listbox"
-              style={{ left: wikiLinkSession.left, top: wikiLinkSession.top }}
-            >
-              {isSearchingWikiLinks ? (
-                <p className="wiki-link-autocomplete-state">Searching pages…</p>
-              ) : null}
-              {!isSearchingWikiLinks && wikiLinkOptions.length === 0 && !wikiLinkError ? (
-                <p className="wiki-link-autocomplete-state">No matching pages.</p>
-              ) : null}
-              {wikiLinkOptions.map((option, index) =>
-                option.kind === 'page' ? (
-                  <button
-                    aria-selected={index === wikiLinkActiveIndex}
-                    className={
-                      index === wikiLinkActiveIndex
-                        ? 'wiki-link-option is-active'
-                        : 'wiki-link-option'
-                    }
-                    key={option.page.id}
-                    onClick={() => selectWikiLinkPage(option.page)}
-                    onMouseDown={(event) => event.preventDefault()}
-                    role="option"
-                    type="button"
-                  >
-                    <span>{option.page.title}</span>
-                    <small>/{option.page.slug}</small>
-                  </button>
-                ) : (
-                  <button
-                    aria-selected={index === wikiLinkActiveIndex}
-                    className={
-                      index === wikiLinkActiveIndex
-                        ? 'wiki-link-option is-active wiki-link-create-option'
-                        : 'wiki-link-option wiki-link-create-option'
-                    }
-                    key="create-page"
-                    onClick={() => void createAndSelectWikiLink(option.title)}
-                    onMouseDown={(event) => event.preventDefault()}
-                    role="option"
-                    type="button"
-                  >
-                    <span>Create “{option.title}”</span>
-                  </button>
-                ),
-              )}
-              {wikiLinkError ? (
-                <p className="wiki-link-autocomplete-error" role="alert">
-                  {wikiLinkError}
-                </p>
-              ) : null}
-            </div>
+            <WikiLinkPicker
+              activeIndex={wikiLinkActiveIndex}
+              error={wikiLinkError}
+              isCreating={isCreatingWikiLink}
+              isSearching={isSearchingWikiLinks}
+              onCreatePage={(title) => void createAndSelectWikiLink(title)}
+              onKeyDown={handleWikiLinkKeyDown}
+              onQueryChange={(query) =>
+                setWikiLinkSession((current) =>
+                  current?.source === 'toolbar' ? { ...current, query } : current,
+                )
+              }
+              onSelectPage={selectWikiLinkPage}
+              options={wikiLinkOptions as WikiLinkPickerOption[]}
+              position={wikiLinkSession.position}
+              query={wikiLinkSession.query}
+              source={wikiLinkSession.source}
+            />
+          ) : null}
+          {linkPopoverSession ? (
+            <LinkPopover
+              editor={editor}
+              initialMode={linkPopoverSession.mode}
+              key={`${linkPopoverSession.from}-${linkPopoverSession.to}-${linkPopoverSession.mode}`}
+              onClose={() => {
+                setLinkPopoverSession(null);
+                editor.view.focus();
+              }}
+              position={linkPopoverSession.position}
+              selection={linkPopoverSession}
+            />
           ) : null}
         </>
       ) : (

@@ -1,9 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import type { FormEvent, MouseEvent, ReactNode } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import type { Editor } from '@tiptap/core';
 import { useEditorState } from '@tiptap/react';
-
-import { isAllowedLinkHref } from './editorExtensions';
 
 interface ToolbarButtonProps {
   active?: boolean;
@@ -36,13 +33,11 @@ function ToolbarButton({ active, children, disabled = false, label, onClick }: T
 
 interface EditorToolbarProps {
   editor: Editor;
+  onOpenLink: () => void;
+  onOpenWikiLink: () => void;
 }
 
-export function EditorToolbar({ editor }: EditorToolbarProps) {
-  const [isLinkFormOpen, setIsLinkFormOpen] = useState(false);
-  const [linkHref, setLinkHref] = useState('');
-  const [linkError, setLinkError] = useState<string | null>(null);
-  const linkInputRef = useRef<HTMLInputElement>(null);
+export function EditorToolbar({ editor, onOpenLink, onOpenWikiLink }: EditorToolbarProps) {
   const active = useEditorState({
     editor,
     selector: ({ editor: currentEditor }) => ({
@@ -62,45 +57,6 @@ export function EditorToolbar({ editor }: EditorToolbarProps) {
       taskList: currentEditor.isActive('taskList'),
     }),
   });
-
-  useEffect(() => {
-    if (isLinkFormOpen) {
-      linkInputRef.current?.focus();
-    }
-  }, [isLinkFormOpen]);
-
-  function openLinkForm() {
-    const attrs = editor.getAttributes('link') as { href?: unknown };
-    setLinkHref(typeof attrs.href === 'string' ? attrs.href : '');
-    setLinkError(null);
-    setIsLinkFormOpen(true);
-  }
-
-  function closeLinkForm() {
-    setIsLinkFormOpen(false);
-    setLinkError(null);
-  }
-
-  function handleLinkSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const href = linkHref.trim();
-    if (!isAllowedLinkHref(href)) {
-      setLinkError('Use an http, https, mailto, or relative link.');
-      return;
-    }
-
-    if (!editor.chain().focus().setLink({ href }).run()) {
-      setLinkError('Select some text before adding a link.');
-      return;
-    }
-
-    closeLinkForm();
-  }
-
-  function removeLink() {
-    editor.chain().focus().unsetLink().run();
-    closeLinkForm();
-  }
 
   return (
     <div aria-label="Text formatting" className="editor-toolbar" role="toolbar">
@@ -166,8 +122,11 @@ export function EditorToolbar({ editor }: EditorToolbarProps) {
         >
           {'</>'}
         </ToolbarButton>
-        <ToolbarButton active={active.link} label="Link" onClick={openLinkForm}>
+        <ToolbarButton active={active.link} label="Link" onClick={onOpenLink}>
           ↗
+        </ToolbarButton>
+        <ToolbarButton label="Wiki link" onClick={onOpenWikiLink}>
+          Wiki link
         </ToolbarButton>
       </div>
 
@@ -235,37 +194,6 @@ export function EditorToolbar({ editor }: EditorToolbarProps) {
           ↷
         </ToolbarButton>
       </div>
-
-      {isLinkFormOpen ? (
-        <form aria-label="Link options" className="editor-link-form" onSubmit={handleLinkSubmit}>
-          <label htmlFor="editor-link-url">Link URL</label>
-          <input
-            autoComplete="off"
-            id="editor-link-url"
-            onChange={(event) => setLinkHref(event.target.value)}
-            placeholder="https://example.com"
-            ref={linkInputRef}
-            type="text"
-            value={linkHref}
-          />
-          <button className="button button-primary" type="submit">
-            Apply
-          </button>
-          {active.link ? (
-            <button className="button button-quiet" onClick={removeLink} type="button">
-              Remove
-            </button>
-          ) : null}
-          <button className="button button-quiet" onClick={closeLinkForm} type="button">
-            Cancel
-          </button>
-          {linkError ? (
-            <p className="editor-link-error" role="alert">
-              {linkError}
-            </p>
-          ) : null}
-        </form>
-      ) : null}
     </div>
   );
 }

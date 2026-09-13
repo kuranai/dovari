@@ -2,6 +2,7 @@ import type { Extensions } from '@tiptap/core';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { Placeholder } from '@tiptap/extensions';
 import { FileHandler } from '@tiptap/extension-file-handler';
+import { Link } from '@tiptap/extension-link';
 import StarterKit from '@tiptap/starter-kit';
 
 import { validateTiptapDocument, type TiptapDocument } from '../../../../shared/pages';
@@ -79,7 +80,7 @@ export function isAllowedLinkHref(value: string) {
     return false;
   }
 
-  for (const character of href) {
+  for (const character of value) {
     const code = character.charCodeAt(0);
     if (code <= 31 || code === 127) {
       return false;
@@ -94,21 +95,32 @@ export function isAllowedLinkHref(value: string) {
   }
 }
 
+const DovariLink = Link.extend({
+  addAttributes() {
+    const attributes = { ...(this.parent?.() ?? {}) } as Record<string, unknown>;
+    delete attributes.title;
+    return attributes;
+  },
+});
+
 export function createPageEditorExtensions(options: PageEditorExtensionOptions = {}): Extensions {
   const extensions: Extensions = [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
-      link: {
-        autolink: false,
-        enableClickSelection: true,
-        isAllowedUri: (url) => isAllowedLinkHref(url),
-        linkOnPaste: false,
-        openOnClick: false,
-        HTMLAttributes: {
-          rel: 'noopener noreferrer nofollow',
-        },
-      },
+      link: false,
       underline: false,
+    }),
+    DovariLink.configure({
+      autolink: true,
+      enableClickSelection: true,
+      isAllowedUri: (url) => isAllowedLinkHref(url),
+      linkOnPaste: true,
+      openOnClick: false,
+      shouldAutoLink: (url) => isAllowedLinkHref(url),
+      HTMLAttributes: {
+        target: '_blank',
+        rel: 'noopener noreferrer nofollow',
+      },
     }),
     TaskList.configure({
       HTMLAttributes: { class: 'page-editor-task-list' },
