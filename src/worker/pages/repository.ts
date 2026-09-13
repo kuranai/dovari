@@ -247,18 +247,51 @@ export class PageRepository {
   async updateContent(
     id: string,
     baseRevision: number,
-    values: { contentJson: string; contentText: string; updatedAt: string },
+    values: { contentJson: string; contentText: string; updatedAt: string; assetIds: string[] },
   ) {
-    const result = await this.db
-      .prepare(
-        `UPDATE pages
-         SET content_json = ?, content_text = ?, revision = revision + 1, updated_at = ?
-         WHERE id = ? AND revision = ? AND deleted_at IS NULL`,
-      )
-      .bind(values.contentJson, values.contentText, values.updatedAt, id, baseRevision)
-      .run();
+    const nextRevision = baseRevision + 1;
+    const saveMarker = `
+      id = ?
+      AND revision = ?
+      AND updated_at = ?
+      AND content_json = ?
+      AND deleted_at IS NULL
+    `;
+    const statements = [
+      this.db
+        .prepare(
+          `UPDATE pages
+           SET content_json = ?, content_text = ?, revision = revision + 1, updated_at = ?
+           WHERE id = ? AND revision = ? AND deleted_at IS NULL`,
+        )
+        .bind(values.contentJson, values.contentText, values.updatedAt, id, baseRevision),
+      this.db
+        .prepare(
+          `DELETE FROM page_assets
+           WHERE page_id = ?
+             AND EXISTS (
+               SELECT 1 FROM pages
+               WHERE ${saveMarker}
+             )`,
+        )
+        .bind(id, id, nextRevision, values.updatedAt, values.contentJson),
+      ...values.assetIds.map((assetId) =>
+        this.db
+          .prepare(
+            `INSERT INTO page_assets (page_id, asset_id)
+             SELECT ?, ?
+             WHERE EXISTS (
+               SELECT 1 FROM pages
+               WHERE ${saveMarker}
+             )
+             AND EXISTS (SELECT 1 FROM assets WHERE id = ?)`,
+          )
+          .bind(id, assetId, id, nextRevision, values.updatedAt, values.contentJson, assetId),
+      ),
+    ];
 
-    return result.meta.changes;
+    const results = await this.db.batch(statements);
+    return results[0]?.meta.changes ?? 0;
   }
 
   async softDelete(id: string, baseRevision?: number, deletedAt = new Date().toISOString()) {

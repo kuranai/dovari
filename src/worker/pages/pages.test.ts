@@ -11,11 +11,14 @@ import {
   type TiptapDocument,
 } from '../../shared/pages';
 import { app } from '../index';
+import { createAssetFixture } from '../db/fixtures';
 import type { WorkerBindings } from '../types';
 
 const testEnv = env as typeof env & { DOVARI_TEST_D1_MIGRATIONS: string };
 const localEnv = { ...env, DOVARI_ENV: 'local' } as unknown as WorkerBindings;
 const createdPageIds = new Set<string>();
+const createdAssetIds = new Set<string>();
+const createdAssetKeys = new Set<string>();
 
 beforeAll(async () => {
   const migrations = JSON.parse(testEnv.DOVARI_TEST_D1_MIGRATIONS) as Array<{
@@ -35,7 +38,17 @@ afterEach(async () => {
     await env.DB.prepare('DELETE FROM pages WHERE id = ?').bind(pageId).run();
   }
 
+  for (const assetId of createdAssetIds) {
+    await env.DB.prepare('DELETE FROM page_assets WHERE asset_id = ?').bind(assetId).run();
+    await env.DB.prepare('DELETE FROM assets WHERE id = ?').bind(assetId).run();
+  }
+  for (const objectKey of createdAssetKeys) {
+    await env.ASSETS.delete(objectKey);
+  }
+
   createdPageIds.clear();
+  createdAssetIds.clear();
+  createdAssetKeys.clear();
 });
 
 async function request(path: string, init: RequestInit = {}) {
@@ -59,6 +72,33 @@ async function createPage(title: string, parentId: string | null = null) {
   const body = (await response.json()) as { page: PageDetail };
   createdPageIds.add(body.page.id);
   return body.page;
+}
+
+async function createAsset(deletedAt: string | null = null) {
+  const asset = createAssetFixture({ deletedAt });
+  await env.DB.prepare(
+    `INSERT INTO assets
+      (id, object_key, original_filename, mime_type, size_bytes, width, height, sha256,
+       uploaded_for_page_id, created_at, deleted_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      asset.id,
+      asset.objectKey,
+      asset.originalFilename,
+      asset.mimeType,
+      asset.sizeBytes,
+      asset.width,
+      asset.height,
+      asset.sha256,
+      asset.uploadedForPageId,
+      asset.createdAt,
+      asset.deletedAt,
+    )
+    .run();
+  createdAssetIds.add(asset.id);
+  createdAssetKeys.add(asset.objectKey);
+  return asset.id;
 }
 
 describe('Pages HTTP API', () => {
@@ -143,6 +183,133 @@ describe('Pages HTTP API', () => {
       pages: Array<{ id: string }>;
     };
     expect(afterDelete.pages).toEqual([]);
+  });
+
+  it('atomically synchronizes page asset references while retaining removed assets', async () => {
+    const page = await createPage('Asset references');
+    const firstAssetId = await createAsset();
+    const secondAssetId = await createAsset();
+    const secondAsset = await env.DB.prepare('SELECT object_key FROM assets WHERE id = ?')
+      .bind(secondAssetId)
+      .first<{ object_key: string }>();
+    expect(secondAsset).not.toBeNull();
+    await env.ASSETS.put(secondAsset!.object_key, 'retained asset');
+
+    const firstContent: TiptapDocument = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'assetImage', attrs: { assetId: firstAssetId, alt: 'Screenshot' } },
+            { type: 'attachment', attrs: { assetId: secondAssetId, filename: 'notes.txt' } },
+            { type: 'assetImage', attrs: { assetId: firstAssetId, alt: 'Duplicate' } },
+          ],
+        },
+      ],
+    };
+
+    const firstSave = await request(`/api/private/pages/${page.id}/content`, {
+      body: JSON.stringify({ baseRevision: page.revision, content: firstContent }),
+      method: 'PUT',
+    });
+    expect(firstSave.status).toBe(200);
+
+    const firstReferences = await env.DB.prepare(
+      'SELECT asset_id FROM page_assets WHERE page_id = ? ORDER BY asset_id',
+    )
+      .bind(page.id)
+      .all<{ asset_id: string }>();
+    expect(firstReferences.results.map((row) => row.asset_id).sort()).toEqual(
+      [firstAssetId, secondAssetId].sort(),
+    );
+
+    const secondContent: TiptapDocument = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [{ type: 'assetImage', attrs: { assetId: firstAssetId, alt: 'Kept' } }],
+        },
+      ],
+    };
+    const secondSave = await request(`/api/private/pages/${page.id}/content`, {
+      body: JSON.stringify({ baseRevision: 2, content: secondContent }),
+      method: 'PUT',
+    });
+    expect(secondSave.status).toBe(200);
+
+    const secondReferences = await env.DB.prepare(
+      'SELECT asset_id FROM page_assets WHERE page_id = ?',
+    )
+      .bind(page.id)
+      .all<{ asset_id: string }>();
+    expect(secondReferences.results).toEqual([{ asset_id: firstAssetId }]);
+    await expect(
+      env.DB.prepare('SELECT id FROM assets WHERE id = ?').bind(secondAssetId).first(),
+    ).resolves.toEqual({ id: secondAssetId });
+    await expect(env.ASSETS.head(secondAsset!.object_key)).resolves.not.toBeNull();
+  });
+
+  it('keeps references stable when a stale content save races with a confirmed save', async () => {
+    const page = await createPage('Asset conflict');
+    const assetId = await createAsset();
+    const content: TiptapDocument = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [{ type: 'assetImage', attrs: { assetId, alt: 'Current' } }],
+        },
+      ],
+    };
+
+    const currentSave = await request(`/api/private/pages/${page.id}/content`, {
+      body: JSON.stringify({ baseRevision: page.revision, content }),
+      method: 'PUT',
+    });
+    expect(currentSave.status).toBe(200);
+
+    const staleSave = await request(`/api/private/pages/${page.id}/content`, {
+      body: JSON.stringify({ baseRevision: page.revision, content: { type: 'doc', content: [] } }),
+      method: 'PUT',
+    });
+    expect(staleSave.status).toBe(409);
+
+    const references = await env.DB.prepare('SELECT asset_id FROM page_assets WHERE page_id = ?')
+      .bind(page.id)
+      .all<{ asset_id: string }>();
+    expect(references.results).toEqual([{ asset_id: assetId }]);
+  });
+
+  it('preserves documents with deleted or unavailable assets for readable recovery', async () => {
+    const page = await createPage('Missing asset');
+    const deletedAssetId = await createAsset('2026-09-13T00:00:00.000Z');
+    const unavailableAssetId = crypto.randomUUID();
+    const content: TiptapDocument = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'assetImage', attrs: { assetId: deletedAssetId, alt: 'Deleted image' } },
+            { type: 'attachment', attrs: { assetId: unavailableAssetId, filename: 'missing.txt' } },
+          ],
+        },
+      ],
+    };
+
+    const response = await request(`/api/private/pages/${page.id}/content`, {
+      body: JSON.stringify({ baseRevision: page.revision, content }),
+      method: 'PUT',
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ page: { content, revision: 2 } });
+
+    const references = await env.DB.prepare('SELECT asset_id FROM page_assets WHERE page_id = ?')
+      .bind(page.id)
+      .all<{ asset_id: string }>();
+    expect(references.results).toEqual([{ asset_id: deletedAssetId }]);
   });
 
   it('generates unique slugs and positions children after their siblings', async () => {

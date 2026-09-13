@@ -479,6 +479,29 @@ export function validateTiptapDocument(value: unknown): DocumentValidationIssue[
   return issues;
 }
 
+export function collectAssetIds(document: TiptapDocument) {
+  const assetIds = new Set<string>();
+
+  const visit = (node: TiptapNode) => {
+    if (node.type === 'assetImage' || node.type === 'attachment') {
+      const assetId = node.attrs?.assetId;
+      if (typeof assetId === 'string') {
+        assetIds.add(assetId);
+      }
+    }
+
+    for (const child of node.content ?? []) {
+      visit(child);
+    }
+  };
+
+  for (const node of document.content) {
+    visit(node);
+  }
+
+  return [...assetIds];
+}
+
 export const tiptapDocumentSchema = z.custom<TiptapDocument>(
   (value) => validateTiptapDocument(value).length === 0,
   { message: 'The document contains unsupported or invalid content.' },

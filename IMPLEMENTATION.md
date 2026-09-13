@@ -1,10 +1,10 @@
 # Dovari – Implementierungsstatus und Phasenplan
 
 **Dieses Dokument ist die kanonische Quelle für den aktuellen Implementierungsstand.**  
-**Letzte Aktualisierung:** 12. September 2026
-**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen, P06 abgeschlossen, P07 abgeschlossen, P08 abgeschlossen, P09 abgeschlossen, P10 abgeschlossen, P11 abgeschlossen, P12 abgeschlossen
+**Letzte Aktualisierung:** 13. September 2026
+**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen, P06 abgeschlossen, P07 abgeschlossen, P08 abgeschlossen, P09 abgeschlossen, P10 abgeschlossen, P11 abgeschlossen, P12 abgeschlossen, P13 abgeschlossen
 **Aktuelle Phase:** keine
-**Nächste Phase:** P13 – Asset-Referenzen und robuste Fehlerpfade
+**Nächste Phase:** P14 – D1 FTS5 und Search API
 
 ## 1. Zweck
 
@@ -102,8 +102,8 @@ Ist die Phase nicht fertig, bleibt sie `IN PROGRESS`. Bei einem echten externen 
 | P10 | Editor | Autosave, Konflikte und Draft Recovery | `DONE` | Autosave-Queue, Retry/Backoff, Konfliktoberfläche, IndexedDB-Drafts und Recovery umgesetzt und verifiziert |
 | P11 | Assets | R2 Asset API | `DONE` | Streaming-Upload, R2-/D1-Rollback, sichere Auslieferung, Conditional Requests, Range und Soft Delete umgesetzt und verifiziert |
 | P12 | Assets | Screenshot Paste und Drag & Drop | `DONE` | Tiptap FileHandler, gemeinsame XHR-Uploadpipeline mit Fortschritt, Retry/Remove, maximal drei parallelen Uploads, Asset-Nodes und positionsstabile Einfügung umgesetzt und verifiziert |
-| P13 | Assets | Asset-Referenzen und robuste Fehlerpfade | `NEXT` | – |
-| P14 | Suche | D1 FTS5 und Search API | `PLANNED` | – |
+| P13 | Assets | Asset-Referenzen und robuste Fehlerpfade | `DONE` | Atomare `page_assets`-Synchronisation, robuste Darstellung fehlender Assets, R2-Erhalt und Race-Tests umgesetzt und verifiziert |
+| P14 | Suche | D1 FTS5 und Search API | `NEXT` | – |
 | P15 | Suche | Command Palette und Tastenkürzel | `PLANNED` | – |
 | P16 | Wiki Links | Wiki Links und Backlinks | `PLANNED` | – |
 | P17 | Export | Markdown- und ZIP-Export | `PLANNED` | – |
@@ -625,7 +625,7 @@ Hier werden während einer Phase gefundene Aufgaben notiert, die nicht zu ihrem 
 
 | ID | Entdeckt in | Beschreibung | Zielphase | Status |
 |---|---|---|---|---|
-| P12-1 | P12 | Ein Upload, dessen Decoration vor Abschluss durch eine Dokumentänderung verloren geht, kann bis zur Referenzsynchronisation unreferenziert bleiben | P13 | OFFEN |
+| P12-1 | P12 | Ein Upload, dessen Decoration vor Abschluss durch eine Dokumentänderung verloren geht, kann bis zur Referenzsynchronisation unreferenziert bleiben | P13 | ERLEDIGT |
 
 ## 8. Kurzprotokoll
 
@@ -646,6 +646,7 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 | 2026-09-12 | P10 | Seitenbezogener Autosave-Zustandsautomat mit 750-ms-Debounce, genau einer laufenden Anfrage, Retry/Backoff für transiente Fehler, sichtbaren Save-/Fehler-/Konfliktzuständen, IndexedDB-Drafts, Reload-Recovery und `beforeunload`-Warnung umgesetzt | `npm run typecheck`, `npm test` (39 Tests), `npm run lint`, `npm run format:check`, `npm run build`, `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | Content-Saves verwenden weiterhin optimistische Revisionen; automatisches Merge und echtes Offline Editing bleiben außerhalb des Scopes; P11 ist `NEXT` |
 | 2026-09-12 | P11 | Private R2-Asset-API mit 25-MiB-Streaming-Upload, Dateinamen-/MIME-/Magic-Byte-Prüfung, UUID-Keys, D1-Metadaten-Rollback, ETag-/Range-Download und Soft Delete umgesetzt | `npm run ci` (44 Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | R2 bleibt privat; SVG/HTML werden abgewiesen und physische Garbage Collection sowie Editorintegration bleiben gemäß Scope P13 bzw. P12 vorbehalten; P12 ist `NEXT` |
 | 2026-09-12 | P12 | Tiptap FileHandler für Screenshot-Paste und Drop mit gemeinsamer XHR-Uploadpipeline, Fortschritt, Retry/Remove, maximal drei parallelen Uploads sowie `assetImage`-/`attachment`-Nodes umgesetzt | `npm run ci` (53 Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | Blob-URLs und Uploadstatus bleiben außerhalb von `content_json`; Referenz- und Race-Aufräumung aus P12-1 ist P13-Scope; P13 ist `NEXT` |
+| 2026-09-13 | P13 | Content-Saves synchronisieren `page_assets` atomar aus dem validierten Tiptap-Dokument; entfernte Assets bleiben in D1/R2 erhalten; fehlende oder gelöschte Referenzen werden im Editor verständlich dargestellt; Upload-/Save-/Seitenwechsel-Rennen sind abgesichert | `npm run ci` (Format-Check, Lint, Typecheck, 59 Vitest-Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | Physische Garbage Collection bleibt bewusst späterer Folgearbeit vorbehalten; P14 ist `NEXT` |
 
 ## 9. Regeln zur Pflege dieses Dokuments
 

@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import type { AssetResponse } from '../../../../shared/assets';
 import type { TiptapDocument } from '../../../../shared/pages';
 import { AssetUploadError, type UploadAsset } from '../../assets/api';
 import { PageEditor } from './PageEditor';
@@ -81,6 +82,7 @@ const documentWithAssets: TiptapDocument = {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -117,6 +119,34 @@ describe('PageEditor', () => {
     expect(attachment?.getAttribute('href')).toBe(`/api/private/assets/${assetId}/content`);
     expect(attachment?.textContent).toContain('notes.txt');
     expect(JSON.stringify(documentWithAssets)).not.toContain('blob:');
+  });
+
+  it('shows a readable fallback when an inline asset cannot be loaded', async () => {
+    render(<PageEditor content={documentWithAssets} />);
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    const image = editor.querySelector('.asset-image-node');
+    expect(image).not.toBeNull();
+
+    fireEvent.error(image!);
+
+    const fallback = await screen.findByText('Image unavailable: A screenshot');
+    expect(fallback.hidden).toBe(false);
+    expect(image?.getAttribute('data-dovari-asset-status')).toBe('missing');
+  });
+
+  it('marks a missing attachment without breaking the surrounding document', async () => {
+    const fetchAsset = vi.fn().mockResolvedValue({ ok: false, status: 404 });
+    vi.stubGlobal('fetch', fetchAsset);
+    render(<PageEditor content={documentWithAssets} />);
+
+    const fallback = await screen.findByText('Attachment unavailable: notes.txt');
+    expect(fallback.hidden).toBe(false);
+    expect(fetchAsset).toHaveBeenCalledWith(
+      `/api/private/assets/${assetId}/content`,
+      expect.objectContaining({ method: 'HEAD' }),
+    );
+    expect(screen.getByRole('textbox', { name: 'Page content' }).textContent).toContain('Before');
   });
 
   it('uploads a pasted screenshot and inserts one asset image without a temporary URL', async () => {
@@ -159,6 +189,57 @@ describe('PageEditor', () => {
     });
     expect(JSON.stringify(serialized)).not.toContain('blob:');
     expect(editor.querySelector('.asset-upload-decoration')).toBeNull();
+  });
+
+  it('does not insert an upload that finishes after the page changes', async () => {
+    const onChange = vi.fn();
+    let resolveUpload!: (asset: AssetResponse) => void;
+    const uploadAsset = vi.fn<UploadAsset>(
+      () =>
+        new Promise((resolve) => {
+          resolveUpload = resolve;
+        }),
+    );
+    const view = render(
+      <PageEditor
+        content={{ type: 'doc', content: [{ type: 'paragraph' }] }}
+        onChange={onChange}
+        pageId="44444444-4444-4444-8444-444444444444"
+        uploadAsset={uploadAsset}
+      />,
+    );
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [new File(['png bytes'], 'screenshot.png', { type: 'image/png' })],
+        getData: () => '',
+      },
+    });
+    await waitFor(() => expect(uploadAsset).toHaveBeenCalledOnce());
+
+    view.rerender(
+      <PageEditor
+        content={{ type: 'doc', content: [{ type: 'paragraph' }] }}
+        onChange={onChange}
+        pageId="55555555-5555-4555-8555-555555555555"
+        uploadAsset={uploadAsset}
+      />,
+    );
+    await screen.findByRole('textbox', { name: 'Page content' });
+
+    resolveUpload({
+      contentUrl: `/api/private/assets/${assetId}/content`,
+      filename: 'screenshot.png',
+      id: assetId,
+      mimeType: 'image/png',
+      sizeBytes: 128,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(view.container.querySelector('.asset-image-node')).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('uploads a dropped non-image file as an attachment at the drop position', async () => {

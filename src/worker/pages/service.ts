@@ -1,5 +1,6 @@
 import {
   derivePlainText,
+  collectAssetIds,
   estimatePageRowBytes,
   emptyDocument,
   MAX_PAGE_ROW_BYTES,
@@ -296,6 +297,7 @@ export class PageService {
       contentJson,
       contentText,
       updatedAt,
+      assetIds: collectAssetIds(input.content),
     });
     if (changes < 1) {
       const latest = await this.repository.findById(id);
