@@ -16,15 +16,27 @@ import {
   type UpdatePageContentRequest,
   type UpdatePageRequest,
 } from '../../shared/pages';
+import type {
+  PageRevisionDetail,
+  PageRevisionSummary,
+  PermanentDeleteRequest,
+  PermanentDeleteResponse,
+  RestorePageRequest,
+  TrashPage,
+} from '../../shared/recovery';
 import { PageError } from './errors';
+import { encodeRecoveryCursor } from './recovery';
 import {
   PageRepository,
   type PageLinkRecord,
   type PageRecord,
+  type PageRevisionRecord,
+  type RecoveryCursor,
   type PageTreeUpdate,
 } from './repository';
 
 const MAX_SLUG_ATTEMPTS = 1_000;
+const REVISION_WINDOW_MS = 10 * 60 * 1_000;
 
 function isConstraintError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
@@ -72,6 +84,18 @@ function pageConflict(current: PageRecord) {
   });
 }
 
+function pageNotDeleted() {
+  return new PageError(422, 'PAGE_NOT_DELETED', 'The page is not in the trash.');
+}
+
+function pageAlreadyDeleted() {
+  return new PageError(409, 'PAGE_ALREADY_DELETED', 'The page is already in the trash.');
+}
+
+function revisionNotFound() {
+  return new PageError(404, 'REVISION_NOT_FOUND', 'The page revision was not found.');
+}
+
 function toSummary(page: PageRecord): PageSummary {
   return {
     id: page.id,
@@ -110,8 +134,68 @@ function toDetail(page: PageRecord): PageDetail {
   };
 }
 
+function toTrashPage(page: PageRecord): TrashPage {
+  if (page.deletedAt === null) {
+    throw new PageError(500, 'INTERNAL_ERROR', 'Internal server error.');
+  }
+
+  return {
+    deletedAt: page.deletedAt,
+    id: page.id,
+    parentId: page.parentId,
+    revision: page.revision,
+    title: page.title,
+    updatedAt: page.updatedAt,
+  };
+}
+
+function toRevisionSummary(revision: PageRevisionRecord): PageRevisionSummary {
+  return {
+    createdAt: revision.createdAt,
+    id: revision.id,
+    pageId: revision.pageId,
+    sourceRevision: revision.sourceRevision,
+    title: revision.title,
+    trigger: revision.trigger,
+  };
+}
+
+function parseRevisionContent(revision: PageRevisionRecord): TiptapDocument {
+  let value: unknown;
+  try {
+    value = JSON.parse(revision.contentJson) as unknown;
+  } catch {
+    throw new PageError(500, 'INTERNAL_ERROR', 'Internal server error.');
+  }
+
+  const parsed = tiptapDocumentSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new PageError(500, 'INTERNAL_ERROR', 'Internal server error.');
+  }
+
+  return parsed.data;
+}
+
 export class PageService {
   constructor(private readonly repository: PageRepository) {}
+
+  private snapshot(
+    page: PageRecord,
+    trigger: 'interval' | 'delete' | 'restore',
+    createdAt: string,
+  ) {
+    return {
+      createdAt,
+      id: crypto.randomUUID(),
+      intervalCutoff:
+        trigger === 'interval'
+          ? new Date(Date.parse(createdAt) - REVISION_WINDOW_MS).toISOString()
+          : undefined,
+      pageId: page.id,
+      sourceRevision: page.revision,
+      trigger,
+    } as const;
+  }
 
   private async normalizeSiblings(parentId: string | null, siblings?: PageRecord[]) {
     const currentSiblings = siblings ?? (await this.repository.listActiveChildren(parentId));
@@ -148,6 +232,52 @@ export class PageService {
   async list(): Promise<PageSummary[]> {
     const pages = await this.repository.listActive();
     return pages.map(toSummary);
+  }
+
+  async listTrash(cursor: RecoveryCursor | null, limit: number) {
+    const rows = await this.repository.listDeleted(cursor, limit + 1);
+    const pages = rows.slice(0, limit).map(toTrashPage);
+    const lastPage = pages.at(-1);
+    const nextCursor =
+      rows.length > limit && lastPage?.deletedAt
+        ? encodeRecoveryCursor({ id: lastPage.id, timestamp: lastPage.deletedAt })
+        : null;
+
+    return { nextCursor, pages };
+  }
+
+  async listPageRevisions(pageId: string, cursor: RecoveryCursor | null, limit: number) {
+    const page = await this.repository.findById(pageId, true);
+    if (!page) {
+      throw pageNotFound();
+    }
+
+    const rows = await this.repository.listRevisions(pageId, cursor, limit + 1);
+    const revisions = rows.slice(0, limit).map(toRevisionSummary);
+    const lastRevision = revisions.at(-1);
+    const nextCursor =
+      rows.length > limit && lastRevision
+        ? encodeRecoveryCursor({ id: lastRevision.id, timestamp: lastRevision.createdAt })
+        : null;
+
+    return { nextCursor, revisions };
+  }
+
+  async getPageRevision(pageId: string, revisionId: string): Promise<PageRevisionDetail> {
+    const page = await this.repository.findById(pageId, true);
+    if (!page) {
+      throw pageNotFound();
+    }
+
+    const revision = await this.repository.findRevision(pageId, revisionId);
+    if (!revision) {
+      throw revisionNotFound();
+    }
+
+    return {
+      ...toRevisionSummary(revision),
+      content: parseRevisionContent(revision),
+    };
   }
 
   async searchWikiLinks(query: string, limit: number): Promise<PageSummary[]> {
@@ -254,13 +384,24 @@ export class PageService {
       slug = current.slug;
     }
 
+    if (title === current.title && slug === current.slug) {
+      return toDetail(current);
+    }
+
     const updatedAt = timestamp(current.updatedAt);
+    const snapshot =
+      title === current.title ? undefined : this.snapshot(current, 'interval', updatedAt);
     try {
-      const changes = await this.repository.updateMetadata(id, input.baseRevision, {
-        title,
-        slug,
-        updatedAt,
-      });
+      const changes = await this.repository.updateMetadata(
+        id,
+        input.baseRevision,
+        {
+          title,
+          slug,
+          updatedAt,
+        },
+        snapshot,
+      );
       if (changes < 1) {
         const latest = await this.repository.findById(id);
         if (!latest) {
@@ -287,8 +428,15 @@ export class PageService {
     if (!current) {
       throw pageNotFound();
     }
+    if (current.revision !== input.baseRevision) {
+      throw pageConflict(current);
+    }
 
     const contentJson = JSON.stringify(input.content);
+    if (contentJson === current.contentJson) {
+      return toDetail(current);
+    }
+
     const contentText = derivePlainText(input.content);
     const updatedAt = timestamp(current.updatedAt);
     const estimatedBytes = estimatePageRowBytes({
@@ -327,13 +475,18 @@ export class PageService {
       createdAt: updatedAt,
     }));
 
-    const changes = await this.repository.updateContent(id, input.baseRevision, {
-      contentJson,
-      contentText,
-      updatedAt,
-      assetIds: collectAssetIds(input.content),
-      wikiLinks,
-    });
+    const changes = await this.repository.updateContent(
+      id,
+      input.baseRevision,
+      {
+        contentJson,
+        contentText,
+        updatedAt,
+        assetIds: collectAssetIds(input.content),
+        wikiLinks,
+      },
+      this.snapshot(current, 'interval', updatedAt),
+    );
     if (changes < 1) {
       const latest = await this.repository.findById(id);
       if (!latest) {
@@ -495,6 +648,9 @@ export class PageService {
   async delete(id: string, input?: DeletePageRequest): Promise<PageDetail> {
     const current = await this.repository.findById(id);
     if (!current) {
+      if (await this.repository.findById(id, true)) {
+        throw pageAlreadyDeleted();
+      }
       throw pageNotFound();
     }
     if (input?.baseRevision !== undefined && current.revision !== input.baseRevision) {
@@ -507,7 +663,12 @@ export class PageService {
     if (!siblings.some((page) => page.id === current.id)) {
       throw new PageError(500, 'INTERNAL_ERROR', 'Internal server error.');
     }
-    const changes = await this.repository.softDelete(id, baseRevision, deletedAt);
+    const changes = await this.repository.softDelete(
+      id,
+      baseRevision,
+      deletedAt,
+      this.snapshot(current, 'delete', deletedAt),
+    );
     if (changes < 1) {
       const latest = await this.repository.findById(id);
       if (!latest) {
@@ -525,5 +686,184 @@ export class PageService {
       throw new PageError(500, 'INTERNAL_ERROR', 'Internal server error.');
     }
     return toDetail(deleted);
+  }
+
+  async restoreDeletedPage(id: string, input: RestorePageRequest): Promise<PageDetail> {
+    const current = await this.repository.findById(id, true);
+    if (!current) {
+      throw pageNotFound();
+    }
+    if (current.deletedAt === null) {
+      throw pageNotDeleted();
+    }
+    if (current.revision !== input.baseRevision) {
+      throw pageConflict(current);
+    }
+
+    const parentId =
+      current.parentId !== null && (await this.repository.hasActiveParent(current.parentId))
+        ? current.parentId
+        : null;
+    const siblings = await this.repository.listActiveChildren(parentId);
+    const updatedAt = timestamp(current.updatedAt);
+    const changes = await this.repository.restoreDeleted(
+      id,
+      input.baseRevision,
+      parentId,
+      siblings.length,
+      updatedAt,
+      this.snapshot(current, 'restore', updatedAt),
+    );
+    if (changes < 1) {
+      const latest = await this.repository.findById(id, true);
+      if (!latest) {
+        throw pageNotFound();
+      }
+      throw pageConflict(latest);
+    }
+
+    await this.normalizeSiblings(parentId);
+    const restored = await this.repository.findById(id);
+    if (!restored) {
+      throw new PageError(500, 'INTERNAL_ERROR', 'Internal server error.');
+    }
+    return toDetail(restored);
+  }
+
+  async restorePageRevision(
+    pageId: string,
+    revisionId: string,
+    input: RestorePageRequest,
+  ): Promise<PageDetail> {
+    const current = await this.repository.findById(pageId, true);
+    if (!current) {
+      throw pageNotFound();
+    }
+    if (current.deletedAt !== null) {
+      throw pageNotDeleted();
+    }
+    if (current.revision !== input.baseRevision) {
+      throw pageConflict(current);
+    }
+
+    const revision = await this.repository.findRevision(pageId, revisionId);
+    if (!revision) {
+      throw revisionNotFound();
+    }
+
+    const content = parseRevisionContent(revision);
+    const contentJson = JSON.stringify(content);
+    const contentText = derivePlainText(content);
+    const updatedAt = timestamp(current.updatedAt);
+    const estimatedBytes = estimatePageRowBytes({
+      id: current.id,
+      title: revision.title,
+      slug: current.slug,
+      contentJson,
+      contentText,
+      parentId: current.parentId,
+      position: current.position,
+      revision: current.revision + 1,
+      createdAt: current.createdAt,
+      updatedAt,
+    });
+
+    if (estimatedBytes > MAX_PAGE_ROW_BYTES) {
+      throw new PageError(
+        413,
+        'PAGE_TOO_LARGE',
+        'This page is too large. Split it into smaller pages.',
+        { maxBytes: MAX_PAGE_ROW_BYTES },
+      );
+    }
+
+    const baseSlug = slugifyPageTitle(revision.title);
+    const slug = await this.uniqueSlug(baseSlug, pageId);
+    const linkReferences = collectWikiLinkReferences(content);
+    const activeTargetIds = await this.repository.findActiveIds(
+      linkReferences.flatMap((link) => (link.targetPageId === null ? [] : [link.targetPageId])),
+    );
+    const wikiLinks: PageLinkRecord[] = linkReferences.map((link) => ({
+      ...link,
+      id: crypto.randomUUID(),
+      targetPageId:
+        link.targetPageId !== null && activeTargetIds.has(link.targetPageId)
+          ? link.targetPageId
+          : null,
+      createdAt: updatedAt,
+    }));
+
+    try {
+      const changes = await this.repository.restoreRevision(
+        pageId,
+        input.baseRevision,
+        {
+          assetIds: collectAssetIds(content),
+          contentJson,
+          contentText,
+          slug,
+          title: revision.title,
+          updatedAt,
+          wikiLinks,
+        },
+        this.snapshot(current, 'restore', updatedAt),
+      );
+      if (changes < 1) {
+        const latest = await this.repository.findById(pageId, true);
+        if (!latest) {
+          throw pageNotFound();
+        }
+        throw pageConflict(latest);
+      }
+    } catch (error) {
+      if (isConstraintError(error)) {
+        throw new PageError(409, 'SLUG_CONFLICT', 'A page with this slug already exists.');
+      }
+      throw error;
+    }
+
+    const restored = await this.repository.findById(pageId);
+    if (!restored) {
+      throw new PageError(500, 'INTERNAL_ERROR', 'Internal server error.');
+    }
+    return toDetail(restored);
+  }
+
+  async permanentlyDeletePage(
+    id: string,
+    input: PermanentDeleteRequest,
+  ): Promise<PermanentDeleteResponse> {
+    const current = await this.repository.findById(id, true);
+    if (!current) {
+      throw pageNotFound();
+    }
+    if (current.deletedAt === null) {
+      throw pageNotDeleted();
+    }
+    if (current.revision !== input.baseRevision) {
+      throw pageConflict(current);
+    }
+    if (current.title !== input.confirmationTitle) {
+      throw new PageError(
+        422,
+        'CONFIRMATION_MISMATCH',
+        'The page title confirmation is incorrect.',
+      );
+    }
+
+    const changes = await this.repository.permanentDelete(id, input.baseRevision);
+    if (changes < 1) {
+      const latest = await this.repository.findById(id, true);
+      if (!latest) {
+        throw pageNotFound();
+      }
+      throw pageConflict(latest);
+    }
+
+    if (current.parentId !== null) {
+      await this.normalizeSiblings(current.parentId);
+    }
+    await this.normalizeSiblings(null);
+    return { deleted: true, pageId: id };
   }
 }

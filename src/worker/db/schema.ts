@@ -126,6 +126,33 @@ export const pageLinks = sqliteTable(
   ],
 );
 
+export const pageRevisions = sqliteTable(
+  'page_revisions',
+  {
+    id: text('id').primaryKey(),
+    pageId: text('page_id').notNull(),
+    sourceRevision: integer('source_revision').notNull(),
+    title: text('title').notNull(),
+    contentJson: text('content_json').notNull(),
+    trigger: text('trigger').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('page_revisions_page_created').on(table.pageId, desc(table.createdAt), desc(table.id)),
+    check('page_revisions_source_revision_positive', sql`${table.sourceRevision} > 0`),
+    check(
+      'page_revisions_trigger_allowed',
+      sql`${table.trigger} IN ('interval', 'delete', 'restore')`,
+    ),
+    check('page_revisions_title_length', sql`length(${table.title}) BETWEEN 1 AND 200`),
+    foreignKey({
+      columns: [table.pageId],
+      foreignColumns: [pages.id],
+      name: 'page_revisions_page_id_fkey',
+    }).onDelete('cascade'),
+  ],
+);
+
 export type Page = typeof pages.$inferSelect;
 export type NewPage = typeof pages.$inferInsert;
 export type Asset = typeof assets.$inferSelect;
@@ -134,3 +161,5 @@ export type PageAsset = typeof pageAssets.$inferSelect;
 export type NewPageAsset = typeof pageAssets.$inferInsert;
 export type PageLink = typeof pageLinks.$inferSelect;
 export type NewPageLink = typeof pageLinks.$inferInsert;
+export type PageRevision = typeof pageRevisions.$inferSelect;
+export type NewPageRevision = typeof pageRevisions.$inferInsert;

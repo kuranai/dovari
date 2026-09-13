@@ -15,9 +15,16 @@ import {
   WIKI_LINK_SEARCH_DEFAULT_LIMIT,
   WIKI_LINK_SEARCH_MAX_RESULTS,
 } from '../../shared/pages';
+import {
+  RECOVERY_DEFAULT_LIMIT,
+  RECOVERY_MAX_LIMIT,
+  permanentDeleteRequestSchema,
+  restorePageRequestSchema,
+} from '../../shared/recovery';
 import { apiError } from '../middleware/security';
 import type { WorkerApp } from '../types';
 import { PageError } from './errors';
+import { decodeRecoveryCursor } from './recovery';
 import { PageRepository } from './repository';
 import { PageService } from './service';
 
@@ -107,6 +114,39 @@ function pageId(context: Context<WorkerApp>) {
   return parsed.data;
 }
 
+function revisionId(context: Context<WorkerApp>) {
+  const id = context.req.param('revisionId');
+  const parsed = pageIdSchema.safeParse(id);
+  if (!parsed.success) {
+    throw new PageError(400, 'INVALID_REQUEST', 'The revision id is invalid.');
+  }
+  return parsed.data;
+}
+
+function parseRecoveryListRequest(context: Context<WorkerApp>) {
+  const rawLimit = context.req.query('limit');
+  if (rawLimit !== undefined && !/^\d+$/u.test(rawLimit)) {
+    throw new PageError(400, 'INVALID_REQUEST', 'The recovery list limit is invalid.');
+  }
+
+  const parsedLimit = rawLimit === undefined ? RECOVERY_DEFAULT_LIMIT : Number(rawLimit);
+  if (!Number.isSafeInteger(parsedLimit) || parsedLimit < 1) {
+    throw new PageError(400, 'INVALID_REQUEST', 'The recovery list limit is invalid.');
+  }
+
+  const rawCursor = context.req.query('cursor');
+  if (rawCursor === undefined) {
+    return { cursor: null, limit: Math.min(parsedLimit, RECOVERY_MAX_LIMIT) };
+  }
+
+  const cursor = decodeRecoveryCursor(rawCursor);
+  if (cursor === null) {
+    throw new PageError(400, 'INVALID_REQUEST', 'The recovery list cursor is invalid.');
+  }
+
+  return { cursor, limit: Math.min(parsedLimit, RECOVERY_MAX_LIMIT) };
+}
+
 function parseWikiLinkSearchRequest(context: Context<WorkerApp>) {
   const rawQuery = context.req.query('q') ?? '';
   const containsControlCharacters = [...rawQuery].some((character) => {
@@ -153,6 +193,56 @@ export function registerPageRoutes(app: Hono<WorkerApp>) {
       context.header('Cache-Control', 'no-store');
       const input = parseWikiLinkSearchRequest(context);
       return context.json({ pages: await service.searchWikiLinks(input.query, input.limit) });
+    }),
+  );
+
+  app.get('/api/private/trash', (context) =>
+    withPageErrors(context, async (service) => {
+      context.header('Cache-Control', 'no-store');
+      const input = parseRecoveryListRequest(context);
+      return context.json(await service.listTrash(input.cursor, input.limit));
+    }),
+  );
+
+  app.post('/api/private/pages/:id/restore', (context) =>
+    withPageErrors(context, async (service) => {
+      const input = await parseJsonBody(context, restorePageRequestSchema);
+      const page = await service.restoreDeletedPage(pageId(context), input);
+      return context.json({ page });
+    }),
+  );
+
+  app.delete('/api/private/pages/:id/permanent', (context) =>
+    withPageErrors(context, async (service) => {
+      const input = await parseJsonBody(context, permanentDeleteRequestSchema);
+      const result = await service.permanentlyDeletePage(pageId(context), input);
+      return context.json(result);
+    }),
+  );
+
+  app.get('/api/private/pages/:id/revisions', (context) =>
+    withPageErrors(context, async (service) => {
+      context.header('Cache-Control', 'no-store');
+      const input = parseRecoveryListRequest(context);
+      return context.json(
+        await service.listPageRevisions(pageId(context), input.cursor, input.limit),
+      );
+    }),
+  );
+
+  app.get('/api/private/pages/:id/revisions/:revisionId', (context) =>
+    withPageErrors(context, async (service) => {
+      context.header('Cache-Control', 'no-store');
+      const revision = await service.getPageRevision(pageId(context), revisionId(context));
+      return context.json({ revision });
+    }),
+  );
+
+  app.post('/api/private/pages/:id/revisions/:revisionId/restore', (context) =>
+    withPageErrors(context, async (service) => {
+      const input = await parseJsonBody(context, restorePageRequestSchema);
+      const page = await service.restorePageRevision(pageId(context), revisionId(context), input);
+      return context.json({ page });
     }),
   );
 

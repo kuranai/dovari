@@ -159,7 +159,6 @@ export function CommandPalette({
   onClose,
   onCreatePage,
   onOpenPage,
-  onPlaceholderAction,
   onThemeToggle,
 }: CommandPaletteProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -255,17 +254,17 @@ export function CommandPalette({
         },
       },
       {
-        description: 'Workspace settings will be available in a later phase.',
+        description: 'Review deleted pages and recovery options.',
         id: 'settings',
         keywords: ['preferences', 'settings', 'configuration'],
         label: 'Go to settings',
         onSelect: () => {
-          onPlaceholderAction('Settings are not available yet.');
+          onOpenPage('/app/settings/trash');
           onClose();
         },
       },
     ],
-    [canCreatePage, isCreating, onClose, onCreatePage, onThemeToggle, onPlaceholderAction],
+    [canCreatePage, isCreating, onClose, onCreatePage, onOpenPage, onThemeToggle],
   );
 
   const normalizedQuery = normalizeSearchQuery(query).toLocaleLowerCase();

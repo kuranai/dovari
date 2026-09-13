@@ -268,3 +268,58 @@ test('supports discoverable safe links and wiki-link navigation by mouse and key
   await page.getByRole('button', { name: 'Delete page' }).click();
   await expect(page.getByRole('heading', { name: 'Start with one useful page.' })).toBeVisible();
 });
+
+test('supports delete undo, Trash restore, and revision restore', async ({ page }) => {
+  const title = `Recovery page ${Date.now()}`;
+
+  await page.goto('/app');
+  await page.getByRole('button', { name: /New page/ }).click();
+  await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible();
+  const pageUrl = page.url();
+
+  await page.getByLabel('Edit title').fill(title);
+  await page.getByLabel('Edit title').press('Enter');
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rename page' })).toBeVisible();
+  const editor = page.getByRole('textbox', { name: 'Page content' });
+  await editor.click();
+  await page.keyboard.type('Recoverable content');
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Delete page' }).click();
+  await expect(page).toHaveURL('/app');
+  await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible();
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(page).toHaveURL(pageUrl);
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Delete page' }).click();
+  await expect(page).toHaveURL('/app');
+  await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible();
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL('/app/settings/trash');
+  const trashItem = page.locator('.trash-item').filter({ hasText: title });
+  await expect(trashItem).toBeVisible();
+  await trashItem.getByRole('button', { name: 'Restore' }).click();
+  await expect(page).toHaveURL(pageUrl);
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Version history' }).click();
+  const history = page.getByRole('dialog', { name: 'Version history' });
+  await history.locator('.revision-list-item').filter({ hasText: title }).first().click();
+  await expect(history.getByRole('button', { name: 'Restore this version' })).toBeVisible();
+  await history.getByRole('button', { name: 'Restore this version' }).click();
+  await expect(page.locator('h1.page-title-heading')).toHaveAttribute('aria-label', title);
+
+  await page.getByRole('button', { name: 'Delete page' }).click();
+  await expect(page).toHaveURL('/app');
+  await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible();
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL('/app/settings/trash');
+  const finalTrashItem = page.locator('.trash-item').filter({ hasText: title });
+  await finalTrashItem.getByRole('button', { name: 'Delete permanently' }).click();
+  const confirmation = page.getByRole('form', { name: `Permanently delete ${title}` });
+  await confirmation.getByLabel(/Type .* to confirm/).fill(title);
+  await confirmation.getByRole('button', { name: 'Confirm permanent delete' }).click();
+  await expect(finalTrashItem).toHaveCount(0);
+});

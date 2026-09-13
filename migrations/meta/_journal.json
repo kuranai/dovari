@@ -29,6 +29,13 @@
       "when": 1789285478000,
       "tag": "0003_pages_fts_update_order",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1789323411599,
+      "tag": "0004_page_revisions",
+      "breakpoints": true
     }
   ]
 }

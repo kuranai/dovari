@@ -227,6 +227,14 @@ export function pageErrorMessage(error: unknown, fallback: string) {
       return 'This page changed elsewhere. Reload it before trying again.';
     case 'PAGE_NOT_FOUND':
       return 'This page no longer exists.';
+    case 'PAGE_NOT_DELETED':
+      return 'This page is not in the trash.';
+    case 'PAGE_ALREADY_DELETED':
+      return 'This page is already in the trash.';
+    case 'CONFIRMATION_MISMATCH':
+      return 'Type the page title exactly to delete it permanently.';
+    case 'REVISION_NOT_FOUND':
+      return 'That version is no longer available.';
     case 'SLUG_CONFLICT':
       return 'That page name is already in use. Choose another name.';
     case 'PAGE_CYCLE':

@@ -11,6 +11,7 @@ import {
 import { Link } from 'react-router-dom';
 
 import type { PageDetail, PageSummary } from '../../../shared/pages';
+import { RevisionHistory } from '../recovery/RevisionHistory';
 import { fetchBacklinks, fetchPage, pageErrorMessage, updatePageTitle } from './api';
 import { usePageAutosave, type AutosaveSnapshot } from './editor/autosave';
 
@@ -454,8 +455,11 @@ function PageDetailContent({
   onPageUpdated: (page: PageDetail) => void;
 }) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [editorResetKey, setEditorResetKey] = useState(0);
   const [isTitleSaving, setIsTitleSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const historyTriggerRef = useRef<HTMLButtonElement>(null);
 
   async function handleDelete() {
     setIsDeleting(true);
@@ -473,6 +477,17 @@ function PageDetailContent({
     onPageUpdated(updatedPage);
   }
 
+  function handleRevisionRestored(updatedPage: PageDetail) {
+    setError(null);
+    setEditorResetKey((currentKey) => currentKey + 1);
+    onPageUpdated(updatedPage);
+  }
+
+  function closeHistory() {
+    setIsHistoryOpen(false);
+    window.setTimeout(() => historyTriggerRef.current?.focus({ preventScroll: true }), 0);
+  }
+
   return (
     <article className="page-detail">
       <header className="page-detail-header">
@@ -483,7 +498,16 @@ function PageDetailContent({
             page={page}
           />
         </div>
-        <div className="page-actions">
+        <div aria-label="Page actions" className="page-actions" role="group">
+          <button
+            className="button button-secondary"
+            disabled={isDeleting || isTitleSaving}
+            onClick={() => setIsHistoryOpen(true)}
+            ref={historyTriggerRef}
+            type="button"
+          >
+            Version history
+          </button>
           <button
             className="button button-danger"
             disabled={isDeleting || isTitleSaving}
@@ -500,12 +524,16 @@ function PageDetailContent({
         </p>
       ) : null}
       <PageContentEditor
+        key={`${page.id}-${editorResetKey}`}
         onNavigateToPage={onNavigateToPage}
         onPageCreated={onPageCreated}
         onPageUpdated={onPageUpdated}
         page={page}
       />
       <Backlinks pageId={page.id} />
+      {isHistoryOpen ? (
+        <RevisionHistory onClose={closeHistory} onRestored={handleRevisionRestored} page={page} />
+      ) : null}
     </article>
   );
 }

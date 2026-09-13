@@ -27,8 +27,10 @@ import {
   fetchPages,
   pageErrorMessage,
 } from '../features/pages/api';
+import { restoreDeletedPage } from '../features/recovery/api';
 import { PageTree } from '../features/pages/PageTree';
 import { PageView } from '../features/pages/PageView';
+import { TrashPage } from '../features/recovery/TrashPage';
 import { CommandPalette } from '../features/search/CommandPalette';
 import { ThemeControl } from './ThemeControl';
 import { ThemeProvider, useTheme } from './theme';
@@ -321,6 +323,9 @@ function Sidebar({
         >
           {isExporting ? 'Preparing export…' : 'Export Markdown + ZIP'}
         </button>
+        <Link className="sidebar-settings-link" to="/app/settings/trash">
+          Settings
+        </Link>
         <p className="sidebar-note">A quiet place for useful things.</p>
       </div>
     </aside>
@@ -336,6 +341,9 @@ function Workspace() {
   const [isExporting, setIsExporting] = useState(false);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [undoPage, setUndoPage] = useState<PageDetail | null>(null);
+  const [undoError, setUndoError] = useState<string | null>(null);
+  const [isUndoing, setIsUndoing] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const paletteReturnFocusRef = useRef<HTMLElement | null>(null);
   const paletteTriggerRef = useRef<HTMLButtonElement>(null);
@@ -482,6 +490,13 @@ function Workspace() {
   }, [closeSidebar, location.pathname]);
 
   useEffect(() => {
+    if (location.pathname.startsWith('/app/settings')) {
+      setUndoPage(null);
+      setUndoError(null);
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
     function handleGlobalShortcut(event: KeyboardEvent) {
       if (event.key === 'Escape' && isSidebarOpen) {
         event.preventDefault();
@@ -515,12 +530,36 @@ function Workspace() {
 
   const deletePage = useCallback(
     async (page: PageDetail) => {
-      await deletePageRequest(page.id, page.revision);
+      const response = await deletePageRequest(page.id, page.revision);
       setPages((currentPages) => currentPages.filter((currentPage) => currentPage.id !== page.id));
+      setUndoPage(response.page);
+      setUndoError(null);
       navigate('/app', { replace: true });
     },
     [navigate],
   );
+
+  const undoDelete = useCallback(async () => {
+    if (undoPage === null || isUndoing) {
+      return;
+    }
+
+    setIsUndoing(true);
+    setUndoError(null);
+    try {
+      const response = await restoreDeletedPage(undoPage.id, undoPage.revision);
+      setPages((currentPages) => [
+        ...currentPages.filter((page) => page.id !== response.page.id),
+        response.page,
+      ]);
+      setUndoPage(null);
+      navigate(workspacePath(response.page.id));
+    } catch (error: unknown) {
+      setUndoError(pageErrorMessage(error, 'The page could not be restored.'));
+    } finally {
+      setIsUndoing(false);
+    }
+  }, [isUndoing, navigate, undoPage]);
 
   const refreshPages = useCallback(async () => {
     await loadPages();
@@ -611,6 +650,22 @@ function Workspace() {
           </button>
         </div>
       ) : null}
+      {undoPage ? (
+        <div aria-live="polite" className="workspace-undo-notice" role="status">
+          <span>
+            <strong>{undoPage.title}</strong> moved to Trash.
+            {undoError ? <small role="alert"> {undoError}</small> : null}
+          </span>
+          <button
+            className="button button-secondary"
+            disabled={isUndoing}
+            onClick={() => void undoDelete()}
+            type="button"
+          >
+            {isUndoing ? 'Restoring…' : 'Undo'}
+          </button>
+        </div>
+      ) : null}
       <div className="app-workspace">
         <Sidebar
           closeButtonRef={sidebarCloseRef}
@@ -657,6 +712,7 @@ export function AppRoutes() {
       <Route element={<Workspace />} path="/app">
         <Route element={<WorkspaceLanding />} index />
         <Route element={<PageRoute />} path="pages/:pageId" />
+        <Route element={<TrashPage />} path="settings/trash" />
       </Route>
       <Route element={<Navigate replace to="/app" />} path="/" />
       <Route element={<Navigate replace to="/app" />} path="*" />
