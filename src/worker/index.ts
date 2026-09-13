@@ -9,6 +9,7 @@ import {
 import { classifyPath, isApiPath } from './routing';
 import { registerAssetRoutes } from './assets/routes';
 import { registerPageRoutes } from './pages/routes';
+import { registerSearchRoutes } from './search/routes';
 import type { WorkerApp } from './types';
 
 async function checkBindings(env: WorkerApp['Bindings']) {
@@ -45,6 +46,7 @@ export function createApp() {
 
   registerPageRoutes(app);
   registerAssetRoutes(app);
+  registerSearchRoutes(app);
 
   app.all('*', async (c) => {
     const pathname = new URL(c.req.url).pathname;

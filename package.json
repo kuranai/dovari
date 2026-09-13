@@ -17,6 +17,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
     "types:generate": "wrangler types --env-interface CloudflareBindings",
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
+    "db:fts:rebuild": "node scripts/fts-maintenance.mjs rebuild",
+    "db:fts:integrity": "node scripts/fts-maintenance.mjs integrity",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
