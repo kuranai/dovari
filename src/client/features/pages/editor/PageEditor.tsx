@@ -2,22 +2,30 @@ import { useEffect, useMemo, useRef } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 
 import type { TiptapDocument } from '../../../../shared/pages';
+import type { UploadAsset } from '../../assets/api';
 import { EditorToolbar } from './EditorToolbar';
 import {
   createPageEditorExtensions,
   safeEditorDocument,
   serializeEditorDocument,
 } from './editorExtensions';
+import { AssetUploadController } from './assetUpload';
 
 export interface PageEditorProps {
   content: TiptapDocument;
   onChange?: (content: TiptapDocument) => void;
+  pageId?: string;
+  uploadAsset?: UploadAsset;
 }
 
-export function PageEditor({ content, onChange }: PageEditorProps) {
+export function PageEditor({ content, onChange, pageId, uploadAsset }: PageEditorProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
-  const extensions = useMemo(() => createPageEditorExtensions(), []);
+  const assetUpload = useMemo(
+    () => new AssetUploadController({ pageId, upload: uploadAsset }),
+    [pageId, uploadAsset],
+  );
+  const extensions = useMemo(() => createPageEditorExtensions({ assetUpload }), [assetUpload]);
   const initialContent = useMemo(() => safeEditorDocument(content), [content]);
   const editor = useEditor(
     {
@@ -40,8 +48,10 @@ export function PageEditor({ content, onChange }: PageEditorProps) {
         }
       },
     },
-    [],
+    [extensions],
   );
+
+  useEffect(() => () => assetUpload.dispose(), [assetUpload]);
 
   useEffect(() => {
     if (!editor) {

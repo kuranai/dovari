@@ -12,3 +12,15 @@ export interface AssetResponse {
   sizeBytes: number;
   contentUrl: string;
 }
+
+export const assetResponseSchema = z
+  .object({
+    id: assetIdSchema,
+    filename: z.string().min(1).max(MAX_ASSET_FILENAME_LENGTH),
+    mimeType: z.string().min(1).max(255),
+    sizeBytes: z.number().int().nonnegative().max(MAX_ASSET_SIZE_BYTES),
+    contentUrl: z.string().min(1),
+  })
+  .strict();
+
+export const assetResponseEnvelopeSchema = z.object({ asset: assetResponseSchema }).strict();

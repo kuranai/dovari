@@ -1,9 +1,16 @@
 import type { Extensions } from '@tiptap/core';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { Placeholder } from '@tiptap/extensions';
+import { FileHandler } from '@tiptap/extension-file-handler';
 import StarterKit from '@tiptap/starter-kit';
 
 import { validateTiptapDocument, type TiptapDocument } from '../../../../shared/pages';
+import { Attachment, AssetImage } from './assetNodes';
+import { AssetUploadController, createAssetUploadExtension } from './assetUpload';
+
+export interface PageEditorExtensionOptions {
+  assetUpload?: AssetUploadController;
+}
 
 const supportedNodeTypes = new Set([
   'doc',
@@ -19,6 +26,8 @@ const supportedNodeTypes = new Set([
   'horizontalRule',
   'hardBreak',
   'codeBlock',
+  'assetImage',
+  'attachment',
 ]);
 
 const supportedMarkTypes = new Set(['bold', 'italic', 'strike', 'code', 'link']);
@@ -83,8 +92,8 @@ export function isAllowedLinkHref(value: string) {
   }
 }
 
-export function createPageEditorExtensions(): Extensions {
-  return [
+export function createPageEditorExtensions(options: PageEditorExtensionOptions = {}): Extensions {
+  const extensions: Extensions = [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
       link: {
@@ -107,7 +116,23 @@ export function createPageEditorExtensions(): Extensions {
       placeholder: 'Start writing…',
       showOnlyCurrent: false,
     }),
+    AssetImage,
+    Attachment,
   ];
+
+  if (options.assetUpload) {
+    extensions.push(
+      createAssetUploadExtension(options.assetUpload),
+      FileHandler.configure({
+        consumePasteEvent: true,
+        onDrop: (editor, files, position) =>
+          options.assetUpload?.handleDrop(editor, files, position),
+        onPaste: (editor, files) => options.assetUpload?.handlePaste(editor, files),
+      }),
+    );
+  }
+
+  return extensions;
 }
 
 export function serializeEditorDocument(value: unknown): TiptapDocument | null {

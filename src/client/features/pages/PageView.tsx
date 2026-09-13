@@ -311,7 +311,7 @@ function PageContentEditor({
           </p>
         }
       >
-        <PageEditor content={content} onChange={handleContentChange} />
+        <PageEditor content={content} onChange={handleContentChange} pageId={page.id} />
       </Suspense>
       <details className="content-json">
         <summary>View current document JSON</summary>

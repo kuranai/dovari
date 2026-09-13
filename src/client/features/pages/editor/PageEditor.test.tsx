@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { TiptapDocument } from '../../../../shared/pages';
+import { AssetUploadError, type UploadAsset } from '../../assets/api';
 import { PageEditor } from './PageEditor';
 
 const documentWithFormatting: TiptapDocument = {
@@ -61,6 +62,23 @@ const documentWithFormatting: TiptapDocument = {
   ],
 };
 
+const assetId = '11111111-1111-4111-8111-111111111111';
+
+const documentWithAssets: TiptapDocument = {
+  type: 'doc',
+  content: [
+    {
+      type: 'paragraph',
+      content: [
+        { type: 'text', text: 'Before ' },
+        { type: 'assetImage', attrs: { assetId, alt: 'A screenshot', title: 'Capture' } },
+        { type: 'text', text: ' and ' },
+        { type: 'attachment', attrs: { assetId, filename: 'notes.txt', title: 'Notes' } },
+      ],
+    },
+  ],
+};
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -85,6 +103,169 @@ describe('PageEditor', () => {
     expect(editor.querySelector('a')?.getAttribute('href')).toBe('https://example.com');
     expect(container.querySelector('script')).toBeNull();
     expect(container.innerHTML).not.toContain('dangerously');
+  });
+
+  it('renders persisted asset nodes from their asset ids', async () => {
+    render(<PageEditor content={documentWithAssets} />);
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    const image = editor.querySelector('.asset-image-node');
+    const attachment = editor.querySelector('.asset-attachment-node');
+
+    expect(image?.getAttribute('src')).toBe(`/api/private/assets/${assetId}/content`);
+    expect(image?.getAttribute('alt')).toBe('A screenshot');
+    expect(attachment?.getAttribute('href')).toBe(`/api/private/assets/${assetId}/content`);
+    expect(attachment?.textContent).toContain('notes.txt');
+    expect(JSON.stringify(documentWithAssets)).not.toContain('blob:');
+  });
+
+  it('uploads a pasted screenshot and inserts one asset image without a temporary URL', async () => {
+    const onChange = vi.fn();
+    const uploadAsset = vi.fn<UploadAsset>().mockResolvedValue({
+      contentUrl: `/api/private/assets/${assetId}/content`,
+      filename: 'screenshot.png',
+      id: assetId,
+      mimeType: 'image/png',
+      sizeBytes: 128,
+    });
+    render(
+      <PageEditor
+        content={{ type: 'doc', content: [{ type: 'paragraph' }] }}
+        onChange={onChange}
+        pageId="22222222-2222-4222-8222-222222222222"
+        uploadAsset={uploadAsset}
+      />,
+    );
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    const screenshot = new File(['png bytes'], 'screenshot.png', { type: 'image/png' });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [screenshot],
+        getData: () => '',
+      },
+    });
+
+    await waitFor(() => expect(uploadAsset).toHaveBeenCalledOnce());
+    await waitFor(() => expect(editor.querySelector('.asset-image-node')).not.toBeNull());
+
+    expect(uploadAsset.mock.calls[0]?.[1]).toMatchObject({
+      pageId: '22222222-2222-4222-8222-222222222222',
+    });
+    const serialized = onChange.mock.lastCall?.[0] as TiptapDocument;
+    expect(serialized.content[0]?.content).toContainEqual({
+      attrs: { assetId, alt: '', height: null, title: null, width: null },
+      type: 'assetImage',
+    });
+    expect(JSON.stringify(serialized)).not.toContain('blob:');
+    expect(editor.querySelector('.asset-upload-decoration')).toBeNull();
+  });
+
+  it('uploads a dropped non-image file as an attachment at the drop position', async () => {
+    const uploadAsset = vi.fn<UploadAsset>().mockResolvedValue({
+      contentUrl: `/api/private/assets/${assetId}/content`,
+      filename: 'notes.txt',
+      id: assetId,
+      mimeType: 'text/plain',
+      sizeBytes: 20,
+    });
+    render(
+      <PageEditor
+        content={{
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Drop here' }] }],
+        }}
+        uploadAsset={uploadAsset}
+      />,
+    );
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: () => editor,
+    });
+    fireEvent.drop(editor, {
+      clientX: 0,
+      clientY: 0,
+      dataTransfer: {
+        files: [new File(['notes'], 'notes.txt', { type: 'text/plain' })],
+        getData: () => '',
+        types: ['Files'],
+      },
+    });
+
+    await waitFor(() => expect(uploadAsset).toHaveBeenCalledOnce());
+    await waitFor(() => expect(editor.querySelector('.asset-attachment-node')).not.toBeNull());
+    expect(editor.querySelector('.asset-attachment-node')?.textContent).toContain('notes.txt');
+  });
+
+  it('shows an upload error and retries without changing document content', async () => {
+    const onChange = vi.fn();
+    const uploadAsset = vi
+      .fn<UploadAsset>()
+      .mockRejectedValueOnce(
+        new AssetUploadError(415, 'ASSET_MIME_NOT_ALLOWED', 'This file type is not supported.'),
+      )
+      .mockResolvedValueOnce({
+        contentUrl: `/api/private/assets/${assetId}/content`,
+        filename: 'notes.txt',
+        id: assetId,
+        mimeType: 'text/plain',
+        sizeBytes: 20,
+      });
+    render(
+      <PageEditor
+        content={{ type: 'doc', content: [{ type: 'paragraph' }] }}
+        onChange={onChange}
+        pageId="33333333-3333-4333-8333-333333333333"
+        uploadAsset={uploadAsset}
+      />,
+    );
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    const file = new File(['notes'], 'notes.txt', { type: 'text/plain' });
+    fireEvent.paste(editor, {
+      clipboardData: { files: [file], getData: () => '' },
+    });
+
+    const retry = await screen.findByRole('button', { name: 'Retry upload notes.txt' });
+    expect(screen.getByRole('alert').textContent).toContain('This file type is not supported.');
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.click(retry);
+    await waitFor(() => expect(uploadAsset).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(editor.querySelector('.asset-attachment-node')).not.toBeNull());
+    expect(screen.queryByRole('button', { name: 'Retry upload notes.txt' })).toBeNull();
+  });
+
+  it('removes a failed upload decoration without removing editor content', async () => {
+    const uploadAsset = vi
+      .fn<UploadAsset>()
+      .mockRejectedValue(
+        new AssetUploadError(415, 'ASSET_MIME_NOT_ALLOWED', 'This file type is not supported.'),
+      );
+    render(
+      <PageEditor
+        content={{
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Keep this' }] }],
+        }}
+        uploadAsset={uploadAsset}
+      />,
+    );
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [new File(['bad'], 'bad.svg', { type: 'image/svg+xml' })],
+        getData: () => '',
+      },
+    });
+
+    const remove = await screen.findByRole('button', { name: 'Remove failed upload bad.svg' });
+    fireEvent.click(remove);
+    await waitFor(() => expect(editor.querySelector('.asset-upload-decoration')).toBeNull());
+    expect(editor.textContent).toContain('Keep this');
   });
 
   it('serializes a toolbar formatting change and keeps focus in the editor', async () => {

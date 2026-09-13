@@ -901,6 +901,128 @@ kbd {
   border-top: 1px solid #d8d8d0;
 }
 
+.page-editor-content .asset-image-node {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 0 1.05em;
+  border: 1px solid #e4e4dd;
+  border-radius: 8px;
+  background: #f7f7f5;
+}
+
+.page-editor-content .asset-attachment-node {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 1.05em;
+  padding: 9px 12px;
+  border: 1px solid #deded7;
+  border-radius: 8px;
+  color: #5e439c;
+  background: #fafaf7;
+  line-height: 1.3;
+  text-decoration: none;
+  vertical-align: middle;
+}
+
+.page-editor-content .asset-attachment-node:hover {
+  border-color: #cfc2f1;
+  background: #f8f5ff;
+}
+
+.asset-attachment-icon {
+  flex: 0 0 auto;
+}
+
+.asset-attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-upload-decoration {
+  display: inline-flex;
+  max-width: min(100%, 440px);
+  align-items: center;
+  gap: 9px;
+  margin: 3px 0;
+  padding: 7px 9px;
+  border: 1px solid #d9cffa;
+  border-radius: 8px;
+  color: #5e439c;
+  background: #f8f5ff;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  vertical-align: middle;
+}
+
+.asset-upload-decoration.is-failed {
+  border-color: #ead8d5;
+  color: #8f4842;
+  background: #fff8f6;
+}
+
+.asset-upload-preview {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 5px;
+  object-fit: cover;
+}
+
+.asset-upload-details {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.asset-upload-label,
+.asset-upload-error {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-upload-decoration progress {
+  width: 150px;
+  max-width: 100%;
+  height: 5px;
+  accent-color: #7157b0;
+}
+
+.asset-upload-progress {
+  color: #85857a;
+  font-size: 0.7rem;
+}
+
+.asset-upload-error {
+  color: #a04a44;
+  font-size: 0.72rem;
+}
+
+.asset-upload-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.asset-upload-actions button {
+  min-height: 27px;
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: inherit;
+  background: transparent;
+  font-size: 0.7rem;
+  font-weight: 650;
+}
+
+.asset-upload-actions button:hover {
+  border-color: currentColor;
+}
+
 .page-editor-content ul[data-type='taskList'] {
   padding: 0;
   list-style: none;
