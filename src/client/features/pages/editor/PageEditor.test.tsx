@@ -101,10 +101,47 @@ describe('PageEditor', () => {
     expect(editor.querySelector('ul[data-type="taskList"]')?.textContent).toContain('A task');
     expect(editor.querySelector('blockquote')?.textContent).toContain('A quote');
     expect(editor.querySelector('pre code')?.textContent).toContain('const answer = 42;');
+    expect(editor.querySelector('pre code .hljs-keyword')?.textContent).toBe('const');
     expect(editor.querySelector('hr')).toBeTruthy();
     expect(editor.querySelector('a')?.getAttribute('href')).toBe('https://example.com');
     expect(container.querySelector('script')).toBeNull();
     expect(container.innerHTML).not.toContain('dangerously');
+  });
+
+  it('lets the user select the language of a code block and persists it', async () => {
+    const onChange = vi.fn();
+    render(
+      <PageEditor
+        content={{
+          type: 'doc',
+          content: [
+            {
+              type: 'codeBlock',
+              attrs: { language: 'ts' },
+              content: [{ type: 'text', text: 'const answer = 42;' }],
+            },
+          ],
+        }}
+        onChange={onChange}
+      />,
+    );
+
+    const language = await screen.findByRole('combobox', { name: 'Code language' });
+    expect(language.hasAttribute('disabled')).toBe(false);
+    expect(language.querySelector('option:checked')?.textContent).toBe('TypeScript');
+
+    fireEvent.change(language, { target: { value: 'python' } });
+
+    await waitFor(() => {
+      const serialized = onChange.mock.lastCall?.[0] as TiptapDocument;
+      expect(serialized.content[0]?.attrs).toEqual({ language: 'python' });
+    });
+    expect(
+      screen
+        .getByRole('textbox', { name: 'Page content' })
+        .querySelector('code')
+        ?.classList.contains('language-python'),
+    ).toBe(true);
   });
 
   it('renders persisted asset nodes from their asset ids', async () => {

@@ -1,9 +1,11 @@
 import type { Extensions } from '@tiptap/core';
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { Placeholder } from '@tiptap/extensions';
 import { FileHandler } from '@tiptap/extension-file-handler';
 import { Link } from '@tiptap/extension-link';
 import StarterKit from '@tiptap/starter-kit';
+import { common, createLowlight } from 'lowlight';
 
 import { validateTiptapDocument, type TiptapDocument } from '../../../../shared/pages';
 import { Attachment, AssetImage } from './assetNodes';
@@ -34,6 +36,8 @@ const supportedNodeTypes = new Set([
 ]);
 
 const supportedMarkTypes = new Set(['bold', 'italic', 'strike', 'code', 'link']);
+
+const lowlight = createLowlight(common);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -106,10 +110,12 @@ const DovariLink = Link.extend({
 export function createPageEditorExtensions(options: PageEditorExtensionOptions = {}): Extensions {
   const extensions: Extensions = [
     StarterKit.configure({
+      codeBlock: false,
       heading: { levels: [1, 2, 3] },
       link: false,
       underline: false,
     }),
+    CodeBlockLowlight.configure({ lowlight }),
     DovariLink.configure({
       autolink: true,
       enableClickSelection: true,

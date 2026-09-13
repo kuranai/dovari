@@ -28,6 +28,7 @@
     "deploy": "npm run db:migrate:remote && npm run build && wrangler deploy"
   },
   "dependencies": {
+    "@tiptap/extension-code-block-lowlight": "^3.31.3",
     "@tiptap/extension-file-handler": "^3.31.3",
     "@tiptap/extension-link": "^3.31.3",
     "@tiptap/extension-list": "^3.31.3",
@@ -37,6 +38,7 @@
     "@tiptap/starter-kit": "^3.31.3",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.13.7",
+    "lowlight": "^3.3.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.18.3",

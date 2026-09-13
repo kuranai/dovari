@@ -56,8 +56,6 @@ function PageLoadError({ message, onRetry }: { message: string; onRetry: () => v
   );
 }
 
-const TITLE_SAVE_DEBOUNCE_MS = 750;
-
 function PageTitleEditor({
   page,
   onSaved,
@@ -72,7 +70,6 @@ function PageTitleEditor({
   const [isFallbackOpen, setIsFallbackOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastServerTitleRef = useRef(page.title);
   const latestPageRef = useRef(page);
   const titleRef = useRef(page.title);
@@ -88,13 +85,6 @@ function PageTitleEditor({
     onSavingChange(nextIsSaving);
   }
 
-  function clearScheduledSave() {
-    if (debounceRef.current !== null) {
-      clearTimeout(debounceRef.current);
-      debounceRef.current = null;
-    }
-  }
-
   useEffect(() => {
     const previousServerTitle = lastServerTitleRef.current;
     lastServerTitleRef.current = page.title;
@@ -104,7 +94,6 @@ function PageTitleEditor({
   }, [page.title]);
 
   const saveTitle = useCallback(async () => {
-    clearScheduledSave();
     if (savingRef.current) {
       return;
     }
@@ -142,41 +131,20 @@ function PageTitleEditor({
     } finally {
       setSaving(false);
       if (saveAgain) {
-        debounceRef.current = setTimeout(() => {
-          debounceRef.current = null;
-          void saveTitleRef.current();
-        }, 0);
+        void saveTitleRef.current();
       }
     }
   }, [onSaved]);
 
   saveTitleRef.current = saveTitle;
 
-  useEffect(() => () => clearScheduledSave(), []);
-
-  function scheduleSave(nextTitle: string) {
-    clearScheduledSave();
-    if (nextTitle.trim().length === 0 || nextTitle.trim() === latestPageRef.current.title) {
-      return;
-    }
-
-    debounceRef.current = setTimeout(() => {
-      debounceRef.current = null;
-      void saveTitleRef.current();
-    }, TITLE_SAVE_DEBOUNCE_MS);
-  }
-
   function handleChange(nextTitle: string) {
     titleRef.current = nextTitle;
     setTitle(nextTitle);
     setError(null);
-    if (!isFallbackOpen) {
-      scheduleSave(nextTitle);
-    }
   }
 
   function handleCancel() {
-    clearScheduledSave();
     const serverTitle = latestPageRef.current.title;
     titleRef.current = serverTitle;
     setTitle(serverTitle);
@@ -185,7 +153,6 @@ function PageTitleEditor({
   }
 
   function openFallback() {
-    clearScheduledSave();
     setIsFallbackOpen(true);
     inputRef.current?.focus();
     inputRef.current?.select();

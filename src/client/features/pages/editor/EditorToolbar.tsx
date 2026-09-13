@@ -2,6 +2,46 @@ import type { MouseEvent, ReactNode } from 'react';
 import type { Editor } from '@tiptap/core';
 import { useEditorState } from '@tiptap/react';
 
+const CODE_BLOCK_LANGUAGES = [
+  ['', 'Auto-detect'],
+  ['plaintext', 'Plain text'],
+  ['bash', 'Bash'],
+  ['c', 'C'],
+  ['cpp', 'C++'],
+  ['csharp', 'C#'],
+  ['css', 'CSS'],
+  ['diff', 'Diff'],
+  ['go', 'Go'],
+  ['graphql', 'GraphQL'],
+  ['xml', 'HTML / XML'],
+  ['java', 'Java'],
+  ['javascript', 'JavaScript'],
+  ['json', 'JSON'],
+  ['kotlin', 'Kotlin'],
+  ['lua', 'Lua'],
+  ['markdown', 'Markdown'],
+  ['php', 'PHP'],
+  ['python', 'Python'],
+  ['r', 'R'],
+  ['ruby', 'Ruby'],
+  ['rust', 'Rust'],
+  ['scss', 'SCSS'],
+  ['sql', 'SQL'],
+  ['swift', 'Swift'],
+  ['typescript', 'TypeScript'],
+  ['yaml', 'YAML'],
+] as const;
+
+function normalizedCodeLanguage(language: unknown) {
+  if (language === 'js') {
+    return 'javascript';
+  }
+  if (language === 'ts') {
+    return 'typescript';
+  }
+  return typeof language === 'string' ? language : '';
+}
+
 interface ToolbarButtonProps {
   active?: boolean;
   children: ReactNode;
@@ -46,6 +86,7 @@ export function EditorToolbar({ editor, onOpenLink, onOpenWikiLink }: EditorTool
       bulletList: currentEditor.isActive('bulletList'),
       code: currentEditor.isActive('code'),
       codeBlock: currentEditor.isActive('codeBlock'),
+      codeLanguage: normalizedCodeLanguage(currentEditor.getAttributes('codeBlock').language),
       heading1: currentEditor.isActive('heading', { level: 1 }),
       heading2: currentEditor.isActive('heading', { level: 2 }),
       heading3: currentEditor.isActive('heading', { level: 3 }),
@@ -168,6 +209,28 @@ export function EditorToolbar({ editor, onOpenLink, onOpenWikiLink }: EditorTool
         >
           Code
         </ToolbarButton>
+        <label className="editor-code-language">
+          <span className="visually-hidden">Code language</span>
+          <select
+            aria-label="Code language"
+            disabled={!active.codeBlock}
+            onChange={(event) =>
+              editor
+                .chain()
+                .focus()
+                .updateAttributes('codeBlock', { language: event.target.value || null })
+                .run()
+            }
+            title={active.codeBlock ? 'Code language' : 'Place the cursor in a code block'}
+            value={active.codeLanguage}
+          >
+            {CODE_BLOCK_LANGUAGES.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
         <ToolbarButton
           label="Divider"
           onClick={() => editor.chain().focus().setHorizontalRule().run()}

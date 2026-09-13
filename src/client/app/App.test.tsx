@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { PageDetail, PageSummary } from '../../shared/pages';
@@ -177,7 +177,16 @@ describe('Dovari app shell', () => {
     render(<App />);
 
     const titleInput = await screen.findByRole('textbox', { name: 'Edit title' });
+    vi.useFakeTimers();
     fireEvent.change(titleInput, { target: { value: 'Document page' } });
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    expect(
+      fetchMock.mock.calls.filter(
+        ([input, init]) =>
+          String(input) === `/api/private/pages/${pageId}` && init?.method === 'PATCH',
+      ),
+    ).toHaveLength(0);
+    vi.useRealTimers();
     fireEvent.blur(titleInput);
 
     expect(await screen.findByRole('heading', { name: 'Document page' })).toBeTruthy();
