@@ -172,3 +172,30 @@ The upload uses `Content-Type` and the percent-encoded `X-Dovari-Filename` heade
 Markdown, ZIP, and generic `application/octet-stream` files are supported up to 25 MiB. SVG and
 HTML are rejected, R2 remains private, and deletion is a metadata-only soft delete until a later
 garbage-collection phase.
+
+## Lossless backup and restore
+
+The Settings area exposes a separate `dovari-backup-v1.zip` workflow. The archive contains
+`backup.json`, active and deleted pages, Tiptap documents, page revisions, and every asset
+including unreferenced or soft-deleted assets. It contains no Access configuration, secrets, or
+Cloudflare resource identifiers. Asset bytes are stored under canonical `assets/` ZIP paths and
+are verified with their declared size and SHA-256 checksum before the download is offered.
+
+Restore validates the archive locally in the browser, then uploads records and assets individually
+through resumable private restore sessions. A restore is accepted only by an empty workspace;
+finalization rechecks that condition immediately before its atomic D1 commit. The browser keeps an
+unfinished session fingerprint in local storage so selecting the same archive after a reload can
+continue it. An explicit cancel removes only that session's staged records and temporary R2
+objects.
+
+The private endpoints are:
+
+```text
+GET    /api/private/backup
+POST   /api/private/restore/sessions
+GET    /api/private/restore/sessions/:id
+PUT    /api/private/restore/sessions/:id/records/:recordType/:recordId
+PUT    /api/private/restore/sessions/:id/assets/:assetId
+POST   /api/private/restore/sessions/:id/finalize
+DELETE /api/private/restore/sessions/:id
+```

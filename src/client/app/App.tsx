@@ -31,6 +31,7 @@ import { restoreDeletedPage } from '../features/recovery/api';
 import { PageTree } from '../features/pages/PageTree';
 import { PageView } from '../features/pages/PageView';
 import { TrashPage } from '../features/recovery/TrashPage';
+import { BackupRestorePage } from '../features/recovery/BackupRestorePage';
 import { CommandPalette } from '../features/search/CommandPalette';
 import { ThemeControl } from './ThemeControl';
 import { ThemeProvider, useTheme } from './theme';
@@ -325,6 +326,9 @@ function Sidebar({
         </button>
         <Link className="sidebar-settings-link" to="/app/settings/trash">
           Settings
+        </Link>
+        <Link className="sidebar-settings-link" to="/app/settings/backup">
+          Backup &amp; restore
         </Link>
         <p className="sidebar-note">A quiet place for useful things.</p>
       </div>
@@ -713,6 +717,7 @@ export function AppRoutes() {
         <Route element={<WorkspaceLanding />} index />
         <Route element={<PageRoute />} path="pages/:pageId" />
         <Route element={<TrashPage />} path="settings/trash" />
+        <Route element={<BackupRestorePage />} path="settings/backup" />
       </Route>
       <Route element={<Navigate replace to="/app" />} path="/" />
       <Route element={<Navigate replace to="/app" />} path="*" />

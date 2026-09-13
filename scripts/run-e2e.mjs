@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
 const varsPath = resolve(process.cwd(), '.dev.vars');
@@ -12,6 +13,9 @@ const localVars = originalVars
   : 'DOVARI_ENV=local\n';
 
 writeFileSync(varsPath, localVars);
+const persistPath = mkdtempSync(resolve(tmpdir(), 'dovari-e2e-'));
+const previousPersistPath = process.env.DOVARI_E2E_PERSIST_PATH;
+process.env.DOVARI_E2E_PERSIST_PATH = persistPath;
 
 let cleanedUp = false;
 function restoreVarsFile() {
@@ -59,7 +63,14 @@ try {
     throw new Error('npm_execpath is required to run the browser tests.');
   }
 
-  const migrationCode = await run(process.execPath, [npmCli, 'run', 'db:migrate:local']);
+  const migrationCode = await run(process.execPath, [
+    npmCli,
+    'run',
+    'db:migrate:local',
+    '--',
+    '--persist-to',
+    persistPath,
+  ]);
   const buildCode = migrationCode === 0 ? await run(process.execPath, [npmCli, 'run', 'build']) : 1;
   const testCode =
     buildCode === 0
@@ -76,4 +87,10 @@ try {
   process.exitCode = testCode;
 } finally {
   restoreVarsFile();
+  if (previousPersistPath === undefined) {
+    delete process.env.DOVARI_E2E_PERSIST_PATH;
+  } else {
+    process.env.DOVARI_E2E_PERSIST_PATH = previousPersistPath;
+  }
+  rmSync(persistPath, { force: true, recursive: true });
 }

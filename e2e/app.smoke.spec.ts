@@ -3,6 +3,57 @@ import { expect, test } from '@playwright/test';
 
 test.describe.configure({ mode: 'serial' });
 
+test('validates and restores a lossless backup after the workspace is emptied', async ({
+  page,
+}, testInfo) => {
+  const title = `Backup roundtrip ${Date.now()}`;
+
+  await page.goto('/app');
+  await page.getByRole('button', { name: /New page/ }).click();
+  await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible();
+  await page.getByLabel('Edit title').fill(title);
+  await page.getByLabel('Edit title').press('Enter');
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+
+  await page.getByRole('link', { name: 'Backup & restore' }).first().click();
+  await expect(page).toHaveURL('/app/settings/backup');
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download Dovari backup' }).click();
+  const download = await downloadPromise;
+  const backupPath = testInfo.outputPath('dovari-backup-v1.zip');
+  await download.saveAs(backupPath);
+
+  await page.getByRole('link', { name: 'Back to pages' }).click();
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  await page.getByRole('button', { name: 'Delete page' }).click();
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL('/app/settings/trash');
+  const trashItem = page.locator('.trash-item').filter({ hasText: title });
+  await trashItem.getByRole('button', { name: 'Delete permanently' }).click();
+  const confirmation = page.getByRole('form', { name: `Permanently delete ${title}` });
+  await confirmation.getByLabel(/Type .* to confirm/).fill(title);
+  await confirmation.getByRole('button', { name: 'Confirm permanent delete' }).click();
+  await expect(trashItem).toHaveCount(0);
+
+  await page.getByRole('link', { name: 'Backup & restore' }).first().click();
+  await page.getByLabel('Select a dovari-backup-v1.zip file').setInputFiles(backupPath);
+  await expect(page.getByRole('heading', { name: 'Validated backup' })).toBeVisible();
+  await page.getByRole('button', { name: 'Start restore' }).click();
+  await expect(page.getByRole('status')).toContainText('Restored 1 pages');
+  await page.getByRole('link', { name: 'Back to pages' }).click();
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Delete page' }).click();
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL('/app/settings/trash');
+  const restoredTrashItem = page.locator('.trash-item').filter({ hasText: title });
+  await restoredTrashItem.getByRole('button', { name: 'Delete permanently' }).click();
+  const restoredConfirmation = page.getByRole('form', { name: `Permanently delete ${title}` });
+  await restoredConfirmation.getByLabel(/Type .* to confirm/).fill(title);
+  await restoredConfirmation.getByRole('button', { name: 'Confirm permanent delete' }).click();
+  await expect(restoredTrashItem).toHaveCount(0);
+});
+
 test('creates, navigates, renames, reloads, and deletes pages', async ({ page }) => {
   const renamedTitle = `E2E page ${Date.now()}`;
 

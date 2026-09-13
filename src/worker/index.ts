@@ -8,6 +8,7 @@ import {
 } from './middleware/security';
 import { classifyPath, isApiPath } from './routing';
 import { registerAssetRoutes } from './assets/routes';
+import { registerBackupRoutes } from './backup/routes';
 import { registerExportRoutes } from './export/routes';
 import { registerPageRoutes } from './pages/routes';
 import { registerSearchRoutes } from './search/routes';
@@ -47,6 +48,7 @@ export function createApp() {
 
   registerPageRoutes(app);
   registerAssetRoutes(app);
+  registerBackupRoutes(app);
   registerExportRoutes(app);
   registerSearchRoutes(app);
 

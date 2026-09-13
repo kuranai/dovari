@@ -132,6 +132,9 @@ export function TrashPage() {
         <Link className="button button-secondary" to="/app">
           Back to pages
         </Link>
+        <Link className="button button-secondary" to="/app/settings/backup">
+          Backup &amp; restore
+        </Link>
       </header>
 
       {actionError ? (

@@ -2,9 +2,9 @@
 
 **Dieses Dokument ist die kanonische Quelle für den aktuellen Implementierungsstand.**  
 **Letzte Aktualisierung:** 13. September 2026
-**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen, P06 abgeschlossen, P07 abgeschlossen, P08 abgeschlossen, P09 abgeschlossen, P10 abgeschlossen, P11 abgeschlossen, P12 abgeschlossen, P13 abgeschlossen, P14 abgeschlossen, P15 abgeschlossen, P16 abgeschlossen, P17 abgeschlossen, P18 abgeschlossen, P19 abgeschlossen, P20 abgeschlossen, P21 abgeschlossen
+**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen, P06 abgeschlossen, P07 abgeschlossen, P08 abgeschlossen, P09 abgeschlossen, P10 abgeschlossen, P11 abgeschlossen, P12 abgeschlossen, P13 abgeschlossen, P14 abgeschlossen, P15 abgeschlossen, P16 abgeschlossen, P17 abgeschlossen, P18 abgeschlossen, P19 abgeschlossen, P20 abgeschlossen, P21 abgeschlossen, P22 abgeschlossen
 **Aktuelle Phase:** keine
-**Nächste Phase:** P22 – Verlustfreies Backup und Restore
+**Nächste Phase:** P23 – Settings, Slash Commands und Alltagsnavigation
 
 ## 1. Zweck
 
@@ -111,8 +111,8 @@ Ist die Phase nicht fertig, bleibt sie `IN PROGRESS`. Bei einem echten externen 
 | P19 | Editor-Polish | Dokumentnahe Editoroberfläche | `DONE` | Direkt bearbeitbarer Titel mit revisionsgeschütztem Save, ruhige Dokumentfläche, integrierte Toolbar-/Save-Status- und Backlink-Anordnung, Debug-JSON entfernt und responsive A11y abgesichert |
 | P20 | Editor-Polish | Link-Erlebnis und Wiki-Link-Auffindbarkeit | `DONE` | Sichere Autolinks/Paste, Link-Popover, sichtbarer Wiki-Link-Picker und Maus-/Tastaturabläufe umgesetzt und verifiziert |
 | P21 | Datensicherheit | Papierkorb und Versionshistorie | `DONE` | `page_revisions`, atomare Snapshots/Retention, Trash-/Revision-APIs, Restore-/Permanent-Delete-Flows, Undo, UI und Accessibility umgesetzt und verifiziert |
-| P22 | Datensicherheit | Verlustfreies Backup und Restore | `NEXT` | – |
-| P23 | Produktreife | Settings, Slash Commands und Alltagsnavigation | `PLANNED` | – |
+| P22 | Datensicherheit | Verlustfreies Backup und Restore | `DONE` | Versioniertes, verlustfreies Backup/Restore mit Manifest, Streaming-ZIP, resumierbaren Restore-Sessions, atomarer Finalisierung, lokaler Validierung und Settings-UI umgesetzt und verifiziert |
+| P23 | Produktreife | Settings, Slash Commands und Alltagsnavigation | `NEXT` | – |
 | P24 | Deployment | Deploy-to-Cloudflare und Version-1-Abnahme | `PLANNED` | – |
 | P25 | Post-V1 | Öffentliche Veröffentlichungen | `PLANNED` | – |
 
@@ -903,6 +903,7 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 | 2026-09-13 | P19 | Dokumentnahe Seitenansicht mit direkt bearbeitbarem Seitentitel, revisionsgeschütztem debounced Title-Save, zugänglichem Rename-Fallback, kompakter Toolbar-/Save-Status-Topbar, reduzierter Dokumentfläche, entferntem Slug-/Debug-JSON und nachgeordneten Backlinks umgesetzt | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 86 Vitest-Tests und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (4 Browser-Tests einschließlich Desktopbreite, Mobile-Overflow und Dokument-Axe) sowie `git diff --check` erfolgreich | Inhalts-Autosave, Draft Recovery, Konfliktaktionen, Asset-/Wiki-Link-Integration und Delete-Aktion bleiben erhalten; P20 ist `NEXT` |
 | 2026-09-13 | P20 | Sichere Web-/E-Mail-Autolinks beim Tippen und Einfügen, revisionssicheres Link-Popover mit Öffnen/Bearbeiten/Entfernen, sichtbarer Wiki-Link-Toolbar-Einstieg mit gemeinsamem Such-/Erstellungs-Picker sowie Maus-/Tastatur-Navigation umgesetzt | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 91 Vitest-Tests und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (5 Browser-Tests einschließlich P20-Link-/Wiki-Link-Smoke) sowie `git diff --check` erfolgreich | Tiptap-Link-Attribute an den bestehenden Dokumentvertrag angeglichen; P21 ist `NEXT` |
 | 2026-09-13 | P21 | Papierkorb und Versionshistorie mit `page_revisions`, atomaren Zeitfenster-/Delete-/Restore-Snapshots, 50er-Retention, cursorbasierten APIs, konfliktgeschütztem Restore/Permanent Delete, Parent-Fallback, Referenz-/FTS-Synchronisation, Undo sowie Trash-/History-UI umgesetzt | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 98 Vitest-Tests und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (6 Browser-Tests einschließlich Delete → Undo, Trash → Restore, Revision → Restore und Axe), `npx --yes -p node@26 node /usr/bin/npm run db:migrate:local`, `npx --yes -p node@26 node /usr/bin/npm run db:fts:integrity`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts` sowie `git diff --check` erfolgreich | R2-Objekte bleiben beim permanenten Löschen erhalten; P22 ist `NEXT` |
+| 2026-09-13 | P22 | Versioniertes, vollständiges `dovari-backup-v1.zip` mit kanonischem Manifest, Seiten-/Revisions-/Asset-Roundtrip, R2-Prüfsummen, resumierbaren und idempotenten Restore-Sessions, Empty-Workspace-Commit, lokaler ZIP-Validierung, Fortschritt/Abbruch und Backup-&-Restore-UI umgesetzt | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 108 Tests in 26 Testdateien und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (7 isolierte Browser-Tests einschließlich Download, lokaler Validierung und Restore), `npx --yes -p node@26 node /usr/bin/npm run db:migrate:local` (keine offenen Migrationen), `npx --yes -p node@26 node /usr/bin/npm run db:fts:integrity`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts` sowie `git diff --check` erfolgreich | Der bestehende Markdown-Export bleibt unverändert; P23 ist `NEXT` |
 
 ## 9. Regeln zur Pflege dieses Dokuments
 

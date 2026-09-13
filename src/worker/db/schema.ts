@@ -153,6 +153,81 @@ export const pageRevisions = sqliteTable(
   ],
 );
 
+export const restoreSessions = sqliteTable(
+  'restore_sessions',
+  {
+    id: text('id').primaryKey(),
+    ownerIdentity: text('owner_identity').notNull(),
+    status: text('status').notNull(),
+    backupVersion: integer('backup_version').notNull(),
+    expectedPages: integer('expected_pages').notNull(),
+    expectedRevisions: integer('expected_revisions').notNull(),
+    expectedAssets: integer('expected_assets').notNull(),
+    expectedBytes: integer('expected_bytes').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    expiresAt: text('expires_at').notNull(),
+  },
+  (table) => [
+    check(
+      'restore_sessions_status_allowed',
+      sql`${table.status} IN ('uploading', 'finalizing', 'failed')`,
+    ),
+    check('restore_sessions_backup_version_supported', sql`${table.backupVersion} = 1`),
+    check('restore_sessions_expected_pages_nonnegative', sql`${table.expectedPages} >= 0`),
+    check('restore_sessions_expected_revisions_nonnegative', sql`${table.expectedRevisions} >= 0`),
+    check('restore_sessions_expected_assets_nonnegative', sql`${table.expectedAssets} >= 0`),
+    check('restore_sessions_expected_bytes_nonnegative', sql`${table.expectedBytes} >= 0`),
+    index('restore_sessions_owner_updated').on(table.ownerIdentity, desc(table.updatedAt)),
+    index('restore_sessions_status').on(table.status),
+  ],
+);
+
+export const restoreSessionRecords = sqliteTable(
+  'restore_session_records',
+  {
+    sessionId: text('session_id').notNull(),
+    recordType: text('record_type').notNull(),
+    recordId: text('record_id').notNull(),
+    payloadJson: text('payload_json').notNull(),
+    sha256: text('sha256').notNull(),
+    uploadedAt: text('uploaded_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.sessionId, table.recordType, table.recordId] }),
+    index('restore_session_records_session').on(table.sessionId, table.recordType),
+    check('restore_session_records_type_allowed', sql`${table.recordType} IN ('page', 'revision')`),
+    foreignKey({
+      columns: [table.sessionId],
+      foreignColumns: [restoreSessions.id],
+      name: 'restore_session_records_session_id_fkey',
+    }).onDelete('cascade'),
+  ],
+);
+
+export const restoreSessionAssets = sqliteTable(
+  'restore_session_assets',
+  {
+    sessionId: text('session_id').notNull(),
+    assetId: text('asset_id').notNull(),
+    objectKey: text('object_key').notNull(),
+    metadataJson: text('metadata_json').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    sha256: text('sha256').notNull(),
+    uploadedAt: text('uploaded_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.sessionId, table.assetId] }),
+    index('restore_session_assets_session').on(table.sessionId),
+    check('restore_session_assets_size_nonnegative', sql`${table.sizeBytes} >= 0`),
+    foreignKey({
+      columns: [table.sessionId],
+      foreignColumns: [restoreSessions.id],
+      name: 'restore_session_assets_session_id_fkey',
+    }).onDelete('cascade'),
+  ],
+);
+
 export type Page = typeof pages.$inferSelect;
 export type NewPage = typeof pages.$inferInsert;
 export type Asset = typeof assets.$inferSelect;
@@ -163,3 +238,9 @@ export type PageLink = typeof pageLinks.$inferSelect;
 export type NewPageLink = typeof pageLinks.$inferInsert;
 export type PageRevision = typeof pageRevisions.$inferSelect;
 export type NewPageRevision = typeof pageRevisions.$inferInsert;
+export type RestoreSession = typeof restoreSessions.$inferSelect;
+export type NewRestoreSession = typeof restoreSessions.$inferInsert;
+export type RestoreSessionRecord = typeof restoreSessionRecords.$inferSelect;
+export type NewRestoreSessionRecord = typeof restoreSessionRecords.$inferInsert;
+export type RestoreSessionAsset = typeof restoreSessionAssets.$inferSelect;
+export type NewRestoreSessionAsset = typeof restoreSessionAssets.$inferInsert;
