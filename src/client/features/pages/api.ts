@@ -179,6 +179,38 @@ export function movePage(id: string, input: MovePageRequest) {
   );
 }
 
+export async function downloadKnowledgeBaseExport() {
+  const response = await fetch('/api/private/export', {
+    headers: { Accept: 'application/zip' },
+  });
+
+  if (!response.ok) {
+    const body = parseJson(await response.text());
+    throw apiErrorFromResponse(
+      response.status,
+      body,
+      response.headers.get('X-Request-ID') ?? undefined,
+    );
+  }
+
+  let blob: Blob;
+  try {
+    blob = await response.blob();
+  } catch {
+    throw new PageApiError(500, 'EXPORT_FAILED', 'The export download could not be completed.');
+  }
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'dovari-export.zip';
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 export function pageErrorMessage(error: unknown, fallback: string) {
   if (!(error instanceof PageApiError)) {
     if (error instanceof TypeError) {

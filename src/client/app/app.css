@@ -436,6 +436,11 @@ summary:focus-visible,
   line-height: 1;
 }
 
+.sidebar-export-button {
+  width: 100%;
+  margin-top: 10px;
+}
+
 kbd {
   margin-left: auto;
   padding: 2px 5px;

@@ -80,6 +80,33 @@ export class AssetRepository {
     return row ? toAssetRecord(row) : null;
   }
 
+  async findActiveByIds(ids: string[]) {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const records = new Map<string, AssetRecord>();
+    for (let offset = 0; offset < ids.length; offset += 900) {
+      const chunk = ids.slice(offset, offset + 900);
+      const placeholders = chunk.map(() => '?').join(', ');
+      const result = await this.db
+        .prepare(
+          `SELECT ${ASSET_COLUMNS}
+           FROM assets
+           WHERE deleted_at IS NULL AND id IN (${placeholders})`,
+        )
+        .bind(...chunk)
+        .all<AssetDatabaseRow>();
+
+      result.results.forEach((row) => records.set(row.id, toAssetRecord(row)));
+    }
+
+    return ids.flatMap((id) => {
+      const record = records.get(id);
+      return record === undefined ? [] : [record];
+    });
+  }
+
   async hasActivePage(id: string) {
     const row = await this.db
       .prepare('SELECT id FROM pages WHERE id = ? AND deleted_at IS NULL')

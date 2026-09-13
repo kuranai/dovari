@@ -2,9 +2,9 @@
 
 **Dieses Dokument ist die kanonische Quelle für den aktuellen Implementierungsstand.**  
 **Letzte Aktualisierung:** 13. September 2026
-**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen, P06 abgeschlossen, P07 abgeschlossen, P08 abgeschlossen, P09 abgeschlossen, P10 abgeschlossen, P11 abgeschlossen, P12 abgeschlossen, P13 abgeschlossen, P14 abgeschlossen, P15 abgeschlossen, P16 abgeschlossen
+**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen, P06 abgeschlossen, P07 abgeschlossen, P08 abgeschlossen, P09 abgeschlossen, P10 abgeschlossen, P11 abgeschlossen, P12 abgeschlossen, P13 abgeschlossen, P14 abgeschlossen, P15 abgeschlossen, P16 abgeschlossen, P17 abgeschlossen
 **Aktuelle Phase:** keine
-**Nächste Phase:** P17 – Markdown- und ZIP-Export
+**Nächste Phase:** P18 – Responsive UI, Dark Mode und Accessibility
 
 ## 1. Zweck
 
@@ -106,8 +106,8 @@ Ist die Phase nicht fertig, bleibt sie `IN PROGRESS`. Bei einem echten externen 
 | P14 | Suche | D1 FTS5 und Search API | `DONE` | Sichere FTS5-Tokenisierung, Prefixsuche, BM25-Titelgewichtung, Snippets, Breadcrumbs, Search API und FTS-Wartungswerkzeuge umgesetzt und verifiziert |
 | P15 | Suche | Command Palette und Tastenkürzel | `DONE` | Zugängliche Command Palette mit Search-Debounce, Tastaturnavigation, stale-response-Schutz, Ergebnisöffnung, Fokuswiederherstellung, Create-New-Page-/Theme-/Settings-Aktionen und Ctrl/Cmd-Shortcuts umgesetzt und verifiziert |
 | P16 | Wiki Links | Wiki Links und Backlinks | `DONE` | Wiki-Link-Node, `[[`-Autocomplete, Page-Erstellung, atomare `page_links`, Navigation und Backlinks umgesetzt und verifiziert |
-| P17 | Export | Markdown- und ZIP-Export | `NEXT` | – |
-| P18 | Produktreife | Responsive UI, Dark Mode und Accessibility | `PLANNED` | – |
+| P17 | Export | Markdown- und ZIP-Export | `DONE` | Deterministischer Markdown-/ZIP-Export mit lokalen Wiki-/Asset-Links, Manifest, R2-Streaming, kollisionssicheren Pfaden, Missing-Asset-Platzhaltern und Download-UI umgesetzt und verifiziert |
+| P18 | Produktreife | Responsive UI, Dark Mode und Accessibility | `NEXT` | – |
 | P19 | Deployment | Deploy-to-Cloudflare und Version-1-Abnahme | `PLANNED` | – |
 | P20 | Post-MVP | Öffentliche Veröffentlichungen | `PLANNED` | – |
 
@@ -650,6 +650,7 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 | 2026-09-13 | P14 | D1-FTS5-Search mit sicherem Token-Quoting, Prefixsuche für das letzte Token, BM25-Titelgewichtung, markierten Snippets, kanonischen URLs, Breadcrumbs, Limits/Leerzuständen und neuer Search API umgesetzt; ein kombinierter Update-Trigger hält den Index auch bei atomaren D1-Batches synchron; Rebuild-/Integrity-Werkzeuge ergänzt | `npm run db:generate`, `npx drizzle-kit check --config drizzle.config.ts`, `npm run db:migrate:local` (Migration und wiederholter Lauf), `npm run db:fts:integrity`, `npm run db:fts:rebuild`, `npm run ci` (66 Vitest-Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | Die Command Palette und Tastenkürzel bleiben gemäß Scope P15 vorbehalten; P15 ist `NEXT` |
 | 2026-09-13 | P15 | Zugängliche Command Palette mit Search-Debounce, stale-response-sicherer Ergebnisliste, Snippet-Segmenten, Tastaturnavigation, Ergebnisöffnung, Fokuswiederherstellung, Create-New-Page-/Theme-/Settings-Aktionen und Ctrl/Cmd-Kürzeln umgesetzt | `npm run ci` (Format-Check, Lint, Typecheck, 69 Vitest-Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | Theme und Einstellungen bleiben als bewusst gekennzeichnete Platzhalter im P15-Scope; P16 ist `NEXT` |
 | 2026-09-13 | P16 | Wiki-Link-Node mit stabilen Page-IDs, `[[`-Autocomplete für Auswahl und Seitenerstellung, Navigation, atomare `page_links`-Ableitung und einfache Backlink-Anzeige umgesetzt | `npm run ci` (Format-Check, Lint, Typecheck, 75 Vitest-Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | Ungelöste Links bleiben sichtbar; Umbenennungen ändern die Zielidentität nicht; P17 ist `NEXT` |
+| 2026-09-13 | P17 | Vollständiger Markdown-/ZIP-Export aktiver Seiten mit deterministischen Hierarchiepfaden, lokalen Wiki-/Asset-Links, Manifest, R2-Streaming, Dateinamenskollisionen, Missing-Asset-Platzhaltern und sichtbarem Download-/Fehlerzustand umgesetzt | `npm run ci` (Format-Check, Lint, Typecheck, 81 Vitest-Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | `content_markdown` bleibt ungespeichert; P18 ist `NEXT` |
 
 ## 9. Regeln zur Pflege dieses Dokuments
 

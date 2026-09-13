@@ -118,6 +118,19 @@ export class PageRepository {
     return result.results.map(toPageRecord);
   }
 
+  async listActiveForExport() {
+    const result = await this.db
+      .prepare(
+        `SELECT ${PAGE_COLUMNS}
+         FROM pages
+         WHERE deleted_at IS NULL
+         ORDER BY id`,
+      )
+      .all<PageDatabaseRow>();
+
+    return result.results.map(toPageRecord);
+  }
+
   async findById(id: string, includeDeleted = false) {
     const deletedClause = includeDeleted ? '' : ' AND deleted_at IS NULL';
     const row = await this.db

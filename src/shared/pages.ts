@@ -787,6 +787,11 @@ const markdownMarkOrder: Record<string, number> = {
   link: 40,
 };
 
+export interface MarkdownRenderOptions {
+  assetPath?: (assetId: string) => string;
+  wikiLinkPath?: (targetPageId: string | null, targetTitle: string) => string | null;
+}
+
 function renderMarkedText(node: TiptapNode) {
   const source = node.text ?? '';
   const marks = [...(node.marks ?? [])].filter((mark) => mark.type !== 'code');
@@ -830,7 +835,7 @@ function renderAssetTitle(title: string | undefined) {
   return title === undefined ? '' : ` "${escapeMarkdownTitle(title)}"`;
 }
 
-function renderInlineMarkdown(node: TiptapNode): string {
+function renderInlineMarkdown(node: TiptapNode, options: MarkdownRenderOptions): string {
   switch (node.type) {
     case 'text':
       return renderMarkedText(node);
@@ -840,27 +845,35 @@ function renderInlineMarkdown(node: TiptapNode): string {
       const assetId = stringAttribute(node, 'assetId') ?? '';
       const alt = stringAttribute(node, 'alt') ?? '';
       const title = stringAttribute(node, 'title');
-      return `![${escapeMarkdownText(alt)}](${renderAssetPath(assetId)}${renderAssetTitle(title)})`;
+      const assetPath = options.assetPath?.(assetId) ?? renderAssetPath(assetId);
+      return `![${escapeMarkdownText(alt)}](${escapeMarkdownLinkDestination(assetPath)}${renderAssetTitle(title)})`;
     }
     case 'attachment': {
       const assetId = stringAttribute(node, 'assetId') ?? '';
       const filename = stringAttribute(node, 'filename') ?? 'Attachment';
       const title = stringAttribute(node, 'title');
-      return `[${escapeMarkdownText(filename)}](${renderAssetPath(assetId)}${renderAssetTitle(title)})`;
+      const assetPath = options.assetPath?.(assetId) ?? renderAssetPath(assetId);
+      return `[${escapeMarkdownText(filename)}](${escapeMarkdownLinkDestination(assetPath)}${renderAssetTitle(title)})`;
     }
     case 'wikiLink': {
       const title = stringAttribute(node, 'targetTitle') ?? '';
-      return `[[${escapeMarkdownText(title)}]]`;
+      const targetPageId = stringAttribute(node, 'targetPageId') ?? null;
+      const wikiLinkPath = options.wikiLinkPath?.(targetPageId, title);
+      return wikiLinkPath === null || wikiLinkPath === undefined
+        ? `[[${escapeMarkdownText(title)}]]`
+        : `[${escapeMarkdownText(title)}](${escapeMarkdownLinkDestination(wikiLinkPath)})`;
     }
     default:
-      return (node.content ?? []).map(renderInlineMarkdown).join('');
+      return (node.content ?? []).map((child) => renderInlineMarkdown(child, options)).join('');
   }
 }
 
-function renderCodeBlock(node: TiptapNode) {
+function renderCodeBlock(node: TiptapNode, options: MarkdownRenderOptions) {
   const code = normalizeLineEndings(
     (node.content ?? [])
-      .map((child) => (child.type === 'text' ? (child.text ?? '') : renderInlineMarkdown(child)))
+      .map((child) =>
+        child.type === 'text' ? (child.text ?? '') : renderInlineMarkdown(child, options),
+      )
       .join(''),
   );
   const longestBacktickRun = Math.max(0, ...(code.match(/`+/g) ?? []).map((run) => run.length));
@@ -870,9 +883,14 @@ function renderCodeBlock(node: TiptapNode) {
   return `${fence}${language}\n${content}${fence}`;
 }
 
-function renderListItem(node: TiptapNode, marker: string, indentation: string) {
+function renderListItem(
+  node: TiptapNode,
+  marker: string,
+  indentation: string,
+  options: MarkdownRenderOptions,
+) {
   const children = node.content ?? [];
-  const firstBlock = children[0] === undefined ? '' : renderBlockMarkdown(children[0]);
+  const firstBlock = children[0] === undefined ? '' : renderBlockMarkdown(children[0], options);
   const firstLines = firstBlock.split('\n');
   const contentIndent = `${indentation}${' '.repeat(marker.length + 1)}`;
   const lines = [`${indentation}${marker} ${firstLines[0] ?? ''}`];
@@ -880,7 +898,7 @@ function renderListItem(node: TiptapNode, marker: string, indentation: string) {
   lines.push(...firstLines.slice(1).map((line) => `${contentIndent}${line}`));
 
   for (const child of children.slice(1)) {
-    const childLines = renderBlockMarkdown(child).split('\n');
+    const childLines = renderBlockMarkdown(child, options).split('\n');
     const nestedIndentation = `${indentation}  `;
     lines.push(...childLines.map((line) => `${nestedIndentation}${line}`));
   }
@@ -888,7 +906,7 @@ function renderListItem(node: TiptapNode, marker: string, indentation: string) {
   return lines.join('\n');
 }
 
-function renderListMarkdown(node: TiptapNode, indentation = '') {
+function renderListMarkdown(node: TiptapNode, options: MarkdownRenderOptions, indentation = '') {
   const children = node.content ?? [];
   const ordered = node.type === 'orderedList';
   const task = node.type === 'taskList';
@@ -903,28 +921,32 @@ function renderListMarkdown(node: TiptapNode, indentation = '') {
         : ordered
           ? `${start + index}.`
           : '-';
-      return renderListItem(child, marker, indentation);
+      return renderListItem(child, marker, indentation, options);
     })
     .join('\n');
 }
 
-function renderBlockMarkdown(node: TiptapNode): string {
+function renderBlockMarkdown(node: TiptapNode, options: MarkdownRenderOptions): string {
   switch (node.type) {
     case 'doc':
-      return (node.content ?? []).map(renderBlockMarkdown).join('\n\n');
+      return (node.content ?? []).map((child) => renderBlockMarkdown(child, options)).join('\n\n');
     case 'paragraph':
-      return (node.content ?? []).map(renderInlineMarkdown).join('');
+      return (node.content ?? []).map((child) => renderInlineMarkdown(child, options)).join('');
     case 'heading': {
       const level = numberAttribute(node, 'level') ?? 1;
-      const content = (node.content ?? []).map(renderInlineMarkdown).join('');
+      const content = (node.content ?? [])
+        .map((child) => renderInlineMarkdown(child, options))
+        .join('');
       return `${'#'.repeat(level)}${content.length > 0 ? ` ${content}` : ''}`;
     }
     case 'bulletList':
     case 'orderedList':
     case 'taskList':
-      return renderListMarkdown(node);
+      return renderListMarkdown(node, options);
     case 'blockquote': {
-      const content = (node.content ?? []).map(renderBlockMarkdown).join('\n\n');
+      const content = (node.content ?? [])
+        .map((child) => renderBlockMarkdown(child, options))
+        .join('\n\n');
       return content
         .split('\n')
         .map((line) => (line.length > 0 ? `> ${line}` : '>'))
@@ -933,22 +955,25 @@ function renderBlockMarkdown(node: TiptapNode): string {
     case 'horizontalRule':
       return '---';
     case 'codeBlock':
-      return renderCodeBlock(node);
+      return renderCodeBlock(node, options);
     case 'assetImage':
     case 'attachment':
     case 'wikiLink':
-      return renderInlineMarkdown(node);
+      return renderInlineMarkdown(node, options);
     default:
-      return (node.content ?? []).map(renderBlockMarkdown).join('\n\n');
+      return (node.content ?? []).map((child) => renderBlockMarkdown(child, options)).join('\n\n');
   }
 }
 
-export function deriveMarkdown(document: TiptapDocument): string {
+export function deriveMarkdown(
+  document: TiptapDocument,
+  options: MarkdownRenderOptions = {},
+): string {
   if (validateTiptapDocument(document).length > 0) {
     throw new Error('Cannot render an invalid Tiptap document.');
   }
 
-  return renderBlockMarkdown(document);
+  return renderBlockMarkdown(document, options);
 }
 
 export interface PageRowSizeInput {

@@ -8,6 +8,7 @@ import {
 } from './middleware/security';
 import { classifyPath, isApiPath } from './routing';
 import { registerAssetRoutes } from './assets/routes';
+import { registerExportRoutes } from './export/routes';
 import { registerPageRoutes } from './pages/routes';
 import { registerSearchRoutes } from './search/routes';
 import type { WorkerApp } from './types';
@@ -46,6 +47,7 @@ export function createApp() {
 
   registerPageRoutes(app);
   registerAssetRoutes(app);
+  registerExportRoutes(app);
   registerSearchRoutes(app);
 
   app.all('*', async (c) => {

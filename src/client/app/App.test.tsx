@@ -292,6 +292,95 @@ describe('Dovari app shell', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 
+  it('downloads a Markdown and ZIP export with visible progress', async () => {
+    let resolveExport!: (value: Response) => void;
+    const exportResponse = new Promise<Response>((resolve) => {
+      resolveExport = resolve;
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      if (String(input) === '/api/private/pages') {
+        return response({ pages: [] });
+      }
+      if (String(input) === '/api/private/export') {
+        return exportResponse;
+      }
+      throw new Error(`Unexpected request: ${String(input)}`);
+    });
+    const createObjectUrl = vi.fn(() => 'blob:export');
+    const revokeObjectUrl = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const originalCreateObjectUrl = URL.createObjectURL;
+    const originalRevokeObjectUrl = URL.revokeObjectURL;
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: createObjectUrl,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: revokeObjectUrl,
+    });
+
+    try {
+      render(<App />);
+      const exportButton = await screen.findByRole('button', {
+        name: 'Export Markdown + ZIP',
+      });
+      fireEvent.click(exportButton);
+
+      expect(
+        (screen.getByRole('button', { name: 'Preparing export…' }) as HTMLButtonElement).disabled,
+      ).toBe(true);
+      resolveExport(
+        new Response(new Blob(['PK']), {
+          headers: { 'Content-Type': 'application/zip' },
+        }),
+      );
+
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Export Markdown + ZIP' })).toBeTruthy(),
+      );
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/private/export',
+        expect.objectContaining({ headers: { Accept: 'application/zip' } }),
+      );
+      expect(createObjectUrl).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(revokeObjectUrl).toHaveBeenCalledWith('blob:export'));
+    } finally {
+      Object.defineProperty(URL, 'createObjectURL', {
+        configurable: true,
+        value: originalCreateObjectUrl,
+      });
+      Object.defineProperty(URL, 'revokeObjectURL', {
+        configurable: true,
+        value: originalRevokeObjectUrl,
+      });
+    }
+  });
+
+  it('shows an actionable export error when the download fails', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(response({ pages: [] }))
+      .mockResolvedValueOnce(
+        response(
+          {
+            error: { code: 'EXPORT_FAILED', message: 'The export could not be prepared.' },
+          },
+          500,
+        ),
+      );
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Export Markdown + ZIP' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Export failed: The export could not be prepared.');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/private/export',
+      expect.objectContaining({ headers: { Accept: 'application/zip' } }),
+    );
+  });
+
   it('opens the command palette from Ctrl+K, supports placeholder actions, and restores focus', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({ pages: [] }));
 

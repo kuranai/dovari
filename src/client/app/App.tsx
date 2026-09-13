@@ -16,6 +16,7 @@ import type { PageDetail, PageSummary } from '../../shared/pages';
 import {
   createPage as createPageRequest,
   deletePage as deletePageRequest,
+  downloadKnowledgeBaseExport,
   fetchPages,
   pageErrorMessage,
 } from '../features/pages/api';
@@ -132,9 +133,11 @@ function PageRoute() {
 }
 
 function Sidebar({
+  isExporting,
   isCreating,
   onCreate,
   onCreateChild,
+  onExport,
   onPageUpdated,
   onPagesChanged,
   pages,
@@ -143,9 +146,11 @@ function Sidebar({
   onRetry,
 }: {
   error: string | null;
+  isExporting: boolean;
   isCreating: boolean;
   onCreate: () => void;
   onCreateChild: (parentId: string) => void;
+  onExport: () => void;
   onPageUpdated: (page: PageSummary) => void;
   onPagesChanged: () => Promise<void>;
   onRetry: () => void;
@@ -202,6 +207,14 @@ function Sidebar({
           {isCreating ? 'Creating page…' : 'New page'}
           <kbd>⌘N</kbd>
         </button>
+        <button
+          className="button button-secondary sidebar-export-button"
+          disabled={isExporting || state !== 'ready'}
+          onClick={onExport}
+          type="button"
+        >
+          {isExporting ? 'Preparing export…' : 'Export Markdown + ZIP'}
+        </button>
         <p className="sidebar-note">A quiet place for useful things.</p>
       </div>
     </aside>
@@ -214,6 +227,7 @@ function Workspace() {
   const [listError, setListError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const paletteReturnFocusRef = useRef<HTMLElement | null>(null);
@@ -347,6 +361,25 @@ function Workspace() {
   const refreshPages = useCallback(async () => {
     await loadPages();
   }, [loadPages]);
+
+  const exportPages = useCallback(async () => {
+    if (isExporting) {
+      return;
+    }
+
+    setIsExporting(true);
+    setActionError(null);
+    try {
+      await downloadKnowledgeBaseExport();
+    } catch (error: unknown) {
+      setActionError(
+        `Export failed: ${pageErrorMessage(error, 'The export could not be downloaded.')}`,
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  }, [isExporting]);
+
   const retryPages = useCallback(() => setReloadKey((value) => value + 1), []);
   const context: WorkspaceOutletContext = {
     actionError,
@@ -402,9 +435,11 @@ function Workspace() {
       <div className="app-workspace">
         <Sidebar
           error={listError}
+          isExporting={isExporting}
           isCreating={isCreating}
           onCreate={() => void createPage(null)}
           onCreateChild={(parentId) => void createPage(parentId)}
+          onExport={() => void exportPages()}
           onPageUpdated={onPageUpdated}
           onPagesChanged={refreshPages}
           onRetry={retryPages}
