@@ -4,7 +4,7 @@
 **Letzte Aktualisierung:** 13. September 2026
 **Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen, P06 abgeschlossen, P07 abgeschlossen, P08 abgeschlossen, P09 abgeschlossen, P10 abgeschlossen, P11 abgeschlossen, P12 abgeschlossen, P13 abgeschlossen, P14 abgeschlossen, P15 abgeschlossen, P16 abgeschlossen, P17 abgeschlossen, P18 abgeschlossen, P19 abgeschlossen, P20 abgeschlossen
 **Aktuelle Phase:** keine
-**Nächste Phase:** P21 – Deploy-to-Cloudflare und Version-1-Abnahme
+**Nächste Phase:** P21 – Papierkorb und Versionshistorie
 
 ## 1. Zweck
 
@@ -110,8 +110,11 @@ Ist die Phase nicht fertig, bleibt sie `IN PROGRESS`. Bei einem echten externen 
 | P18 | Produktreife | Responsive UI, Dark Mode und Accessibility | `DONE` | Theme-Provider, responsive Drawer, Skip-Link, Accessibility-Styles/-Tests und finale Zustände umgesetzt und verifiziert |
 | P19 | Editor-Polish | Dokumentnahe Editoroberfläche | `DONE` | Direkt bearbeitbarer Titel mit revisionsgeschütztem Save, ruhige Dokumentfläche, integrierte Toolbar-/Save-Status- und Backlink-Anordnung, Debug-JSON entfernt und responsive A11y abgesichert |
 | P20 | Editor-Polish | Link-Erlebnis und Wiki-Link-Auffindbarkeit | `DONE` | Sichere Autolinks/Paste, Link-Popover, sichtbarer Wiki-Link-Picker und Maus-/Tastaturabläufe umgesetzt und verifiziert |
-| P21 | Deployment | Deploy-to-Cloudflare und Version-1-Abnahme | `NEXT` | – |
-| P22 | Post-MVP | Öffentliche Veröffentlichungen | `PLANNED` | – |
+| P21 | Datensicherheit | Papierkorb und Versionshistorie | `NEXT` | – |
+| P22 | Datensicherheit | Verlustfreies Backup und Restore | `PLANNED` | – |
+| P23 | Produktreife | Settings, Slash Commands und Alltagsnavigation | `PLANNED` | – |
+| P24 | Deployment | Deploy-to-Cloudflare und Version-1-Abnahme | `PLANNED` | – |
+| P25 | Post-V1 | Öffentliche Veröffentlichungen | `PLANNED` | – |
 
 ## 6. Phasendefinitionen
 
@@ -142,8 +145,11 @@ Damit ein frischer Chat nicht erneut die gesamte Planung laden muss, gelten dies
 | P18 | §§ 3.2, 14.3 und 16 | §§ 25, 26, 41 und 48 |
 | P19 | §§ 3.2, 8.2, 8.3, 14.3 und 16 | §§ 8, 14, 26, 43, 47, 48 und Phase 8 in § 45 |
 | P20 | §§ 8.1, 8.3 und 14.3 | §§ 8, 15, 16, 43, 46 und Phase 9 in § 45 |
-| P21 | §§ 11.2, 12 und 17 | §§ 30, 43, 53 und Phase 10 in § 45 |
-| P22 | §§ 4, 6.5, 7.1, 11 und 17 | §§ 23, 44 und Public Sharing in § 50 |
+| P21 | §§ 6.1, 6.3, 6.5, 7.1, 7.2, 7.5, 8.2 und 14 | §§ 38–40, 43, 46, 53 und Phase 10 in § 45 |
+| P22 | §§ 6.1, 6.2, 6.6, 7.1, 7.3, 7.5, 9.1, 11.3 und 14 | §§ 27–29, 37–38, 43, 46, 53 und Phase 11 in § 45 |
+| P23 | §§ 3.2, 7.5, 8.1, 8.4, 9.2, 10, 14.3 und 16 | §§ 14, 20–21, 26, 41, 43, 46, 48 und Phase 12 in § 45 |
+| P24 | §§ 11.2, 12, 14 und 17 | §§ 30, 43, 46, 53 und Phase 13 in § 45 |
+| P25 | §§ 4, 6.7, 7.1, 11 und 17 | §§ 23, 44, Public Sharing in § 50 und Phase 14 in § 45 |
 
 Zusätzlich wird nur der für die Phase relevante bestehende Code gelesen. Falls eine referenzierte Entscheidung widersprüchlich oder unvollständig ist, wird die Abweichung vor der Implementierung dokumentiert.
 
@@ -648,9 +654,152 @@ bearbeiten und öffnen.
 **Nicht Teil dieser Phase:** Vorschaukarten, Link-Metadatenabruf, Transclusion, Graph View oder
 automatische Seitenerstellung allein durch ausgeschriebene `[[Titel]]`-Texte ohne Auswahl.
 
-### P21 – Deploy-to-Cloudflare und Version-1-Abnahme
+### P21 – Papierkorb und Versionshistorie
 
-**Ziel:** Eine neue Person kann Dovari aus dem öffentlichen Repository sicher installieren.
+**Ziel:** Versehentlich gelöschte oder überschriebene Inhalte lassen sich ohne Datenbankzugriff
+sicher wiederherstellen.
+
+**Scope:**
+
+- Migration und Drizzle-Schema für `page_revisions` exakt nach `TECHNICAL_SPEC.md` § 6.5
+- atomarer Snapshot des vorherigen Titel-/Inhaltsstands vor der ersten erfolgreichen Mutation
+  eines Zehn-Minuten-Fensters sowie garantiert vor Delete und Revisions-Restore
+- Retention der 50 jüngsten Snapshots pro Seite ohne Snapshots fehlgeschlagener oder
+  konfliktbehafteter Mutationen
+- cursorbasierte Trash-, Revisionslisten- und Revisionsdetail-APIs sowie Restore- und
+  Permanent-Delete-APIs aus § 7.5 mit gemeinsamen Zod-Verträgen
+- Revisions-Restore als neue aktuelle Revision mit erneuter Dokumentvalidierung und atomarer
+  Synchronisation von Plaintext, FTS, `page_assets` und `page_links`
+- Trash-Restore zum aktiven früheren Parent oder andernfalls ans Ende der Root-Ebene, jeweils mit
+  normalisierten Geschwisterpositionen
+- permanentes Löschen nur für bereits gelöschte Seiten mit aktueller `baseRevision` und exakter
+  Titelbestätigung; R2-Objekte bleiben erhalten
+- minimale `/app/settings/trash`-Oberfläche, Seitenmenü für Delete und Version History,
+  Revisionsvorschau, Restore-Aktionen und unmittelbares Undo nach Soft Delete
+- verständliche Lade-, Leer-, Konflikt- und Fehlerzustände sowie Tastatur- und Fokusführung
+
+**Akzeptanzkriterien:**
+
+- gelöschte Seiten fehlen weiterhin in Baum, Suche und Wiki-Link-Picker, erscheinen aber im Trash.
+- Restore erhält die Seite samt Inhalt; fehlt der frühere Parent, wird sie als Root-Seite sichtbar.
+- ein wiederhergestellter Snapshot wird als neue höhere Revision gespeichert und erzeugt korrekte
+  Asset-, Link- und Suchableitungen.
+- pro Seite existieren höchstens 50 Snapshots; ein Konflikt verändert weder Seite noch Historie.
+- dauerhaftes Löschen ist außerhalb des Trash und ohne passende Revision plus Titel unmöglich;
+  abhängige D1-Datensätze verschwinden, R2-Objekte nicht.
+- Delete, Undo, Trash und History sind auf Desktop und Smartphone per Maus und Tastatur bedienbar.
+
+**Verifikation:**
+
+- Schema-/Migrationstest einschließlich Foreign Keys und FTS nach Delete/Restore
+- Worker-Integrationstests für Zeitfenster, Retention, alle Konflikte, Parent-Fallback,
+  Referenzableitung und Permanent Delete
+- Clienttests für Menü, Undo, Trash, Vorschau, Restore und Fehlerzustände
+- Browser-E2E für Delete → Undo, Delete → Trash → Restore und Revision → Restore einschließlich Axe
+- vollständiges `npm run ci`, `npm run test:e2e` und `git diff --check`
+
+**Nicht Teil dieser Phase:** Dovari-Backup, Restore einer Installation, Asset-Garbage-Collection,
+automatische zeitgesteuerte Snapshots ohne Mutation oder eine Diff-Ansicht zwischen Revisionen.
+
+### P22 – Verlustfreies Backup und Restore
+
+**Ziel:** Eine leere Dovari-Installation kann aus einem geprüften eigenen Backup ohne Verlust von
+Inhalt, Hierarchie, Historie, Wiki-Links oder Assets wiederhergestellt werden.
+
+**Scope:**
+
+- separates, versioniertes `dovari-backup-v1.zip` nach `TECHNICAL_SPEC.md` § 6.6; der vorhandene
+  menschenlesbare Markdown-Export bleibt unverändert erhalten
+- `backup.json` mit aktiven und gelöschten Pages, stabilen IDs, Tiptap-JSON, Hierarchie,
+  Positionen, Revisionen, Zeitstempeln, `page_revisions` und allen Asset-Metadaten einschließlich
+  unreferenzierter oder soft-gelöschter Assets
+- Streaming der Asset-Dateien mit kanonischen ZIP-Pfaden, Byte-Größen und SHA-256-Prüfsummen;
+  unvollständige oder abweichende R2-Objekte verhindern ein vollständiges Backup
+- Migration und Repository-/Service-Schicht für `restore_sessions`, `restore_session_records` und
+  `restore_session_assets`
+- private Backup- und Restore-Session-APIs aus § 7.5 einschließlich idempotenter Record-/Asset-
+  Uploads, Statusabfrage, Finalisierung und Abbruch
+- Restore ausschließlich in einen leeren Workspace; erneute Empty-Workspace-Prüfung direkt vor
+  dem Commit und höchstens eine aktive Session
+- lokale ZIP-Validierung im Browser, einzelne Uploads mit Fortschritt, Wiederaufnahme und bewusstem
+  Abbruch; keine vollständige Archivpufferung im Worker
+- serverseitige Validierung aller Records, Referenzen, Größen, MIME-Typen, Pfade und Prüfsummen;
+  produktive D1-Daten erst nach erfolgreichen R2-Kopien atomar anlegen
+- Backup-/Restore-Bedienung zunächst im mit P21 eingeführten Settings-Bereich
+
+**Akzeptanzkriterien:**
+
+- ein vollständiges Backup enthält weder Secrets noch Cloudflare-Konfiguration und ist durch
+  Format- und Versionsfelder eindeutig erkennbar.
+- fehlende oder veränderte Assets führen vor dem Download zu `BACKUP_INCOMPLETE`.
+- wiederholte identische Uploads setzen eine Session fort; abweichende Records oder Prüfsummen
+  werden abgelehnt.
+- Finalisierung in einem nicht leeren Workspace oder mit fehlenden Records/Assets verändert keine
+  produktiven Daten.
+- nach erfolgreichem Roundtrip stimmen Page-/Asset-IDs, Inhalte, Hierarchie, Papierkorb,
+  Revisionen, Wiki-Links, FTS-Treffer und Asset-Prüfsummen mit der Quelle überein.
+- Abbruch entfernt ausschließlich Sessiondaten und zugehörige temporäre R2-Objekte.
+
+**Verifikation:**
+
+- Unit-Tests für Manifest, kanonisches JSON, ZIP-Pfade und Prüfsummen
+- Worker-Integrationstests für Session-Lebenszyklus, Idempotenz, Auth-/Origin-Grenzen, Empty-
+  Workspace-Rennen, unvollständige Finalisierung und Rollback
+- Clienttests für Auswahl, Validierung, Fortschritt, Reload-Wiederaufnahme und Abbruch
+- E2E-Roundtrip in eine zweite leere lokale Installation mit Seiten, Hierarchie, gelöschter Seite,
+  Revision, Wiki-Link, Bild und Attachment
+- vollständiges `npm run ci`, `npm run test:e2e` und `git diff --check`
+
+**Nicht Teil dieser Phase:** Markdown-/ZIP-/Obsidian-Fremdimport, Merge in einen nicht leeren
+Workspace, automatische Backups, Cloudflare-Konfigurationsbackup oder Asset-Garbage-Collection.
+
+### P23 – Settings, Slash Commands und Alltagsnavigation
+
+**Ziel:** Die tägliche Bedienung wirkt vollständig und schnell, ohne den kleinen Produktkern mit
+zusätzlichen Organisationssystemen zu überladen.
+
+**Scope:**
+
+- vollständige `/app/settings`-Route statt des P15-Platzhalters mit Navigation zu Theme, Trash,
+  Versionszugriff, Backup und Restore; bestehende Theme-Persistenz bleibt maßgeblich
+- Command-Palette-Aktion „Go to settings“ öffnet die reale Settings-Route
+- Sidebar-Abschnitt mit höchstens fünf aktiven, nach `updatedAt` sortierten zuletzt bearbeiteten
+  Seiten aus den vorhandenen Metadaten, ohne Duplikat der aktuell geöffneten Seite
+- Slash-Command-Palette in einem leeren Absatz mit Filterung, Pfeiltasten, Enter und Escape für
+  Text, Heading 1–3, Bullet List, Ordered List, Checklist, Quote, Inline Code, Code Block, Divider,
+  Wiki Link, Image und File
+- Wiki Link verwendet den bestehenden Picker; Image und File verwenden die bestehende Upload-
+  Pipeline samt Parallelitätsgrenze, Progress, Retry und Remove
+- sichtbare Toolbar als zugänglicher Fallback beibehalten und destruktive Seitenaktionen im
+  Seitenmenü belassen
+- README-Aussagen zum bereits vorhandenen Editor- und Browserworkflow aktualisieren; vollständige
+  Produktions- und Installationsanleitung bleibt P24
+
+**Akzeptanzkriterien:**
+
+- Settings ist direkt, über Command Palette und auf Smartphonebreite erreichbar; keine Aktion ist
+  mehr als „später verfügbar“ gekennzeichnet.
+- Recent Pages aktualisiert sich nach Titel- oder Content-Save, zeigt nur aktive Seiten und öffnet
+  stabile Page-ID-URLs.
+- alle Slash Commands erzeugen ausschließlich bereits erlaubte Tiptap-Nodes beziehungsweise öffnen
+  die bestehenden Wiki-/Asset-Abläufe.
+- Escape hinterlässt das Dokument unverändert; erfolgreicher Befehl entfernt den Slash-Querytext.
+- Toolbar, Autosave, Draft Recovery, Link-Picker und Uploads funktionieren unverändert.
+
+**Verifikation:**
+
+- Clienttests für Settings-Routing, Recent-Sortierung/-Filterung und alle Slash-Command-Zustände
+- bestehende Editor- und Uploadtests plus fokussierte Tests für Wiki-, Bild- und Datei-Kommandos
+- Browser-E2E für Settings, Recent Pages und Slash Commands auf Desktop/Mobile einschließlich Axe
+- vollständiges `npm run ci`, `npm run test:e2e` und `git diff --check`
+
+**Nicht Teil dieser Phase:** Tags, Favoriten, Tabellen, Templates, Daily Notes, Graph View,
+Block-Drag-Handles oder neue persistierte Editor-Nodes.
+
+### P24 – Deploy-to-Cloudflare und Version-1-Abnahme
+
+**Ziel:** Eine neue Person kann die vertrauenswürdige Dovari-Version 1 aus dem öffentlichen
+Repository sicher installieren und die vollständigen Kern- und Recovery-Abläufe verwenden.
 
 **Scope:**
 
@@ -659,21 +808,31 @@ automatische Seitenerstellung allein durch ausgeschriebene `[[Titel]]`-Texte ohn
 - vollständige README für lokale Entwicklung und Produktion
 - geführter Access-Post-Deploy-Schritt für `/app/*` und `/api/private/*`
 - Custom-Domain-Hinweise
-- frischer Installations-Smoke-Test
-- vollständiger kritischer E2E-Durchlauf aus `PLAN.md`
+- frischer Installations-Smoke-Test einschließlich aller Migrationen bis P22
+- vollständiger kritischer E2E-Durchlauf aus `PLAN.md`, erweitert um Trash, Revisionen, Settings,
+  Slash Commands und Backup-Roundtrip
 
 **Akzeptanzkriterien:**
 
 - Installation aus einem frischen Cloudflare-Account ist dokumentiert und getestet.
 - ohne Access-Konfiguration bleiben alle privaten Pfade und Schreiboperationen fail-closed.
 - nach Setup funktionieren Create, dokumentnahes Editieren, Autolink, Wiki Link, Screenshot Paste,
-  Autosave, Search und Export.
-- alle CI-Gates und kritischen E2E-Tests sind grün.
-- bekannte Einschränkungen sind im README dokumentiert.
+  Autosave, Search, Export, Trash, Revision-Restore, Settings und Slash Commands.
+- ein erzeugtes Dovari-Backup lässt sich in einer zweiten leeren Installation vollständig
+  wiederherstellen und anhand der P22-Kriterien vergleichen.
+- alle CI-Gates und kritischen E2E-Tests sind grün; bekannte Einschränkungen sind dokumentiert.
 
-**Nicht Teil dieser Phase:** Funktionen aus „Nicht Teil des MVP“ in `PLAN.md`.
+**Verifikation:**
 
-### P22 – Öffentliche Veröffentlichungen
+- frischer Checkout und Installation mit den dokumentierten Mindestversionen
+- Wrangler-Dry-Run sowie tatsächlicher Test-Deploy in einen frischen Cloudflare-Testaccount
+- Fail-Closed-Prüfung vor Access-Konfiguration und vollständiger privater Smoke danach
+- vollständiges `npm run ci`, kritisches `npm run test:e2e` und `git diff --check`
+
+**Nicht Teil dieser Phase:** Funktionen aus „Nicht Teil des MVP“ in `PLAN.md`, öffentliche Seiten
+oder die automatische Migration bestehender Fremdsysteme.
+
+### P25 – Öffentliche Veröffentlichungen
 
 **Ziel:** Einzelne Seiten können bewusst als sichere, schreibgeschützte Snapshots veröffentlicht werden, während Entwürfe und Bearbeitung privat bleiben.
 
@@ -698,7 +857,15 @@ automatische Seitenerstellung allein durch ausgeschriebene `[[Titel]]`-Texte ohn
 - Unpublish macht Snapshot und zugehörige öffentliche Asset-Routen unmittelbar unerreichbar.
 - alle bisherigen privaten Authentifizierungs- und Editorabläufe bleiben unverändert geschützt.
 
-**Nicht Teil dieser Phase:** öffentliche Bearbeitung, Kommentare, Teams, Rollen, Custom Sharing ACLs oder passwortgeschützte Links.
+**Verifikation:**
+
+- Schema-/Migrationstests für Publication-Snapshots und referenzierte Assets
+- Worker-Integrationstests der vollständigen Private-/Public-Routing-, Auth- und Asset-Matrix
+- Browser-E2E für Publish, erneutes Publish, öffentliche Ansicht und Unpublish
+- vollständiges `npm run ci`, `npm run test:e2e` und `git diff --check`
+
+**Nicht Teil dieser Phase:** öffentliche Bearbeitung, Kommentare, Teams, Rollen, Custom Sharing
+ACLs oder passwortgeschützte Links.
 
 ## 7. Entdeckte Folgearbeit
 

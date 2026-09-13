@@ -179,12 +179,10 @@ Benötigte Extensions:
 - HorizontalRule
 - Link
 - Image
-- Table
-- TableRow
-- TableCell
-- TableHeader
 - Placeholder
 - History
+
+Tabellen-Extensions sind bewusst erst nach Version 1 vorgesehen.
 
 Eigene Extensions werden wahrscheinlich benötigt für:
 
@@ -896,30 +894,29 @@ Export wiki
 
 # 21. Slash Commands
 
-Im Editor:
-
-```text
-/
-```
-
-öffnet:
+Slash Commands gehören zum abschließenden Alltags-Polish vor Version 1. Gibt der Nutzer in einem
+leeren Absatz `/` ein, öffnet sich eine per Tastatur bedienbare Befehlspalette.
 
 ```text
 Text
 Heading 1
 Heading 2
+Heading 3
 Bullet List
 Numbered List
 Checklist
 Code
 Quote
+Wiki Link
 Image
 File
-Table
 Divider
 ```
 
-Das sorgt für eine moderne Notion-artige Bedienung.
+Die Palette filtert während der Eingabe, wird mit Escape geschlossen und führt den gewählten
+Befehl mit Enter aus. Bild und Datei verwenden dieselbe validierte Upload-Pipeline wie Paste und
+Drag & Drop. Die sichtbare Toolbar bleibt als zugänglicher Fallback erhalten. Tabellen sind nicht
+Teil der Version 1.
 
 ---
 
@@ -1077,6 +1074,10 @@ assets/
 
 Markdown enthält lokale Links auf Assets.
 
+Dieser Export ist bewusst menschenlesbar und für den Wechsel zu anderen Werkzeugen gedacht. Er
+ist kein verlustfreies Dovari-Backup: Editorstruktur, Papierkorb und Versionshistorie müssen nicht
+vollständig aus Markdown rekonstruierbar sein.
+
 Beispiel:
 
 ```markdown
@@ -1091,7 +1092,8 @@ Text...
 
 # 28. Import
 
-Nicht für den ersten MVP zwingend.
+Fremdimporte sind nicht Teil der Version 1. Das in Abschnitt 29 definierte Wiederherstellen eines
+eigenen Dovari-Backups ist davon getrennt und gehört zur Version 1.
 
 Später:
 
@@ -1123,16 +1125,35 @@ und:
 
 # 29. Backup
 
-Später sollte Dovari vollständige Backups ermöglichen.
-
-Beispiel:
+Dovari benötigt vor dem ersten Deployment neben dem Markdown-Export ein verlustfreies,
+versioniertes Backupformat.
 
 ```text
+dovari-backup-v1.zip
+
 backup.json
 assets/
 ```
 
-Oder automatisierte Backups nach R2.
+Das Backup enthält:
+
+- aktive und gelöschte Seiten mit IDs, Hierarchie, Positionen, Revisionen und Zeitstempeln
+- vollständiges validiertes Tiptap-JSON
+- die Versionshistorie
+- alle Asset-Metadaten einschließlich unreferenzierter oder soft-gelöschter Einträge, ihre
+  Prüfsummen und die vorhandenen R2-Dateien
+
+Secrets, Cloudflare-Accountdaten, Access-Konfiguration und Resource-IDs werden nicht exportiert.
+Fehlt ein erwartetes Asset in R2, darf das Ergebnis nicht als vollständiges Backup angeboten
+werden; die betroffenen Assets werden konkret gemeldet.
+
+Version 1 stellt ein solches Backup ausschließlich in eine leere Dovari-Installation wieder her.
+Dadurch bleiben Page- und Asset-IDs stabil und Wiki-Links verlustfrei. Das Backup wird vor dem
+Import vollständig validiert. Assets werden einzeln über eine wiederaufnehmbare Restore-Session
+übertragen; die Seitendaten werden erst nach erfolgreicher Übertragung finalisiert. Eine
+abgebrochene Session kann fortgesetzt oder samt ihren hochgeladenen Objekten verworfen werden.
+
+Automatische oder zeitgesteuerte Backups nach R2 bleiben eine spätere Funktion.
 
 Mögliche spätere Option:
 
@@ -1423,51 +1444,53 @@ Das verhindert versehentlichen Datenverlust.
 
 # 39. Papierkorb
 
-Seiten sollten nicht sofort dauerhaft gelöscht werden.
-
-Zusätzliche Felder:
-
-```text
-deleted_at
-```
-
-Gelöschte Seiten erscheinen im Trash.
-
-Dort:
+Seiten werden in Version 1 nicht unmittelbar dauerhaft gelöscht. Das vorhandene Feld
+`deleted_at` markiert eine Seite als gelöscht; sie verschwindet aus Navigation, Wiki-Link-Suche
+und Volltextsuche und erscheint unter `Settings → Trash`.
 
 ```text
 Restore
 Delete permanently
 ```
 
-Kann nach dem MVP kommen.
+Restore erhöht die aktuelle Seitenrevision. Existiert der frühere Parent weiterhin aktiv, wird
+die ursprüngliche Position in dessen Hierarchie wiederhergestellt; andernfalls wird die Seite auf
+Root-Ebene einsortiert. Nach dem normalen Löschen bietet die Seitenansicht zusätzlich eine direkte
+Undo-Aktion an.
+
+Dauerhaftes Löschen ist ausschließlich im Papierkorb möglich und verlangt zur Bestätigung die
+Eingabe des Seitentitels. Abhängige Seitenlinks, Asset-Referenzen und Versionsstände werden dabei
+entfernt. Die binären R2-Objekte bleiben bis zu einer späteren Garbage Collection erhalten.
+
+Die Delete-Aktion der normalen Seitenansicht liegt in einem Seitenmenü und dominiert nicht die
+Schreiboberfläche.
 
 ---
 
 # 40. Versionshistorie
 
-Nicht Teil des allerersten MVP.
-
-Später sehr sinnvoll.
-
-Tabelle:
+Eine begrenzte Versionshistorie ist Teil der vertrauenswürdigen Version 1.
 
 ```text
 page_revisions
 
 id
 page_id
+source_revision
+title
 content_json
+trigger
 created_at
 ```
 
-Snapshots müssen nicht bei jedem Tastendruck gespeichert werden.
+Der Server speichert den vorherigen persistierten Zustand vor der ersten Titel- oder
+Inhaltsänderung eines Zehn-Minuten-Fensters. Vor dem Löschen und vor jeder Wiederherstellung wird
+unabhängig vom Zeitfenster ein Snapshot angelegt. Unveränderte Zustände erzeugen keinen Snapshot.
 
-Beispielsweise:
-
-- maximal alle 10 Minuten
-- zusätzlich beim Verlassen der Seite
-- wichtige Änderungen erkennen
+Pro Seite bleiben höchstens die jüngsten 50 Snapshots erhalten. Beim Wiederherstellen wird der
+Snapshot validiert und als neue aktuelle Revision gespeichert; die Revisionsnummer wird niemals
+zurückgesetzt und bestehende Historie nicht überschrieben. `content_text`, Asset-Referenzen und
+Wiki-Links werden wie bei einem normalen Content-Save erneut serverseitig abgeleitet.
 
 ---
 
@@ -1577,6 +1600,10 @@ Der erste wirklich nutzbare Release soll bewusst klein bleiben.
 
 - Auto-Save
 - D1
+- Papierkorb und Wiederherstellung
+- begrenzte Versionshistorie
+- verlustfreies, versioniertes Dovari-Backup
+- Restore in eine leere Installation
 
 ### Suche
 
@@ -1586,13 +1613,17 @@ Der erste wirklich nutzbare Release soll bewusst klein bleiben.
 ### UI
 
 - Sidebar
+- zuletzt bearbeitete Seiten
+- Settings-Bereich für Theme, Papierkorb, Backup und Restore
+- Slash Commands für die unterstützten Editorblöcke
 - Light Mode
 - Dark Mode
 - responsive
 
 ### Export
 
-- Markdown Export
+- menschenlesbarer Markdown-/ZIP-Export
+- verlustfreies Dovari-Backup einschließlich Assets
 
 ### Deployment
 
@@ -1621,10 +1652,13 @@ Bewusst nicht implementieren:
 - Whiteboard
 - Datenbanken wie Notion
 - Tabellenkalkulation
+- Tabellen im Editor
 - End-to-End-Verschlüsselung
-- komplexe Backups
-- Versionierung
-- Obsidian Import
+- Tags
+- Favoriten
+- Fremd-, Markdown- und Obsidian-Import
+- automatische oder zeitgesteuerte Backups
+- automatische Asset-Garbage-Collection
 
 Diese Dinge können später kommen.
 
@@ -1816,7 +1850,66 @@ Externe und interne Links lassen sich ohne Vorwissen erstellen, erkennen und auf
 
 ---
 
-## Phase 10 – Deployment Experience
+## Phase 10 – Datensicherheit
+
+Aufgaben:
+
+- Papierkorb unter Settings
+- Restore mit Hierarchie-Fallback
+- bestätigtes permanentes Löschen
+- Undo nach normalem Löschen
+- begrenzte automatische Versionshistorie
+- Vorschau und Wiederherstellung eines Versionsstands als neue Revision
+- Revision-, Foreign-Key-, Suchindex- und Accessibility-Tests
+
+Ziel:
+
+Versehentliches Löschen oder Überschreiben lässt sich ohne direkten Datenbankzugriff sicher
+rückgängig machen.
+
+---
+
+## Phase 11 – Backup und Restore
+
+Aufgaben:
+
+- `dovari-backup-v1` als verlustfreies ZIP-Format
+- aktive und gelöschte Seiten, Hierarchie, Tiptap-JSON und Versionshistorie exportieren
+- alle Asset-Metadaten einschließlich unreferenzierter oder soft-gelöschter Einträge,
+  Prüfsummen und vorhandene R2-Dateien einbeziehen
+- fehlende Assets vor einem vollständigen Backup erkennen
+- Restore-Session mit Fortschritt, Wiederaufnahme und Abbruch
+- Restore ausschließlich in eine leere Installation
+- vollständigen Export-/Restore-Roundtrip testen
+
+Ziel:
+
+Eine frische Dovari-Installation kann ohne Inhalts-, Link- oder Assetverlust aus einem eigenen
+Backup wiederhergestellt werden.
+
+---
+
+## Phase 12 – Alltags-Polish
+
+Aufgaben:
+
+- echten Settings-Bereich statt Platzhalter anbieten
+- Theme, Papierkorb, Backup und Restore dort bündeln
+- zuletzt bearbeitete Seiten in der Sidebar anzeigen
+- Slash-Command-Palette für die bereits unterstützten Blöcke ergänzen
+- Bild und Datei aus der Slash-Palette über die vorhandene Upload-Pipeline einfügen
+- destruktive Seitenaktionen visuell nachordnen
+- Command-Palette-Platzhalter und veraltete README-Aussagen bereinigen
+- Desktop-, Mobile-, Tastatur- und Accessibility-Verhalten testen
+
+Ziel:
+
+Die tägliche Nutzung wirkt vollständig, ohne Dovari mit Tags, Tabellen oder komplexen
+Organisationsfunktionen zu überladen.
+
+---
+
+## Phase 13 – Deployment Experience und Version-1-Abnahme
 
 Aufgaben:
 
@@ -1826,10 +1919,30 @@ Aufgaben:
 - Deploy Button
 - Initial Migration
 - Domain Setup dokumentieren
+- frische Installation vollständig prüfen
+- Papierkorb, Versions-Restore und Backup-Roundtrip in die Release-Abnahme aufnehmen
 
 Ziel:
 
 Ein neuer Nutzer soll Dovari ohne Cloudflare-Expertenwissen installieren können.
+
+---
+
+## Phase 14 – Öffentliche Veröffentlichungen
+
+Aufgaben:
+
+- explizite, bereinigte Publication-Snapshots
+- öffentliche Read-only-Seite unter `/p/:publicId`
+- private Publish-, Update- und Unpublish-Aktionen
+- öffentliche Asset-Auslieferung nur für Assets des konkreten Snapshots
+- Behandlung privater Wiki-Links und unveröffentlichter Inhalte
+- vollständige Private-/Public-Routing- und Security-Tests
+
+Ziel:
+
+Einzelne Seiten können nach Version 1 bewusst veröffentlicht werden, ohne private Entwürfe,
+Metadaten oder Assets offenzulegen.
 
 ---
 
@@ -2172,7 +2285,13 @@ worker deployment
 
 und findet die Seite sofort wieder.
 
-Wenn dieser Workflow schneller und angenehmer ist als Obsidian + Markdown oder ein klassisches Wiki, erfüllt Dovari seinen Zweck.
+Zusätzlich löscht Steve eine Seite versehentlich und stellt sie aus dem Papierkorb wieder her. Er
+kann einen älteren Stand als neue Revision zurückholen und ein vollständiges Backup in einer
+leeren Installation wiederherstellen. Seitenhierarchie, Wiki-Links, Bilder und Anhänge bleiben
+dabei erhalten.
+
+Wenn dieser Workflow schneller und angenehmer ist als Obsidian + Markdown oder ein klassisches
+Wiki und zugleich ohne Angst vor Datenverlust benutzt werden kann, erfüllt Dovari seinen Zweck.
 
 ---
 

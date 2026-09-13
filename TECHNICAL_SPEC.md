@@ -348,7 +348,134 @@ D1 begrenzt einen String beziehungsweise eine Tabellenzeile auf 2 MB. Deshalb le
 
 Hierarchiezyklen, die ein einfacher SQL-Check nicht erkennen kann, verhindert der Move-Service durch eine rekursive Vorfahrenabfrage. Geschwisterpositionen werden innerhalb eines D1-Batches lückenlos neu nummeriert.
 
-### 6.5 Vorgemerktes Veröffentlichungsmodell
+### 6.5 Papierkorb und Seitenrevisionen
+
+Das bestehende `pages.deleted_at` bleibt die einzige Kennzeichnung für den Papierkorb. Soft
+Delete verändert weder `parent_id` noch `position`, entfernt die Seite aber über die bestehenden
+Filter und FTS-Trigger aus Navigation, Wiki-Link-Suche und Volltextsuche.
+
+Die Versionshistorie speichert begrenzte, serverseitig erzeugte Snapshots:
+
+```sql
+CREATE TABLE page_revisions (
+  id TEXT PRIMARY KEY,
+  page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+  source_revision INTEGER NOT NULL CHECK (source_revision > 0),
+  title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 200),
+  content_json TEXT NOT NULL,
+  trigger TEXT NOT NULL CHECK (trigger IN ('interval', 'delete', 'restore')),
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX page_revisions_page_created
+  ON page_revisions (page_id, created_at DESC, id DESC);
+```
+
+`content_text`, `page_assets` und `page_links` werden nicht im Snapshot dupliziert. Bei einer
+Wiederherstellung validiert der Service `content_json` mit derselben Allowlist wie einen normalen
+Save und leitet diese Werte und Beziehungen neu ab.
+
+Snapshot-Regeln:
+
+- Vor der ersten erfolgreichen Titel- oder Inhaltsmutation einer Seite, deren jüngster
+  `interval`-Snapshot mindestens zehn Minuten alt ist, wird der vorherige persistierte Zustand im
+  selben atomaren D1-Ablauf gespeichert.
+- Existiert noch kein Snapshot, wird der vorherige Zustand vor der ersten Mutation gespeichert.
+- Soft Delete erzeugt immer unmittelbar vor der Mutation einen Snapshot mit Trigger `delete`.
+- Das Wiederherstellen einer Seitenrevision erzeugt immer zuerst einen Snapshot des aktuellen
+  Zustands mit Trigger `restore`.
+- Fehlgeschlagene oder konfliktbehaftete Mutationen dürfen keinen Snapshot hinterlassen.
+- Nach einem neuen Snapshot werden alle bis auf die 50 neuesten Snapshots der Seite gelöscht.
+
+Ein Versions-Restore überschreibt Titel und Inhalt der aktiven Seite als neue Revision. Die
+aktuelle Revisionsnummer wird erhöht und niemals auf `source_revision` zurückgesetzt. Slugs werden
+mit den normalen Kollisionsregeln aus dem wiederhergestellten Titel erzeugt. Ein Snapshot ändert
+Hierarchie und Position nicht.
+
+Ein Trash-Restore erhöht ebenfalls die Revision und setzt `deleted_at` auf `NULL`. Ist der
+gespeicherte Parent aktiv, wird die Seite am Ende seiner aktiven Kinder einsortiert; andernfalls
+wird sie am Ende der Root-Seiten einsortiert. Geschwisterpositionen werden atomar normalisiert.
+
+Dauerhaftes Löschen ist nur für bereits soft-gelöschte Seiten zulässig. Die Anfrage muss aktuelle
+Revision und exakten Titel enthalten. Der Foreign Key von `page_revisions` sowie die bestehenden
+Foreign Keys entfernen abhängige Revisionen, Links und Seiten-Asset-Referenzen. Asset-Metadaten und
+R2-Objekte werden nicht physisch gelöscht.
+
+### 6.6 Backup- und Restore-Daten
+
+Der menschenlesbare Export aus Phase 7 bleibt unverändert `dovari-export` Version 1. Das
+verlustfreie Backup verwendet ein separates ZIP-Format mit `format: "dovari-backup"` und
+`version: 1` und wird als `dovari-backup-v1.zip` heruntergeladen.
+
+`backup.json` enthält mindestens:
+
+- `format`, `version` und `exportedAt`,
+- alle aktiven und gelöschten Page-Zeilen einschließlich IDs, Slugs, Hierarchie, Positionen,
+  Revisionen und Zeitstempeln,
+- alle `page_revisions`,
+- alle Asset-Zeilen einschließlich unreferenzierter oder soft-gelöschter Einträge mit stabiler ID,
+  relativem ZIP-Pfad, Byte-Größe und SHA-256-Prüfsumme sowie jedes dazu vorhandene R2-Objekt.
+
+`page_assets`, `page_links`, `content_text` und der FTS-Index werden beim Restore deterministisch
+aus den validierten Dokumenten rekonstruiert. Das Backup enthält keine Worker-Variablen, Secrets,
+Access-Konfiguration, Cloudflare-Account- oder Resource-IDs. Vor dem Download prüft der Service
+Existenz, Größe und Prüfsumme aller erwarteten R2-Objekte. Bei Abweichungen bricht das vollständige
+Backup mit einer Liste neutraler Asset-IDs ab.
+
+Restore ist in Version 1 nur erlaubt, wenn keine Page- oder Asset-Datensätze existieren und keine
+andere aktive Restore-Session läuft. Der Client liest das ZIP lokal, validiert Format, Pfade,
+Anzahlen und deklarierte Größen und überträgt Datensätze und Assets einzeln. Dadurch muss weder das
+gesamte Archiv noch die gesamte Datenbankrepräsentation in einen Worker-Request passen.
+
+Für wiederaufnehmbare Sessions werden temporäre Verwaltungsdaten persistiert:
+
+```text
+restore_sessions
+  id
+  owner_identity
+  status              uploading | finalizing | failed
+  backup_version
+  expected_pages
+  expected_revisions
+  expected_assets
+  created_at
+  updated_at
+  expires_at
+
+restore_session_records
+  session_id
+  record_type         page | revision
+  record_id
+  payload_json
+  sha256
+  uploaded_at
+
+restore_session_assets
+  session_id
+  asset_id
+  object_key
+  metadata_json
+  size_bytes
+  sha256
+  uploaded_at
+```
+
+Session-Datensätze referenzieren noch keine produktiven Pages oder Assets. Asset-Uploads verwenden
+einen nur aus Session- und Asset-UUID gebildeten temporären R2-Key. Wiederholte identische Uploads
+sind idempotent; abweichende Prüfsummen werden abgelehnt. `finalize` prüft Vollständigkeit und
+Prüfsummen erneut, validiert jedes Tiptap-Dokument und sämtliche Referenzen und schreibt dann alle
+endgültigen R2-Keys. Weil noch keine produktiven Asset-Metadaten existieren, sind diese Objekte
+über keine private Asset-Route erreichbar. Erst nachdem alle Kopien erfolgreich sind, werden alle
+produktiven D1-Datensätze atomar geschrieben. Schlägt der D1-Schritt fehl, bleiben die kopierten
+Objekte der Session zugeordnet, sind weiterhin nicht auslieferbar und können bei einem Retry
+wiederverwendet oder beim Abbruch entfernt werden. Nach erfolgreichem Abschluss werden temporäre
+Objekte und Session-Daten entfernt.
+
+Ein bewusster Session-Abbruch löscht ausschließlich die der Session zugeordneten temporären
+Objekte und Datensätze. Abgelaufene Sessions dürfen später durch ein separates Wartungswerkzeug
+bereinigt werden; ein automatischer Scheduler ist nicht Teil der Version 1.
+
+### 6.7 Vorgemerktes Veröffentlichungsmodell
 
 Öffentliche Seiten sind nicht Teil des MVP und werden daher nicht durch die initiale Migration angelegt. Die spätere Implementierung verwendet bewusst keine bloße `visibility`-Spalte mit Live-Zugriff auf den aktuellen Entwurf. Stattdessen wird beim Veröffentlichen ein expliziter, bereinigter Snapshot erzeugt:
 
@@ -451,7 +578,9 @@ Bei null geänderten Zeilen antwortet er mit `409 PAGE_CONFLICT`. Es gibt kein s
 
 `POST /api/private/pages/:id/move` akzeptiert `parentId` und entweder `beforeId`, `afterId` oder keines von beiden. Der Server verhindert Zyklen und normalisiert die Geschwisterpositionen.
 
-`DELETE` setzt `deleted_at` und erhöht die Revision. Die Seite verschwindet aus Navigation und Suche. Dauerhaftes Löschen und eine Trash-UI folgen nach dem MVP; die sichere Datenmodellgrundlage ist bereits vorhanden.
+`DELETE` setzt `deleted_at`, erzeugt gemäß Abschnitt 6.5 einen Snapshot und erhöht die Revision. Die
+Seite verschwindet aus Navigation und Suche. Wiederherstellung und dauerhaftes Löschen verwenden
+die getrennten Recovery-Endpunkte aus Abschnitt 7.5.
 
 ### 7.3 Assets
 
@@ -504,6 +633,83 @@ GET /api/private/export          Phase 7
 
 `/api/public/*` existiert im MVP noch nicht. Wenn öffentliche Seiten implementiert werden, sind dort ausschließlich schema-validierte `GET`, `HEAD` und gegebenenfalls `OPTIONS` erlaubt. Jede Mutation unter diesem Präfix wird unabhängig von ihrer Nutzlast mit `405` abgewiesen.
 
+### 7.5 Papierkorb, Revisionen, Backup und Restore
+
+Alle Endpunkte dieses Abschnitts liegen hinter derselben Access- und Origin-Prüfung wie andere
+private Mutationen.
+
+```text
+GET    /api/private/trash?cursor=<cursor>&limit=50
+POST   /api/private/pages/:id/restore
+DELETE /api/private/pages/:id/permanent
+
+GET    /api/private/pages/:id/revisions?cursor=<cursor>&limit=50
+GET    /api/private/pages/:id/revisions/:revisionId
+POST   /api/private/pages/:id/revisions/:revisionId/restore
+
+GET    /api/private/backup
+
+POST   /api/private/restore/sessions
+GET    /api/private/restore/sessions/:id
+PUT    /api/private/restore/sessions/:id/records/:recordType/:recordId
+PUT    /api/private/restore/sessions/:id/assets/:assetId
+POST   /api/private/restore/sessions/:id/finalize
+DELETE /api/private/restore/sessions/:id
+```
+
+Trash und Revisionslisten sind cursorbasiert nach Zeitstempel und ID sortiert. Die Trash-Antwort
+enthält Page-ID, Titel, frühere Parent-ID, Revision, `updatedAt` und `deletedAt`. Die
+Revisionsliste enthält nur ID, Quellrevision, Titel, Trigger und `createdAt`; vollständiges
+`content_json` wird ausschließlich vom Revisionsdetail-Endpunkt geliefert.
+
+Restore einer gelöschten Seite akzeptiert:
+
+```json
+{ "baseRevision": 12 }
+```
+
+Permanentes Löschen akzeptiert:
+
+```json
+{ "baseRevision": 12, "confirmationTitle": "Cloudflare Workers" }
+```
+
+Revisions-Restore akzeptiert ebenfalls `baseRevision`. Alle drei Operationen liefern bei einer
+veralteten Revision `409 PAGE_CONFLICT`. Nicht gelöschte Seiten können nicht über den Trash-
+Restore wiederhergestellt werden; aktive Seiten können nicht permanent gelöscht werden.
+
+`GET /api/private/backup` streamt das in Abschnitt 6.6 definierte ZIP. Der Request wird vor Beginn
+des Response-Bodys abgelehnt, wenn referenzierte Assets fehlen oder ihre Metadaten nicht stimmen.
+
+`POST /api/private/restore/sessions` akzeptiert ausschließlich Backupversion, erwartete Anzahlen
+und eine Gesamtsummenübersicht. Es antwortet mit Session-ID, Ablaufzeit und Status. Page- und
+Revisionsdatensätze werden einzeln als kanonisches JSON unter `records` hochgeladen; `recordType`
+ist ausschließlich `page` oder `revision`. Assets verwenden wie die vorhandene Asset-API den
+rohen Body mit deklariertem Dateinamen, MIME-Typ, Größe und SHA-256 aus dem Backupmanifest.
+
+`GET` auf die Session liefert nur Anzahlen und die IDs bereits vollständig empfangener Records und
+Assets, sodass der Browser nach einem Verbindungsabbruch fortsetzen kann. `finalize` akzeptiert
+keine weiteren Daten. Es prüft allein den vollständig gestagten Zustand und startet den in
+Abschnitt 6.6 beschriebenen Abschluss. `DELETE` ist nur vor erfolgreichem Abschluss möglich.
+
+Zusätzliche stabile Fehlercodes:
+
+```text
+PAGE_NOT_DELETED
+PAGE_ALREADY_DELETED
+CONFIRMATION_MISMATCH
+REVISION_NOT_FOUND
+BACKUP_INCOMPLETE
+RESTORE_WORKSPACE_NOT_EMPTY
+RESTORE_SESSION_CONFLICT
+RESTORE_RECORD_MISMATCH
+RESTORE_INCOMPLETE
+RESTORE_FINALIZE_FAILED
+```
+
+Fehlerantworten enthalten keine Seitentitel, Dateinamen oder Inhalte. Zulässige Detailfelder sind
+betroffene UUIDs, erwartete und empfangene Byte-Größen sowie erwartete und berechnete Prüfsummen.
+
 ## 8. Editor und Autosave
 
 ### 8.1 Tiptap-Dokument
@@ -522,7 +728,8 @@ Version 1 erlaubt mindestens:
 - Asset Image
 - Attachment
 
-Tabellen und Slash Commands können innerhalb des MVP ergänzt werden, sind aber keine Voraussetzung für Phase 0.
+Tabellen bleiben nach Version 1 vertagt. Slash Commands verändern das persistierte Dokumentformat
+nicht und dürfen ausschließlich Nodes und Marks aus dieser Allowlist erzeugen.
 
 ### 8.2 Autosave-Zustandsautomat
 
@@ -573,6 +780,25 @@ Wiki-Links bleiben eigenständige Nodes mit stabiler Zielseiten-ID und werden ni
 URL-Marks umgewandelt. Neben dem `[[`-Autocomplete stellt die Toolbar einen beschrifteten Einstieg
 bereit, der dieselbe Seitensuche, Auswahl und optionale Seitenerstellung verwendet. Das Link-UI
 darf weder Autosave noch die bestehende Tastaturnavigation des Autocomplete umgehen.
+
+### 8.4 Slash Commands und Alltagsnavigation
+
+In einem leeren Absatz öffnet `/` eine zugängliche, filterbare Befehlspalette. Unterstützt werden
+Text, Heading 1–3, Bullet List, Ordered List, Checklist, Quote, Inline Code, Code Block, Divider,
+Wiki Link, Image und File. Enter führt die aktive Auswahl aus, Pfeiltasten ändern sie und Escape
+schließt die Palette ohne Dokumentänderung. Der Slash-Text wird nur entfernt, wenn ein Befehl
+erfolgreich ausgeführt wird.
+
+Wiki Link öffnet den bestehenden Wiki-Link-Picker. Image und File öffnen eine Dateiauswahl und
+verwenden unverändert die gemeinsame, auf drei parallele Uploads begrenzte Asset-Pipeline. Fehler,
+Retry und Remove entsprechen Paste und Drag & Drop. Die Toolbar bleibt vollständig per Tastatur
+erreichbar und ist der Fallback, falls die Slash-Palette geschlossen wird.
+
+Der Settings-Bereich liegt unter `/app/settings` und bündelt Theme, Trash, Revisionszugriff,
+Backup und Restore. Der bisherige Command-Palette-Platzhalter navigiert auf diese echte Route.
+Die Sidebar zeigt höchstens fünf aktive, zuletzt bearbeitete Seiten aus den bereits geladenen
+Page-Metadaten, sortiert nach `updatedAt` absteigend und ohne Duplikate zur aktuell geöffneten
+Seite. Favoriten und Tags werden daraus nicht abgeleitet.
 
 ## 9. Screenshot-, Bild- und Datei-Upload
 
@@ -691,6 +917,18 @@ Der Deploy-to-Cloudflare-Flow kann D1 und R2 aus `wrangler.jsonc` automatisch pr
 - `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, restriktive `Permissions-Policy`, Frame-Schutz per CSP `frame-ancestors 'none'`.
 - Sensible Inhalte, Tokens und Dokumentkörper werden nicht geloggt.
 - R2 bleibt privat; es gibt keine S3-Credentials im Browser.
+- Backup und Restore sind vollständig privat und dürfen keine Secrets oder Cloudflare-Konfiguration
+  serialisieren.
+- ZIP-Pfade werden normalisiert und dürfen weder absolute Pfade noch `..`, Backslashes,
+  Steuerzeichen oder doppelte Zielpfade enthalten.
+- Der Restore vertraut weder Manifest, Dateiname, MIME-Typ, Größe noch Prüfsumme ohne eigene
+  Validierung. Page- und Revisionsrecords unterliegen dem vorhandenen 1,8-MB-Seitenlimit, Assets
+  dem vorhandenen 25-MiB-Dateilimit. Summen müssen sichere nichtnegative Ganzzahlen sein;
+  Dovari führt für Version 1 kein zusätzliches kleineres Gesamtlimit unterhalb der gebundenen
+  Cloudflare-Ressourcen ein.
+- Eine Session gehört zur validierten Access-Identität, sofern diese verfügbar ist, und kann nicht
+  durch eine andere Identität gelesen, fortgesetzt, finalisiert oder verworfen werden.
+- Restore-Finalisierung prüft unmittelbar vor dem Commit erneut, dass der Workspace leer ist.
 
 ## 12. Deployment
 
@@ -780,6 +1018,9 @@ Generierte Worker-Typen werden über Wrangler erzeugt und committed oder in CI r
 - Hierarchie-/Zyklusprüfung
 - Uploadtyp- und Dateinamenvalidierung
 - Autosave-Zustandsautomat
+- Snapshot-Zeitfenster und Retention auf 50 Revisionen
+- Backupmanifest, kanonische Prüfsummen und sichere ZIP-Pfade
+- Slash-Command-Filterung und Befehlsausführung
 
 ### 14.2 Worker-Integrationstests
 
@@ -793,6 +1034,12 @@ Die Tests laufen mit `@cloudflare/vitest-plugin` in der Workers-Laufzeit und ech
 - Routing-Matrix: private Pfade geschützt, öffentliche Allowlist ohne private Daten erreichbar, unbekannte API-Pfade geschlossen
 - Origin-Prüfung
 - einheitliches Fehlerformat
+- atomare Snapshots bei Mutation, Delete und Restore einschließlich Konfliktfällen
+- Trash-Restore mit aktivem Parent und Root-Fallback
+- permanentes Löschen mit Revision und Titelbestätigung
+- Restore-Session: idempotente Records und Assets, Wiederaufnahme, Abbruch und erneute
+  Empty-Workspace-Prüfung
+- vollständiger Backup-/Restore-Roundtrip einschließlich FTS-, Wiki-Link- und Asset-Referenzen
 
 ### 14.3 Browser-E2E
 
@@ -805,6 +1052,11 @@ Die Tests laufen mit `@cloudflare/vitest-plugin` in der Workers-Laufzeit und ech
 - Navigation und Editor vollständig per Tastatur bedienen
 - Dark Mode und mobiles Sidebar-Verhalten
 - Export einschließlich lokaler Asset-Links in Phase 7
+- Seite löschen, Undo und aus dem Papierkorb wiederherstellen
+- Revision anzeigen und als neue aktuelle Revision wiederherstellen
+- Dovari-Backup erstellen und in einer zweiten leeren Installation verlustfrei wiederherstellen
+- Slash Commands für Textblöcke, Wiki Link, Bild und Datei per Tastatur bedienen
+- Settings und zuletzt bearbeitete Seiten bei Desktop- und Smartphonebreite verwenden
 
 ### 14.4 CI-Gates
 
@@ -852,8 +1104,13 @@ Diese Spezifikation ändert die Produktphasen nicht, konkretisiert aber ihre tec
 8. **Phase 7:** Markdown-/ZIP-Export ohne persistiertes `content_markdown`.
 9. **Phase 8:** dokumentnahe, platzsparende Seiten- und Editoroberfläche ohne separaten Editiermodus.
 10. **Phase 9:** automatische sichere URL-Erkennung sowie auffindbare externe und interne Link-Bedienung.
-11. **Phase 10:** Deploy-Button, pfadbasiertes Access-Setup, Dokumentation und frischer Installations-Smoke-Test.
-12. **Nach dem MVP:** explizite Publication-Snapshots und öffentliche Read-only-Routes gemäß Abschnitt 6.5.
+11. **Phase 10:** Papierkorb, permanentes Löschen und begrenzte Seitenrevisionen gemäß Abschnitt 6.5.
+12. **Phase 11:** verlustfreies Backup und Restore-Sessions gemäß Abschnitten 6.6 und 7.5.
+13. **Phase 12:** Settings, zuletzt bearbeitete Seiten und Slash Commands gemäß Abschnitt 8.4.
+14. **Phase 13:** Deploy-Button, pfadbasiertes Access-Setup, Dokumentation, frischer
+    Installations-Smoke und vollständige Version-1-Abnahme.
+15. **Phase 14 nach Version 1:** explizite Publication-Snapshots und öffentliche Read-only-Routes
+    gemäß Abschnitt 6.7.
 
 ### Definition of Done für Phase 0
 
@@ -879,7 +1136,9 @@ Diese Punkte blockieren Phase 0 nicht und werden erst mit ihrer Produktphase ent
 - Exporterzeugung im Request versus asynchroner Workflow bei sehr großen Wikis,
 - Fuzzy Search oder Trigram-Index nach realen Suchmetriken,
 - Thumbnailing und Bildtransformation,
-- Tags.
+- Tags und Favoriten,
+- Fremd-, Markdown- und Obsidian-Import,
+- automatische beziehungsweise zeitgesteuerte Backups,
 - öffentliche Publication-Snapshots und Public-Read-Routes.
 
 ## 19. Geprüfte Primärquellen
