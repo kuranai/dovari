@@ -246,12 +246,27 @@ describe('worker security boundary', () => {
     expect(localResponse.status).toBe(200);
     expect(remoteResponse.status).toBe(503);
     expect(staticFetch).toHaveBeenCalledTimes(1);
-    expect(localResponse.headers.get('Content-Security-Policy')).toContain("'unsafe-inline'");
+    const localCsp = localResponse.headers.get('Content-Security-Policy');
+    expect(localCsp).toContain("script-src 'self' 'unsafe-inline'");
+    expect(localCsp).toContain("style-src 'self' 'unsafe-inline'");
     const staticRequest = staticFetch.mock.calls[0]?.[0];
     expect(staticRequest).toBeInstanceOf(Request);
     expect(staticRequest?.headers.has('Authorization')).toBe(false);
     expect(staticRequest?.headers.has('Cookie')).toBe(false);
     expect(staticRequest?.headers.has('Cf-Access-Jwt-Assertion')).toBe(false);
+  });
+
+  it('does not relax the production script policy', async () => {
+    const { env } = makeEnvironment();
+    const token = await createToken();
+
+    const response = await fetchApp('/app', env, {
+      headers: { 'Cf-Access-Jwt-Assertion': token },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Security-Policy')).toContain("script-src 'self'");
+    expect(response.headers.get('Content-Security-Policy')).not.toContain("'unsafe-inline'");
   });
 
   it('requires same-origin requests for private mutations', async () => {

@@ -10,9 +10,14 @@ Requirements: Node.js 26 or newer and npm 11 or newer.
 
 ```sh
 npm ci
+cp .dev.vars.example .dev.vars
 npm run db:migrate:local
 npm run dev
 ```
+
+The `.dev.vars` file sets `DOVARI_ENV=local` and is required for the local authentication bypass.
+If a private route returns `SETUP_REQUIRED`, create the file and restart the development server.
+The file is ignored by Git and must not be used in a deployed Worker.
 
 The relational schema is declared in `src/worker/db/schema.ts`. Generate a new Drizzle migration
 with `npm run db:generate`; the generated SQL in `migrations/` is what Wrangler applies. The FTS5
@@ -26,17 +31,11 @@ npm run db:migrate:remote
 
 The development server prints the local URL, normally `http://localhost:5173`. The Vite dev server
 uses the same Worker entrypoint as the production build. Local D1 and R2 storage are used by
-default. For the local authentication bypass, copy the ignored example file:
+default. The authentication bypass is accepted only for `localhost`, `127.0.0.1`, and `[::1]`; it
+is never accepted for a remote hostname.
 
-```sh
-cp .dev.vars.example .dev.vars
-```
-
-The bypass is accepted only for `localhost`, `127.0.0.1`, and `[::1]`; it is never accepted for a
-remote hostname. `.dev.vars` must not be used in a deployed Worker.
-
-The local-only CSP permits inline styles because Vite injects styles for HMR during development;
-the production CSP does not contain `unsafe-inline`.
+The local-only CSP permits inline scripts and styles because Vite injects its React Fast Refresh
+preamble and styles during development. The production CSP does not contain `unsafe-inline`.
 
 After changing the Worker or Wrangler configuration, regenerate the committed binding types:
 

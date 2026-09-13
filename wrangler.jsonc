@@ -6,7 +6,7 @@
   "assets": {
     "binding": "STATIC_ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": true,
+    "run_worker_first": ["/", "/app", "/app/*", "/api/*", "/p", "/p/*"],
   },
   "d1_databases": [
     {

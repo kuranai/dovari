@@ -20,9 +20,9 @@ const CONTENT_SECURITY_POLICY = [
 ].join('; ');
 
 const LOCAL_CONTENT_SECURITY_POLICY = CONTENT_SECURITY_POLICY.replace(
-  "style-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
-);
+  "script-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+).replace("style-src 'self'", "style-src 'self' 'unsafe-inline'");
 
 function createRequestId() {
   return crypto.randomUUID();
