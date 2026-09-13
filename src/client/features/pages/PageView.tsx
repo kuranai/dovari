@@ -1,4 +1,13 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type FormEvent,
+} from 'react';
 import { Link } from 'react-router-dom';
 
 import type { PageDetail, PageSummary } from '../../../shared/pages';
@@ -47,77 +56,215 @@ function PageLoadError({ message, onRetry }: { message: string; onRetry: () => v
   );
 }
 
-function RenameForm({
+const TITLE_SAVE_DEBOUNCE_MS = 750;
+
+function PageTitleEditor({
   page,
-  onCancel,
   onSaved,
+  onSavingChange,
 }: {
   page: PageDetail;
-  onCancel: () => void;
   onSaved: (page: PageDetail) => void;
+  onSavingChange: (isSaving: boolean) => void;
 }) {
   const [title, setTitle] = useState(page.title);
   const [isSaving, setIsSaving] = useState(false);
+  const [isFallbackOpen, setIsFallbackOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastServerTitleRef = useRef(page.title);
+  const latestPageRef = useRef(page);
+  const titleRef = useRef(page.title);
+  const saveTitleRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const savingRef = useRef(false);
 
-  useEffect(() => {
-    setTitle(page.title);
-    setError(null);
-  }, [page.title]);
+  latestPageRef.current = page;
+  titleRef.current = title;
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const nextTitle = title.trim();
-    if (nextTitle.length === 0 || nextTitle === page.title) {
-      onCancel();
-      return;
-    }
+  function setSaving(nextIsSaving: boolean) {
+    savingRef.current = nextIsSaving;
+    setIsSaving(nextIsSaving);
+    onSavingChange(nextIsSaving);
+  }
 
-    setIsSaving(true);
-    setError(null);
-    try {
-      const response = await updatePageTitle(page.id, page.revision, nextTitle);
-      onSaved(response.page);
-    } catch (requestError) {
-      setError(pageErrorMessage(requestError, 'The page name could not be saved.'));
-    } finally {
-      setIsSaving(false);
+  function clearScheduledSave() {
+    if (debounceRef.current !== null) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
     }
   }
 
+  useEffect(() => {
+    const previousServerTitle = lastServerTitleRef.current;
+    lastServerTitleRef.current = page.title;
+    setTitle((currentTitle) =>
+      currentTitle.trim() === previousServerTitle ? page.title : currentTitle,
+    );
+  }, [page.title]);
+
+  const saveTitle = useCallback(async () => {
+    clearScheduledSave();
+    if (savingRef.current) {
+      return;
+    }
+
+    const currentPage = latestPageRef.current;
+    const nextTitle = titleRef.current.trim();
+    if (nextTitle.length === 0) {
+      setError('A page title is required.');
+      return;
+    }
+
+    if (nextTitle === currentPage.title) {
+      setTitle(currentPage.title);
+      setError(null);
+      setIsFallbackOpen(false);
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    let saveAgain = false;
+    try {
+      const response = await updatePageTitle(currentPage.id, currentPage.revision, nextTitle);
+      latestPageRef.current = response.page;
+      onSaved(response.page);
+
+      if (titleRef.current.trim() === nextTitle) {
+        setTitle(response.page.title);
+        setIsFallbackOpen(false);
+      } else {
+        saveAgain = true;
+      }
+    } catch (requestError) {
+      setError(pageErrorMessage(requestError, 'The page name could not be saved.'));
+    } finally {
+      setSaving(false);
+      if (saveAgain) {
+        debounceRef.current = setTimeout(() => {
+          debounceRef.current = null;
+          void saveTitleRef.current();
+        }, 0);
+      }
+    }
+  }, [onSaved]);
+
+  saveTitleRef.current = saveTitle;
+
+  useEffect(() => () => clearScheduledSave(), []);
+
+  function scheduleSave(nextTitle: string) {
+    clearScheduledSave();
+    if (nextTitle.trim().length === 0 || nextTitle.trim() === latestPageRef.current.title) {
+      return;
+    }
+
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      void saveTitleRef.current();
+    }, TITLE_SAVE_DEBOUNCE_MS);
+  }
+
+  function handleChange(nextTitle: string) {
+    titleRef.current = nextTitle;
+    setTitle(nextTitle);
+    setError(null);
+    if (!isFallbackOpen) {
+      scheduleSave(nextTitle);
+    }
+  }
+
+  function handleCancel() {
+    clearScheduledSave();
+    const serverTitle = latestPageRef.current.title;
+    titleRef.current = serverTitle;
+    setTitle(serverTitle);
+    setIsFallbackOpen(false);
+    setError(null);
+  }
+
+  function openFallback() {
+    clearScheduledSave();
+    setIsFallbackOpen(true);
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }
+
+  function handleBlur(event: FocusEvent<HTMLFormElement>) {
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+      return;
+    }
+
+    void saveTitleRef.current();
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await saveTitle();
+  }
+
   return (
-    <form className="rename-form" onSubmit={handleSubmit}>
-      <label htmlFor="page-title">Page title</label>
-      <div className="rename-form-row">
+    <form className="page-title-form" onBlur={handleBlur} onSubmit={handleSubmit}>
+      <h1 aria-label={title || 'Page title'} className="page-title-heading">
         <input
-          autoFocus
           disabled={isSaving}
+          aria-label={isFallbackOpen ? 'Page title' : 'Edit title'}
+          className="page-title-input"
           id="page-title"
           maxLength={200}
-          onChange={(event) => setTitle(event.target.value)}
+          onChange={(event) => handleChange(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
-              onCancel();
+              event.preventDefault();
+              handleCancel();
             }
           }}
+          ref={inputRef}
           value={title}
         />
-        <button className="button button-primary" disabled={isSaving} type="submit">
-          {isSaving ? 'Saving…' : 'Save title'}
-        </button>
-        <button
-          className="button button-quiet"
-          disabled={isSaving}
-          onClick={onCancel}
-          type="button"
-        >
-          Cancel
-        </button>
+      </h1>
+      <div className="page-title-controls">
+        <span aria-live="polite" className="page-title-status">
+          {isSaving ? 'Saving title…' : title !== page.title ? 'Unsaved title' : ''}
+        </span>
+        {isFallbackOpen || title !== page.title ? (
+          <>
+            <button className="button button-primary" disabled={isSaving} type="submit">
+              {isSaving ? 'Saving…' : 'Save title'}
+            </button>
+            <button
+              className="button button-quiet"
+              disabled={isSaving}
+              onClick={handleCancel}
+              type="button"
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button
+            className="button button-quiet page-title-fallback-button"
+            onClick={openFallback}
+            type="button"
+          >
+            Rename page
+          </button>
+        )}
       </div>
       {error ? (
-        <p className="inline-error" role="alert">
-          {error}
-        </p>
+        <div className="page-title-error" role="alert">
+          <span>{error}</span>
+          <button
+            className="button button-quiet"
+            disabled={isSaving}
+            onClick={() => void saveTitle()}
+            type="button"
+          >
+            Retry
+          </button>
+        </div>
       ) : null}
     </form>
   );
@@ -235,16 +382,7 @@ function PageContentEditor({
     .join(' ');
 
   return (
-    <section aria-labelledby="page-editor-title" className="page-editor-section">
-      <div className="page-editor-heading">
-        <div>
-          <span className="state-kicker">Content</span>
-          <h2 id="page-editor-title">Write in context.</h2>
-        </div>
-        <span aria-live="polite" className={statusClassName}>
-          {autosaveStatusLabel(autosave.snapshot)}
-        </span>
-      </div>
+    <section aria-label="Document editor" className="page-editor-section">
       {autosave.snapshot.recoveryAvailable ? (
         <div className="editor-save-notice editor-recovery-notice" role="status">
           <div>
@@ -324,12 +462,13 @@ function PageContentEditor({
           onNavigateToPage={onNavigateToPage}
           onPageCreated={onPageCreated}
           pageId={page.id}
+          toolbarAccessory={
+            <span aria-live="polite" className={statusClassName}>
+              {autosaveStatusLabel(autosave.snapshot)}
+            </span>
+          }
         />
       </Suspense>
-      <details className="content-json">
-        <summary>View current document JSON</summary>
-        <pre>{JSON.stringify(content, null, 2)}</pre>
-      </details>
     </section>
   );
 }
@@ -347,8 +486,8 @@ function PageDetailContent({
   onPageDeleted: (page: PageDetail) => Promise<void>;
   onPageUpdated: (page: PageDetail) => void;
 }) {
-  const [isRenaming, setIsRenaming] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isTitleSaving, setIsTitleSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleDelete() {
@@ -362,8 +501,7 @@ function PageDetailContent({
     }
   }
 
-  function handleSaved(updatedPage: PageDetail) {
-    setIsRenaming(false);
+  function handleTitleSaved(updatedPage: PageDetail) {
     setError(null);
     onPageUpdated(updatedPage);
   }
@@ -372,22 +510,16 @@ function PageDetailContent({
     <article className="page-detail">
       <header className="page-detail-header">
         <div className="page-heading">
-          <span className="state-kicker">Page</span>
-          <h1>{page.title}</h1>
-          <p className="page-slug">/{page.slug}</p>
+          <PageTitleEditor
+            onSaved={handleTitleSaved}
+            onSavingChange={setIsTitleSaving}
+            page={page}
+          />
         </div>
         <div className="page-actions">
           <button
-            className="button button-secondary"
-            disabled={isDeleting}
-            onClick={() => setIsRenaming(true)}
-            type="button"
-          >
-            Rename page
-          </button>
-          <button
             className="button button-danger"
-            disabled={isDeleting}
+            disabled={isDeleting || isTitleSaving}
             onClick={() => void handleDelete()}
             type="button"
           >
@@ -395,9 +527,6 @@ function PageDetailContent({
           </button>
         </div>
       </header>
-      {isRenaming ? (
-        <RenameForm onCancel={() => setIsRenaming(false)} onSaved={handleSaved} page={page} />
-      ) : null}
       {error ? (
         <p className="page-action-error" role="alert">
           {error}

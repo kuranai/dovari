@@ -14,10 +14,15 @@ test('creates, navigates, renames, reloads, and deletes pages', async ({ page })
   await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible();
 
   const firstPageUrl = page.url();
-  await page.getByRole('button', { name: 'Rename page' }).click();
-  await page.getByLabel('Page title').fill(renamedTitle);
-  await page.getByRole('button', { name: 'Save title' }).click();
+  await page.getByLabel('Edit title').fill(renamedTitle);
+  await page.getByLabel('Edit title').press('Enter');
   await expect(page.getByRole('heading', { name: renamedTitle })).toBeVisible();
+  expect(
+    await page.locator('.page-detail').evaluate((element) => element.getBoundingClientRect().width),
+  ).toBeGreaterThan(820);
+  await expect(page.getByText('Content', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Write in context.', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('View current document JSON', { exact: true })).toHaveCount(0);
 
   await page.reload();
   await expect(page).toHaveURL(firstPageUrl);
@@ -152,4 +157,17 @@ test('has no critical accessibility violations in the workspace shell', async ({
   expect(mobileResults.violations.filter((violation) => violation.impact === 'critical')).toEqual(
     [],
   );
+
+  await page.getByRole('button', { name: /New page/ }).click();
+  await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible();
+  const pageResults = await new AxeBuilder({ page }).analyze();
+  expect(pageResults.violations.filter((violation) => violation.impact === 'critical')).toEqual([]);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(page.getByLabel('Edit title')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.getByRole('button', { name: 'Delete page' }).click();
 });

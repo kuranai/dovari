@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
 
@@ -25,6 +26,7 @@ export interface PageEditorProps {
   pageId?: string;
   onNavigateToPage?: (pageId: string) => void;
   onPageCreated?: (page: PageSummary) => void;
+  toolbarAccessory?: ReactNode;
   createWikiLinkPage?: typeof createPage;
   searchWikiLinkPages?: typeof searchWikiLinkPages;
   uploadAsset?: UploadAsset;
@@ -84,6 +86,7 @@ export function PageEditor({
   onPageCreated,
   pageId,
   searchWikiLinkPages: searchWikiLinkPagesRequest = searchWikiLinkPages,
+  toolbarAccessory,
   uploadAsset,
 }: PageEditorProps) {
   const onChangeRef = useRef(onChange);
@@ -309,7 +312,10 @@ export function PageEditor({
     >
       {editor ? (
         <>
-          <EditorToolbar editor={editor} />
+          <div className="page-editor-topbar">
+            <EditorToolbar editor={editor} />
+            {toolbarAccessory}
+          </div>
           <div className="page-editor-surface">
             <EditorContent editor={editor} />
           </div>

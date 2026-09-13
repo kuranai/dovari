@@ -139,6 +139,65 @@ describe('Dovari app shell', () => {
     );
   });
 
+  it('edits the title directly, saves on blur, and keeps the document surface quiet', async () => {
+    let page = createPage();
+    let pages: PageSummary[] = [pageSummary(page)];
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+
+      if (url === '/api/private/pages' && method === 'GET') {
+        return response({ pages });
+      }
+
+      if (url === `/api/private/pages/${pageId}` && method === 'GET') {
+        return response({ page });
+      }
+
+      if (url === `/api/private/pages/${pageId}/backlinks` && method === 'GET') {
+        return response({ backlinks: [] });
+      }
+
+      if (url === `/api/private/pages/${pageId}` && method === 'PATCH') {
+        const body = JSON.parse(String(init?.body));
+        page = createPage({
+          ...page,
+          revision: page.revision + 1,
+          slug: 'document-page',
+          title: body.title,
+          updatedAt: '2026-09-13T00:00:01.000Z',
+        });
+        pages = [pageSummary(page)];
+        return response({ page });
+      }
+
+      throw new Error(`Unexpected request: ${method} ${url}`);
+    });
+
+    render(<App />);
+
+    const titleInput = await screen.findByRole('textbox', { name: 'Edit title' });
+    fireEvent.change(titleInput, { target: { value: 'Document page' } });
+    fireEvent.blur(titleInput);
+
+    expect(await screen.findByRole('heading', { name: 'Document page' })).toBeTruthy();
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/private/pages/${pageId}`,
+        expect.objectContaining({
+          body: JSON.stringify({ baseRevision: 1, title: 'Document page' }),
+          method: 'PATCH',
+        }),
+      ),
+    );
+    expect(screen.queryByText('Content', { exact: true })).toBeNull();
+    expect(screen.queryByText('Write in context.', { exact: true })).toBeNull();
+    expect(screen.queryByText('View current document JSON', { exact: true })).toBeNull();
+    expect(screen.queryByText('/untitled', { exact: true })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Rename page' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Delete page' })).toBeTruthy();
+  });
+
   it('creates children, collapses branches, renames inline, and offers keyboard moving', async () => {
     const rootId = '22222222-2222-4222-8222-222222222222';
     const siblingId = '33333333-3333-4333-8333-333333333333';
