@@ -4,7 +4,7 @@
 **Letzte Aktualisierung:** 13. September 2026
 **Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen, P06 abgeschlossen, P07 abgeschlossen, P08 abgeschlossen, P09 abgeschlossen, P10 abgeschlossen, P11 abgeschlossen, P12 abgeschlossen, P13 abgeschlossen, P14 abgeschlossen, P15 abgeschlossen, P16 abgeschlossen, P17 abgeschlossen, P18 abgeschlossen
 **Aktuelle Phase:** keine
-**Nächste Phase:** P19 – Deploy-to-Cloudflare und Version-1-Abnahme
+**Nächste Phase:** P19 – Dokumentnahe Editoroberfläche
 
 ## 1. Zweck
 
@@ -108,8 +108,10 @@ Ist die Phase nicht fertig, bleibt sie `IN PROGRESS`. Bei einem echten externen 
 | P16 | Wiki Links | Wiki Links und Backlinks | `DONE` | Wiki-Link-Node, `[[`-Autocomplete, Page-Erstellung, atomare `page_links`, Navigation und Backlinks umgesetzt und verifiziert |
 | P17 | Export | Markdown- und ZIP-Export | `DONE` | Deterministischer Markdown-/ZIP-Export mit lokalen Wiki-/Asset-Links, Manifest, R2-Streaming, kollisionssicheren Pfaden, Missing-Asset-Platzhaltern und Download-UI umgesetzt und verifiziert |
 | P18 | Produktreife | Responsive UI, Dark Mode und Accessibility | `DONE` | Theme-Provider, responsive Drawer, Skip-Link, Accessibility-Styles/-Tests und finale Zustände umgesetzt und verifiziert |
-| P19 | Deployment | Deploy-to-Cloudflare und Version-1-Abnahme | `NEXT` | – |
-| P20 | Post-MVP | Öffentliche Veröffentlichungen | `PLANNED` | – |
+| P19 | Editor-Polish | Dokumentnahe Editoroberfläche | `NEXT` | – |
+| P20 | Editor-Polish | Link-Erlebnis und Wiki-Link-Auffindbarkeit | `PLANNED` | – |
+| P21 | Deployment | Deploy-to-Cloudflare und Version-1-Abnahme | `PLANNED` | – |
+| P22 | Post-MVP | Öffentliche Veröffentlichungen | `PLANNED` | – |
 
 ## 6. Phasendefinitionen
 
@@ -138,8 +140,10 @@ Damit ein frischer Chat nicht erneut die gesamte Planung laden muss, gelten dies
 | P16 | §§ 6.2 und 17 | §§ 16, 17 und Phase 6 in § 45 |
 | P17 | §§ 8.1, 12.2 und 17 | § 27 und Phase 7 in § 45 |
 | P18 | §§ 3.2, 14.3 und 16 | §§ 25, 26, 41 und 48 |
-| P19 | §§ 11.2, 12 und 17 | §§ 30, 43, 53 und Phase 8 in § 45 |
-| P20 | §§ 4, 6.5, 7.1, 11 und 17 | §§ 23, 44 und Public Sharing in § 50 |
+| P19 | §§ 3.2, 8.2, 8.3, 14.3 und 16 | §§ 8, 14, 26, 43, 47, 48 und Phase 8 in § 45 |
+| P20 | §§ 8.1, 8.3 und 14.3 | §§ 8, 15, 16, 43, 46 und Phase 9 in § 45 |
+| P21 | §§ 11.2, 12 und 17 | §§ 30, 43, 53 und Phase 10 in § 45 |
+| P22 | §§ 4, 6.5, 7.1, 11 und 17 | §§ 23, 44 und Public Sharing in § 50 |
 
 Zusätzlich wird nur der für die Phase relevante bestehende Code gelesen. Falls eine referenzierte Entscheidung widersprüchlich oder unvollständig ist, wird die Abweichung vor der Implementierung dokumentiert.
 
@@ -568,7 +572,83 @@ Zusätzlich wird nur der für die Phase relevante bestehende Code gelesen. Falls
 
 **Nicht Teil dieser Phase:** native App oder vollwertige mobile Editing-Optimierung.
 
-### P19 – Deploy-to-Cloudflare und Version-1-Abnahme
+### P19 – Dokumentnahe Editoroberfläche
+
+**Ziel:** Eine geöffnete Seite fühlt sich ohne sichtbaren Moduswechsel wie ein großzügiges,
+unmittelbar bearbeitbares Dokument an.
+
+**Scope:**
+
+- Seitenlayout und Content-Spalte nutzen den verfügbaren App-Bereich besser, bei weiterhin
+  lesbarer maximaler Textzeilenlänge
+- Seitentitel dokumentnah direkt bearbeiten und über die vorhandene revisionsgeschützte API
+  speichern
+- „Page“-, „Content“- und „Write in context.“-Zwischenebenen sowie die prominente Slug-Anzeige
+  aus dem normalen Schreibfluss entfernen
+- Editorrahmen, Kartenwirkung und unnötige Abstände zugunsten einer zusammenhängenden
+  Dokumentfläche reduzieren
+- Toolbar, Save-Status und Seitenaktionen kompakt integrieren; Delete bleibt bewusst bestätigt
+  und Recovery-, Save-Fehler- sowie Konfliktzustände bleiben prominent
+- Tiptap-Dokument-JSON aus der normalen UI entfernen
+- Backlinks visuell nachordnen, ohne Navigation oder Lade-/Fehlerzustände zu verlieren
+- responsive, Tastatur-, Fokus- und Accessibility-Tests für die neue Seitenoberfläche
+
+**Akzeptanzkriterien:**
+
+- nach dem Laden kann ohne Aktivierung eines Edit-Modus unmittelbar in Titel oder Inhalt
+  geschrieben werden.
+- Titeländerungen bleiben nach Reload erhalten; Inhalts-Autosave, Draft Recovery und Konflikte
+  funktionieren unverändert.
+- bei Desktopbreite steht dem Dokument sichtbar mehr Raum als die bisherige 820-Pixel-Seitenkarte
+  zur Verfügung; auf Smartphonebreite nutzt es die verfügbare Breite ohne horizontales Scrollen.
+- im normalen Erfolgszustand erscheinen weder die Texte „Content“ und „Write in context.“ noch
+  Editor-Kartenrahmen oder Dokument-JSON.
+- Toolbar, Save-Zustand, Rename-Fallback, Delete und Backlinks sind per Maus und Tastatur
+  erreichbar; automatische Accessibility-Prüfungen melden keine kritischen Fehler.
+- bestehende Editor-, Autosave-, Asset- und Wiki-Link-Tests bleiben grün.
+
+**Nicht Teil dieser Phase:** Autolink und neue Link-Picker aus P20, Slash Commands, Block-Drag-
+Handles, Tabellen, API- oder Datenmodelländerungen.
+
+### P20 – Link-Erlebnis und Wiki-Link-Auffindbarkeit
+
+**Ziel:** Externe URLs und interne Seitenlinks lassen sich ohne Vorwissen erstellen, erkennen,
+bearbeiten und öffnen.
+
+**Scope:**
+
+- erlaubte `http`-, `https`- und E-Mail-Adressen beim Tippen nach einem Abschlusszeichen sowie
+  beim Einfügen automatisch als Link markieren
+- bestehende URL-Allowlist auch für Autolink verwenden; unsichere Schemes und Kontrollzeichen
+  weiterhin ablehnen
+- fokussiertes Link-Popover mit Zielanzeige sowie Aktionen für Öffnen, Bearbeiten und Entfernen
+- externe Ziele sicher mit `noopener`/`noreferrer` öffnen, ohne die normale Cursorplatzierung im
+  editierbaren Text unbrauchbar zu machen
+- sichtbarer, beschrifteter „Wiki link“-Einstieg in der Editor-Toolbar
+- gemeinsamer Wiki-Link-Picker für Toolbar und vorhandenes `[[`-Autocomplete mit Suche,
+  Tastaturnavigation, Auswahl und optionaler Seitenerstellung
+- kurze kontextuelle Hilfe zur `[[`-Syntax im Wiki-Link-Picker
+- fokussierte Unit-/Komponententests und Browser-E2E für Tippen, Paste, Öffnen und interne
+  Navigation per Maus und Tastatur
+
+**Akzeptanzkriterien:**
+
+- `http://example.com` und `https://example.com` werden nach Tippen oder Paste ohne Toolbar-Schritt
+  zu gespeicherten, nach Reload weiterhin anklickbaren Links.
+- unsichere oder nicht erlaubte Ziele werden weder automatisch noch manuell als Link gespeichert.
+- ein normaler Link kann im Editor geöffnet, geändert und entfernt werden; Tastaturnutzer
+  erreichen dieselben Aktionen.
+- eine Person ohne Kenntnis der `[[`-Syntax kann über den sichtbaren Toolbar-Einstieg eine
+  vorhandene Wiki-Seite suchen und verlinken oder eine neue Zielseite erstellen.
+- `[[` plus Enter funktioniert weiterhin, Wiki-Links navigieren über stabile Page-IDs und
+  `page_links`/Backlinks bleiben nach Autosave korrekt.
+- Link-Erstellung, Popover und Picker funktionieren bei Desktop- und Smartphonebreite ohne
+  kritische Accessibility-Fehler.
+
+**Nicht Teil dieser Phase:** Vorschaukarten, Link-Metadatenabruf, Transclusion, Graph View oder
+automatische Seitenerstellung allein durch ausgeschriebene `[[Titel]]`-Texte ohne Auswahl.
+
+### P21 – Deploy-to-Cloudflare und Version-1-Abnahme
 
 **Ziel:** Eine neue Person kann Dovari aus dem öffentlichen Repository sicher installieren.
 
@@ -586,13 +666,14 @@ Zusätzlich wird nur der für die Phase relevante bestehende Code gelesen. Falls
 
 - Installation aus einem frischen Cloudflare-Account ist dokumentiert und getestet.
 - ohne Access-Konfiguration bleiben alle privaten Pfade und Schreiboperationen fail-closed.
-- nach Setup funktionieren Create, Edit, Screenshot Paste, Autosave, Search, Wiki Link und Export.
+- nach Setup funktionieren Create, dokumentnahes Editieren, Autolink, Wiki Link, Screenshot Paste,
+  Autosave, Search und Export.
 - alle CI-Gates und kritischen E2E-Tests sind grün.
 - bekannte Einschränkungen sind im README dokumentiert.
 
 **Nicht Teil dieser Phase:** Funktionen aus „Nicht Teil des MVP“ in `PLAN.md`.
 
-### P20 – Öffentliche Veröffentlichungen
+### P22 – Öffentliche Veröffentlichungen
 
 **Ziel:** Einzelne Seiten können bewusst als sichere, schreibgeschützte Snapshots veröffentlicht werden, während Entwürfe und Bearbeitung privat bleiben.
 
@@ -651,7 +732,7 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 | 2026-09-13 | P15 | Zugängliche Command Palette mit Search-Debounce, stale-response-sicherer Ergebnisliste, Snippet-Segmenten, Tastaturnavigation, Ergebnisöffnung, Fokuswiederherstellung, Create-New-Page-/Theme-/Settings-Aktionen und Ctrl/Cmd-Kürzeln umgesetzt | `npm run ci` (Format-Check, Lint, Typecheck, 69 Vitest-Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | Theme und Einstellungen bleiben als bewusst gekennzeichnete Platzhalter im P15-Scope; P16 ist `NEXT` |
 | 2026-09-13 | P16 | Wiki-Link-Node mit stabilen Page-IDs, `[[`-Autocomplete für Auswahl und Seitenerstellung, Navigation, atomare `page_links`-Ableitung und einfache Backlink-Anzeige umgesetzt | `npm run ci` (Format-Check, Lint, Typecheck, 75 Vitest-Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | Ungelöste Links bleiben sichtbar; Umbenennungen ändern die Zielidentität nicht; P17 ist `NEXT` |
 | 2026-09-13 | P17 | Vollständiger Markdown-/ZIP-Export aktiver Seiten mit deterministischen Hierarchiepfaden, lokalen Wiki-/Asset-Links, Manifest, R2-Streaming, Dateinamenskollisionen, Missing-Asset-Platzhaltern und sichtbarem Download-/Fehlerzustand umgesetzt | `npm run ci` (Format-Check, Lint, Typecheck, 81 Vitest-Tests und Produktionsbuild), `npm run test:e2e` (2 Browser-Smokes) und `git diff --check` erfolgreich | `content_markdown` bleibt ungespeichert; P18 ist `NEXT` |
-| 2026-09-13 | P18 | Light-/Dark-/System-Theme mit Persistenz und Systemreaktion, mobiler Sidebar-Drawer mit Fokusfalle und Fokuswiederherstellung, Skip-Link, kontrastfähige Design-Tokens, Reduced-Motion-Regeln und finale Zustands-/ARIA-Anpassungen umgesetzt; Axe-Prüfung ergänzt | `npm run ci` (Format-Check, Lint, Typecheck, 84 Vitest-Tests und Produktionsbuild), `npm run test:e2e` (4 Browser-Tests einschließlich Desktop-/Mobile-Axe-Prüfung) und `git diff --check` erfolgreich | P19 ist `NEXT` |
+| 2026-09-13 | P18 | Light-/Dark-/System-Theme mit Persistenz und Systemreaktion, mobiler Sidebar-Drawer mit Fokusfalle und Fokuswiederherstellung, Skip-Link, kontrastfähige Design-Tokens, Reduced-Motion-Regeln und finale Zustands-/ARIA-Anpassungen umgesetzt; Axe-Prüfung ergänzt | `npm run ci` (Format-Check, Lint, Typecheck, 84 Vitest-Tests und Produktionsbuild), `npm run test:e2e` (4 Browser-Tests einschließlich Desktop-/Mobile-Axe-Prüfung) und `git diff --check` erfolgreich | P19 ist nach der priorisierten Editor-Planung `NEXT` |
 
 ## 9. Regeln zur Pflege dieses Dokuments
 

@@ -548,6 +548,32 @@ Regeln:
 
 Zusätzlich wird pro Seite der letzte unbestätigte Tiptap-State in IndexedDB gehalten. Er wird nach einem bestätigten Save entfernt. Nach Reload bietet Dovari eine Wiederherstellung an, wenn der lokale Stand neuer als der bestätigte Serverstand ist. Das ist Verlustschutz, kein Offline-Synchronisationssystem.
 
+### 8.3 Dokumentoberfläche und Link-Interaktion
+
+Die private Seitenroute besitzt keinen getrennten Lese- und Editiermodus. Nach dem Laden bilden
+Seitentitel und Tiptap-Inhalt eine zusammenhängende, unmittelbar bearbeitbare Dokumentoberfläche.
+Die Content-Spalte bleibt für lesbare Zeilenlängen begrenzt, darf aber innerhalb des verfügbaren
+App-Bereichs deutlich breiter als die bisherige 820-Pixel-Seitenkarte werden. Editorrahmen,
+erklärende Zwischenüberschriften und Debug-JSON sind kein Bestandteil der normalen Produktansicht.
+
+Toolbar, Save-Zustand und destruktive Seitenaktionen bleiben per Maus, Touch und Tastatur
+erreichbar. Sie werden platzsparend in die Dokumentoberfläche integriert; Fehler-, Konflikt- und
+Recovery-Zustände bleiben dagegen deutlich sichtbar. Backlinks erscheinen nachgeordnet unter dem
+Dokument. Der Seitentitel wird dokumentnah bearbeitet und verwendet weiterhin die vorhandene
+revisionsgeschützte Title-API; Inhalts- und Titelspeicherung werden nicht zu einem neuen
+Serververtrag zusammengelegt.
+
+Die Tiptap-Link-Extension erkennt beim Tippen und Einfügen ausschließlich bereits erlaubte `http`,
+`https`- und `mailto`-Ziele automatisch. Die bestehende URI-Allowlist bleibt die gemeinsame
+Sicherheitsgrenze für automatische und manuelle Links. Das Editor-UI bietet für einen Link eine
+eindeutige Aktion zum Öffnen sowie Aktionen zum Bearbeiten und Entfernen; das Öffnen externer Ziele
+verwendet `noopener` und `noreferrer`.
+
+Wiki-Links bleiben eigenständige Nodes mit stabiler Zielseiten-ID und werden nicht in normale
+URL-Marks umgewandelt. Neben dem `[[`-Autocomplete stellt die Toolbar einen beschrifteten Einstieg
+bereit, der dieselbe Seitensuche, Auswahl und optionale Seitenerstellung verwendet. Das Link-UI
+darf weder Autosave noch die bestehende Tastaturnavigation des Autocomplete umgehen.
+
 ## 9. Screenshot-, Bild- und Datei-Upload
 
 ### 9.1 Erlaubte Typen und Grenzen
@@ -824,8 +850,10 @@ Diese Spezifikation ändert die Produktphasen nicht, konkretisiert aber ihre tec
 6. **Phase 5:** FTS5-Suche und Command Palette.
 7. **Phase 6:** Wiki-Link-Node und `page_links`.
 8. **Phase 7:** Markdown-/ZIP-Export ohne persistiertes `content_markdown`.
-9. **Phase 8:** Deploy-Button, pfadbasiertes Access-Setup, Dokumentation und frischer Installations-Smoke-Test.
-10. **Nach dem MVP:** explizite Publication-Snapshots und öffentliche Read-only-Routes gemäß Abschnitt 6.5.
+9. **Phase 8:** dokumentnahe, platzsparende Seiten- und Editoroberfläche ohne separaten Editiermodus.
+10. **Phase 9:** automatische sichere URL-Erkennung sowie auffindbare externe und interne Link-Bedienung.
+11. **Phase 10:** Deploy-Button, pfadbasiertes Access-Setup, Dokumentation und frischer Installations-Smoke-Test.
+12. **Nach dem MVP:** explizite Publication-Snapshots und öffentliche Read-only-Routes gemäß Abschnitt 6.5.
 
 ### Definition of Done für Phase 0
 

@@ -193,6 +193,25 @@ Eigene Extensions werden wahrscheinlich benötigt für:
 - Image Upload
 - Slash Commands
 
+Die Seitenansicht ist zugleich die Bearbeitungsoberfläche. Es gibt keinen separaten Lese- und
+Editiermodus und keine visuell abgesetzte „Editor-Box“. Titel und Inhalt sollen sich wie ein
+zusammenhängendes Dokument anfühlen, das nach dem Öffnen unmittelbar bearbeitet werden kann.
+
+Für die Version-1-Abnahme gilt deshalb zusätzlich:
+
+- Die Dokumentfläche nutzt den verfügbaren Platz auf Desktop und Mobile deutlich besser aus.
+- Technische oder erklärende Zwischenüberschriften wie „Content“ und „Write in context.“ entfallen.
+- Der Seitentitel wird dokumentnah bearbeitet; Rename bleibt als robuste Alternative erhalten,
+  darf aber die normale Schreiboberfläche nicht dominieren.
+- Toolbar, Save-Status und Seitenaktionen bleiben erreichbar, treten im Ruhezustand aber visuell
+  hinter den Inhalt zurück.
+- Interne Debug-Ausgaben wie das aktuelle Tiptap-JSON gehören nicht in die normale Seitenansicht.
+- Backlinks bleiben erreichbar, werden aber als nachgeordnete Dokumentinformation dargestellt.
+
+Normale Web- und E-Mail-Adressen werden beim Tippen oder Einfügen automatisch als sichere Links
+erkannt. Links müssen aus dem Editor heraus bewusst geöffnet sowie weiterhin bearbeitet und
+entfernt werden können, ohne die Textbearbeitung zu blockieren.
+
 ---
 
 ## Backend
@@ -736,6 +755,11 @@ Cloudflare D1
 ```
 
 Enter fügt den Link ein.
+
+Die `[[`-Syntax bleibt der schnelle Tastaturweg. Zusätzlich braucht der Editor einen sichtbaren,
+beschrifteten Einstieg für interne Seitenlinks, der dieselbe Suche und Seitenerstellung öffnet.
+Damit ist die Funktion auch ohne Kenntnis der Wiki-Syntax auffindbar. Ein eingefügter Wiki-Link
+muss aus dem Editor geöffnet, erneut ausgewählt oder entfernt werden können.
 
 Nicht existierende Seiten können dargestellt werden als:
 
@@ -1539,6 +1563,9 @@ Der erste wirklich nutzbare Release soll bewusst klein bleiben.
 - Code
 - Codeblöcke
 - Bilder
+- dokumentnahe, immer bearbeitbare Seitenansicht
+- automatische Erkennung sicherer Web- und E-Mail-Links
+- auffindbare Erstellung interner Wiki-Links zusätzlich zur `[[`-Syntax
 
 ### Bilder
 
@@ -1754,7 +1781,42 @@ Aufgaben:
 
 ---
 
-## Phase 8 – Deployment Experience
+## Phase 8 – Dokumentnahe Bearbeitungsoberfläche
+
+Aufgaben:
+
+- Seite und Editor zu einer ruhigen Dokumentfläche zusammenführen
+- verfügbare Breite und Höhe besser nutzen
+- Titel dokumentnah bearbeitbar machen
+- unnötige Labels, Editor-Rahmen und Debug-JSON aus der normalen Ansicht entfernen
+- Toolbar, Save-Status, Seitenaktionen und Backlinks dezent und weiterhin zugänglich anordnen
+- Desktop-, Mobile-, Tastatur- und Accessibility-Verhalten absichern
+
+Ziel:
+
+Nach dem Öffnen einer Seite fühlt sich Dovari unmittelbar wie ein bearbeitbares Dokument und nicht
+wie eine Verwaltungsseite mit eingebettetem Editor an.
+
+---
+
+## Phase 9 – Link-Erlebnis und Auffindbarkeit
+
+Aufgaben:
+
+- sichere `http`, `https`- und E-Mail-Adressen beim Tippen und Einfügen automatisch verlinken
+- externe Links eindeutig und sicher aus dem Editor öffnen
+- Link-Ziel anzeigen, bearbeiten und entfernen
+- sichtbaren Einstieg für Wiki-Links mit Seitensuche und Seitenerstellung ergänzen
+- bestehende `[[`-Autocomplete-Bedienung beibehalten und erklären
+- Maus-, Touch- und Tastaturabläufe testen
+
+Ziel:
+
+Externe und interne Links lassen sich ohne Vorwissen erstellen, erkennen und aufrufen.
+
+---
+
+## Phase 10 – Deployment Experience
 
 Aufgaben:
 
