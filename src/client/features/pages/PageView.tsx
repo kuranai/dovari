@@ -26,7 +26,7 @@ export interface PageViewProps {
 
 function LoadingPage() {
   return (
-    <section aria-live="polite" className="page-state page-state-loading">
+    <section aria-busy="true" aria-live="polite" className="page-state page-state-loading">
       <span className="state-kicker">Page</span>
       <h1>Loading page…</h1>
       <p>Getting the latest version of this page.</p>

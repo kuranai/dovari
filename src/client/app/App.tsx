@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type RefObject,
+} from 'react';
 import {
   BrowserRouter,
   Link,
@@ -23,8 +30,52 @@ import {
 import { PageTree } from '../features/pages/PageTree';
 import { PageView } from '../features/pages/PageView';
 import { CommandPalette } from '../features/search/CommandPalette';
+import { ThemeControl } from './ThemeControl';
+import { ThemeProvider, useTheme } from './theme';
 
 type PageListState = 'loading' | 'error' | 'ready';
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return false;
+    }
+
+    return window.matchMedia(query).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia(query);
+    const handleChange = (event: MediaQueryListEvent) => setMatches(event.matches);
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+    } else {
+      mediaQuery.addListener?.(handleChange);
+    }
+
+    return () => {
+      if (typeof mediaQuery.removeEventListener === 'function') {
+        mediaQuery.removeEventListener('change', handleChange);
+      } else {
+        mediaQuery.removeListener?.(handleChange);
+      }
+    };
+  }, [query]);
+
+  return matches;
+}
+
+function focusableElements(container: HTMLElement) {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((element) => !element.hasAttribute('aria-hidden'));
+}
 
 export interface WorkspaceOutletContext {
   actionError: string | null;
@@ -45,7 +96,7 @@ function workspacePath(pageId: string) {
 
 function LoadingState() {
   return (
-    <section aria-live="polite" className="page-state page-state-loading">
+    <section aria-busy="true" aria-live="polite" className="page-state page-state-loading">
       <span className="state-kicker">Workspace</span>
       <h1>Loading your pages…</h1>
       <p>Preparing your private knowledge base.</p>
@@ -144,6 +195,10 @@ function Sidebar({
   state,
   error,
   onRetry,
+  isOpen,
+  isMobile,
+  onClose,
+  closeButtonRef,
 }: {
   error: string | null;
   isExporting: boolean;
@@ -156,19 +211,69 @@ function Sidebar({
   onRetry: () => void;
   pages: PageSummary[];
   state: PageListState;
+  isOpen: boolean;
+  isMobile: boolean;
+  onClose: () => void;
+  closeButtonRef: RefObject<HTMLButtonElement | null>;
 }) {
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+
+    if (event.key !== 'Tab' || !isOpen) {
+      return;
+    }
+
+    const elements = focusableElements(event.currentTarget);
+    if (elements.length === 0) {
+      event.preventDefault();
+      return;
+    }
+
+    const firstElement = elements[0];
+    const lastElement = elements[elements.length - 1];
+    if (event.shiftKey && document.activeElement === firstElement) {
+      event.preventDefault();
+      lastElement?.focus();
+    } else if (!event.shiftKey && document.activeElement === lastElement) {
+      event.preventDefault();
+      firstElement?.focus();
+    }
+  }
+
   return (
-    <aside className="app-sidebar" aria-label="Workspace sidebar">
+    <aside
+      aria-hidden={isMobile && !isOpen ? true : undefined}
+      aria-label="Workspace sidebar"
+      className={`app-sidebar${isOpen ? ' is-open' : ''}`}
+      id="workspace-sidebar"
+      inert={isMobile && !isOpen ? true : undefined}
+      onKeyDown={handleKeyDown}
+    >
       <div className="sidebar-heading">
         <div>
           <span className="state-kicker">Workspace</span>
           <h2>Pages</h2>
         </div>
-        {state === 'ready' && pages.length > 0 ? (
-          <span className="page-count" aria-label={`${pages.length} pages`}>
-            {pages.length}
-          </span>
-        ) : null}
+        <div className="sidebar-heading-actions">
+          {state === 'ready' && pages.length > 0 ? (
+            <span className="page-count" aria-label={`${pages.length} pages`}>
+              {pages.length}
+            </span>
+          ) : null}
+          <button
+            aria-label="Close pages navigation"
+            className="sidebar-close"
+            onClick={onClose}
+            ref={closeButtonRef}
+            type="button"
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
       </div>
 
       {state === 'loading' ? (
@@ -229,11 +334,17 @@ function Workspace() {
   const [isCreating, setIsCreating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const paletteReturnFocusRef = useRef<HTMLElement | null>(null);
   const paletteTriggerRef = useRef<HTMLButtonElement>(null);
+  const sidebarTriggerRef = useRef<HTMLButtonElement>(null);
+  const sidebarCloseRef = useRef<HTMLButtonElement>(null);
+  const sidebarReturnFocusRef = useRef<HTMLElement | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const { toggleTheme } = useTheme();
+  const isMobile = useMediaQuery('(max-width: 760px)');
 
   const loadPages = useCallback(async (signal?: AbortSignal) => {
     setListState('loading');
@@ -323,8 +434,60 @@ function Workspace() {
     }
   }, [isPaletteOpen]);
 
+  const openSidebar = useCallback(() => {
+    if (isSidebarOpen) {
+      return;
+    }
+
+    const activeElement = document.activeElement;
+    sidebarReturnFocusRef.current =
+      activeElement instanceof HTMLElement && activeElement !== document.body
+        ? activeElement
+        : sidebarTriggerRef.current;
+    setIsSidebarOpen(true);
+  }, [isSidebarOpen]);
+
+  const closeSidebar = useCallback(() => {
+    setIsSidebarOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (isSidebarOpen) {
+      sidebarCloseRef.current?.focus({ preventScroll: true });
+      return;
+    }
+
+    const returnFocusElement = sidebarReturnFocusRef.current;
+    sidebarReturnFocusRef.current = null;
+    if (returnFocusElement?.isConnected) {
+      returnFocusElement.focus({ preventScroll: true });
+    }
+  }, [isSidebarOpen]);
+
+  useEffect(() => {
+    if (!isSidebarOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isSidebarOpen]);
+
+  useEffect(() => {
+    closeSidebar();
+  }, [closeSidebar, location.pathname]);
+
   useEffect(() => {
     function handleGlobalShortcut(event: KeyboardEvent) {
+      if (event.key === 'Escape' && isSidebarOpen) {
+        event.preventDefault();
+        closeSidebar();
+        return;
+      }
+
       if (!(event.metaKey || event.ctrlKey) || event.altKey) {
         return;
       }
@@ -341,7 +504,7 @@ function Workspace() {
 
     window.addEventListener('keydown', handleGlobalShortcut);
     return () => window.removeEventListener('keydown', handleGlobalShortcut);
-  }, [closePalette, createPage, openPalette]);
+  }, [closePalette, closeSidebar, createPage, isSidebarOpen, openPalette]);
 
   const onPageUpdated = useCallback((updatedPage: PageSummary) => {
     setPages((currentPages) =>
@@ -396,7 +559,21 @@ function Workspace() {
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">
+        Skip to main content
+      </a>
       <header className="app-header">
+        <button
+          aria-controls="workspace-sidebar"
+          aria-expanded={isSidebarOpen}
+          aria-label={isSidebarOpen ? 'Close pages navigation' : 'Open pages navigation'}
+          className="mobile-sidebar-trigger"
+          onClick={isSidebarOpen ? closeSidebar : openSidebar}
+          ref={sidebarTriggerRef}
+          type="button"
+        >
+          <span aria-hidden="true">{isSidebarOpen ? '×' : '☰'}</span>
+        </button>
         <Link className="brand" to="/app">
           <span className="brand-mark" aria-hidden="true">
             D
@@ -404,6 +581,7 @@ function Workspace() {
           <span>Dovari</span>
         </Link>
         <div className="header-actions">
+          <ThemeControl />
           <span className="phase-label">Your knowledge base</span>
           <button
             aria-haspopup="dialog"
@@ -421,7 +599,7 @@ function Workspace() {
         </div>
       </header>
       {actionError ? (
-        <div className="workspace-notice" role="alert">
+        <div aria-live="assertive" className="workspace-notice" role="alert">
           <span>{actionError}</span>
           <button
             className="button button-quiet"
@@ -434,6 +612,7 @@ function Workspace() {
       ) : null}
       <div className="app-workspace">
         <Sidebar
+          closeButtonRef={sidebarCloseRef}
           error={listError}
           isExporting={isExporting}
           isCreating={isCreating}
@@ -445,8 +624,14 @@ function Workspace() {
           onRetry={retryPages}
           pages={pages}
           state={listState}
+          isMobile={isMobile}
+          isOpen={isSidebarOpen}
+          onClose={closeSidebar}
         />
-        <main className="app-content" id="main-content">
+        {isSidebarOpen ? (
+          <div aria-hidden="true" className="sidebar-backdrop" onMouseDown={closeSidebar} />
+        ) : null}
+        <main className="app-content" id="main-content" tabIndex={-1}>
           <Outlet context={context} />
         </main>
       </div>
@@ -458,6 +643,7 @@ function Workspace() {
           onCreatePage={() => void createPage()}
           onOpenPage={(url) => navigate(url)}
           onPlaceholderAction={setActionError}
+          onThemeToggle={toggleTheme}
         />
       ) : null}
     </div>
@@ -479,8 +665,10 @@ export function AppRoutes() {
 
 export function App() {
   return (
-    <BrowserRouter>
-      <AppRoutes />
-    </BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </ThemeProvider>
   );
 }

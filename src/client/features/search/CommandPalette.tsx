@@ -40,6 +40,7 @@ export interface CommandPaletteProps {
   onCreatePage: () => void;
   onOpenPage: (url: string) => void;
   onPlaceholderAction: (message: string) => void;
+  onThemeToggle?: () => void;
 }
 
 function entryId(entry: PaletteEntry) {
@@ -159,6 +160,7 @@ export function CommandPalette({
   onCreatePage,
   onOpenPage,
   onPlaceholderAction,
+  onThemeToggle,
 }: CommandPaletteProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -243,12 +245,12 @@ export function CommandPalette({
         shortcut: '⌘N',
       },
       {
-        description: 'Theme controls will be available in a later phase.',
+        description: 'Switch between light and dark themes.',
         id: 'theme',
         keywords: ['dark', 'light', 'appearance', 'theme'],
         label: 'Toggle theme',
         onSelect: () => {
-          onPlaceholderAction('Theme controls are not available yet.');
+          onThemeToggle?.();
           onClose();
         },
       },
@@ -263,7 +265,7 @@ export function CommandPalette({
         },
       },
     ],
-    [canCreatePage, isCreating, onClose, onCreatePage, onPlaceholderAction],
+    [canCreatePage, isCreating, onClose, onCreatePage, onThemeToggle, onPlaceholderAction],
   );
 
   const normalizedQuery = normalizeSearchQuery(query).toLocaleLowerCase();

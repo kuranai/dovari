@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { PageDetail, PageSummary } from '../../shared/pages';
 import { App } from './App';
+import { THEME_STORAGE_KEY } from './theme';
 
 const pageId = '11111111-1111-4111-8111-111111111111';
 
@@ -45,6 +46,9 @@ function response(body: unknown, status = 200) {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  window.localStorage.removeItem(THEME_STORAGE_KEY);
+  delete document.documentElement.dataset.theme;
+  document.documentElement.style.colorScheme = '';
   window.history.pushState({}, '', '/');
 });
 
@@ -381,7 +385,7 @@ describe('Dovari app shell', () => {
     );
   });
 
-  it('opens the command palette from Ctrl+K, supports placeholder actions, and restores focus', async () => {
+  it('opens the command palette from Ctrl+K, toggles the theme, and restores focus', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({ pages: [] }));
 
     render(<App />);
@@ -396,10 +400,29 @@ describe('Dovari app shell', () => {
     expect(screen.getByRole('dialog', { name: 'Search or run a command' })).toBeTruthy();
 
     fireEvent.click(screen.getByText('Toggle theme'));
-    expect((await screen.findByRole('alert')).textContent).toContain(
-      'Theme controls are not available yet.',
-    );
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
     await waitFor(() => expect(document.activeElement).toBe(trigger));
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('persists the selected theme and exposes the mobile navigation controls', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({ pages: [] }));
+
+    render(<App />);
+
+    await screen.findByRole('heading', { name: 'Start with one useful page.' });
+    const themeSelect = screen.getByRole('combobox', { name: 'Theme' });
+    fireEvent.change(themeSelect, { target: { value: 'dark' } });
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
+
+    const navigationTrigger = screen.getByRole('button', { name: 'Open pages navigation' });
+    fireEvent.click(navigationTrigger);
+    expect(navigationTrigger.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getAllByRole('button', { name: 'Close pages navigation' })).toHaveLength(2);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(navigationTrigger.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(navigationTrigger);
   });
 });

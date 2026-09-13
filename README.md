@@ -80,11 +80,20 @@ npm run test:e2e
 ```
 
 The E2E command builds the production Worker, starts `vite preview` on a loopback host, and checks
-that the app shell loads through the Worker routing path.
+that the app shell loads through the Worker routing path. The browser suite also checks the
+responsive sidebar drawer, skip navigation, theme persistence, and critical accessibility rules
+with Axe.
 
 The source tree keeps client code under `src/client`, Worker code under `src/worker`, and shared
 contracts under `src/shared`. The Worker classifies private, public, static, health, and unknown
 paths centrally. Private application and API paths require the security boundary described below.
+
+## Theme and accessibility
+
+The workspace supports Light, Dark, and System themes. The selected preference is stored in the
+browser and the System option follows the operating system’s color-scheme changes. On narrow
+screens the Pages sidebar becomes a keyboard-friendly drawer; `Skip to main content`, visible
+focus states, and `prefers-reduced-motion` support are included in the app shell.
 
 ## Browser page workflow
 
