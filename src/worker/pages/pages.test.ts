@@ -324,7 +324,28 @@ describe('Pages HTTP API', () => {
     const storedSource = (await (await request(`/api/private/pages/${source.id}`)).json()) as {
       page: PageDetail;
     };
-    expect(storedSource.page.content).toEqual(content);
+    expect(storedSource.page.content).toEqual({
+      ...content,
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'wikiLink',
+              attrs: { targetPageId: target.id, targetTitle: 'Renamed wiki target' },
+            },
+            {
+              type: 'wikiLink',
+              attrs: { targetPageId: null, targetTitle: unresolvedTitle },
+            },
+            {
+              type: 'wikiLink',
+              attrs: { targetPageId: target.id, targetTitle: 'Renamed wiki target' },
+            },
+          ],
+        },
+      ],
+    });
 
     const clearedContent: TiptapDocument = { type: 'doc', content: [{ type: 'paragraph' }] };
     const clearResponse = await request(`/api/private/pages/${source.id}/content`, {

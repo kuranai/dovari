@@ -13,6 +13,7 @@ import {
   type PageDetail,
   type PageSummary,
   type TiptapDocument,
+  type TiptapNode,
   type UpdatePageContentRequest,
   type UpdatePageRequest,
 } from '../../shared/pages';
@@ -132,6 +133,41 @@ function toDetail(page: PageRecord): PageDetail {
     createdAt: page.createdAt,
     deletedAt: page.deletedAt,
   };
+}
+
+function resolveWikiLinkTitles(
+  document: TiptapDocument,
+  titlesByPageId: ReadonlyMap<string, string>,
+): TiptapDocument {
+  const resolveNode = (node: TiptapNode): TiptapNode => {
+    const targetPageId = node.type === 'wikiLink' ? node.attrs?.targetPageId : null;
+    const currentTitle =
+      typeof targetPageId === 'string' ? titlesByPageId.get(targetPageId) : undefined;
+    const content = node.content?.map(resolveNode);
+
+    return {
+      ...node,
+      ...(currentTitle === undefined
+        ? {}
+        : { attrs: { ...node.attrs, targetTitle: currentTitle } }),
+      ...(content === undefined ? {} : { content }),
+    };
+  };
+
+  return { ...document, content: document.content.map(resolveNode) };
+}
+
+function wikiLinkTargetPageIds(document: TiptapDocument) {
+  const ids = new Set<string>();
+  const visit = (node: TiptapNode) => {
+    if (node.type === 'wikiLink' && typeof node.attrs?.targetPageId === 'string') {
+      ids.add(node.attrs.targetPageId);
+    }
+    node.content?.forEach(visit);
+  };
+
+  document.content.forEach(visit);
+  return [...ids];
 }
 
 function toTrashPage(page: PageRecord): TrashPage {
@@ -300,7 +336,10 @@ export class PageService {
       throw pageNotFound();
     }
 
-    return toDetail(page);
+    const detail = toDetail(page);
+    const targetPageIds = wikiLinkTargetPageIds(detail.content);
+    const titlesByPageId = await this.repository.findActiveTitlesByIds(targetPageIds);
+    return { ...detail, content: resolveWikiLinkTitles(detail.content, titlesByPageId) };
   }
 
   private async uniqueSlug(base: string, excludeId?: string) {

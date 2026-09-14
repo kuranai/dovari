@@ -144,6 +144,28 @@ describe('PageEditor', () => {
     ).toBe(true);
   });
 
+  it('only shows the code language selector for the active code block', async () => {
+    render(
+      <PageEditor
+        content={{
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Plain text' }] }],
+        }}
+      />,
+    );
+
+    await screen.findByRole('textbox', { name: 'Page content' });
+    expect(screen.queryByRole('combobox', { name: 'Code language' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Code block' }));
+    expect(await screen.findByRole('combobox', { name: 'Code language' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Code block' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('combobox', { name: 'Code language' })).toBeNull(),
+    );
+  });
+
   it('renders persisted asset nodes from their asset ids', async () => {
     render(<PageEditor content={documentWithAssets} />);
 
@@ -464,6 +486,44 @@ describe('PageEditor', () => {
       attrs: { level: 1 },
       type: 'heading',
     });
+  });
+
+  it('inserts one focused checklist item from the slash menu without an extra paragraph', async () => {
+    const onChange = vi.fn();
+    render(
+      <PageEditor
+        content={{ type: 'doc', content: [{ type: 'paragraph' }] }}
+        onChange={onChange}
+      />,
+    );
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [],
+        getData: (type: string) => (type === 'text/plain' ? '/checklist' : ''),
+      },
+    });
+
+    await screen.findByRole('dialog', { name: 'Slash commands' });
+    fireEvent.click(screen.getByRole('option', { name: /Checklist/ }));
+
+    await waitFor(() => expect(editor.querySelector('ul[data-type="taskList"]')).not.toBeNull());
+    expect((onChange.mock.lastCall?.[0] as TiptapDocument).content).toEqual([
+      {
+        type: 'taskList',
+        content: [
+          {
+            type: 'taskItem',
+            attrs: { checked: false },
+            content: [{ type: 'paragraph' }],
+          },
+        ],
+      },
+    ]);
+    expect(editor.children).toHaveLength(1);
+    expect(editor.querySelectorAll('li.page-editor-task-item')).toHaveLength(1);
+    expect(document.activeElement).toBe(editor);
   });
 
   it('closes the slash palette with Escape without removing the query', async () => {

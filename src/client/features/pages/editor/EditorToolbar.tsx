@@ -209,28 +209,29 @@ export function EditorToolbar({ editor, onOpenLink, onOpenWikiLink }: EditorTool
         >
           Code
         </ToolbarButton>
-        <label className="editor-code-language">
-          <span className="visually-hidden">Code language</span>
-          <select
-            aria-label="Code language"
-            disabled={!active.codeBlock}
-            onChange={(event) =>
-              editor
-                .chain()
-                .focus()
-                .updateAttributes('codeBlock', { language: event.target.value || null })
-                .run()
-            }
-            title={active.codeBlock ? 'Code language' : 'Place the cursor in a code block'}
-            value={active.codeLanguage}
-          >
-            {CODE_BLOCK_LANGUAGES.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+        {active.codeBlock ? (
+          <label className="editor-code-language">
+            <span className="visually-hidden">Code language</span>
+            <select
+              aria-label="Code language"
+              onChange={(event) =>
+                editor
+                  .chain()
+                  .focus()
+                  .updateAttributes('codeBlock', { language: event.target.value || null })
+                  .run()
+              }
+              title="Code language"
+              value={active.codeLanguage}
+            >
+              {CODE_BLOCK_LANGUAGES.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <ToolbarButton
           label="Divider"
           onClick={() => editor.chain().focus().setHorizontalRule().run()}

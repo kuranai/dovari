@@ -374,6 +374,29 @@ export class PageRepository {
     return activeIds;
   }
 
+  async findActiveTitlesByIds(ids: string[]) {
+    const titles = new Map<string, string>();
+    for (let offset = 0; offset < ids.length; offset += 900) {
+      const chunk = ids.slice(offset, offset + 900);
+      if (chunk.length === 0) {
+        continue;
+      }
+
+      const placeholders = chunk.map(() => '?').join(', ');
+      const result = await this.db
+        .prepare(
+          `SELECT id, title
+           FROM pages
+           WHERE deleted_at IS NULL AND id IN (${placeholders})`,
+        )
+        .bind(...chunk)
+        .all<{ id: string; title: string }>();
+      result.results.forEach((row) => titles.set(row.id, row.title));
+    }
+
+    return titles;
+  }
+
   async searchActiveTitles(query: string, limit: number) {
     const result = await this.db
       .prepare(

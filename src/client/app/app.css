@@ -1693,28 +1693,32 @@ kbd {
   list-style: none;
 }
 
-.page-editor-content li[data-type='taskItem'] {
+.page-editor-content .page-editor-task-item {
   display: flex;
   align-items: flex-start;
   gap: 8px;
 }
 
-.page-editor-content li[data-type='taskItem'] > label {
+.page-editor-content .page-editor-task-item > label {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   padding-top: 5px;
 }
 
-.page-editor-content li[data-type='taskItem'] > label input {
+.page-editor-content .page-editor-task-item > label input {
   width: 15px;
   height: 15px;
   accent-color: var(--color-accent-muted);
 }
 
-.page-editor-content li[data-type='taskItem'] > div {
+.page-editor-content .page-editor-task-item > div {
   min-width: 0;
   flex: 1;
+}
+
+.page-editor-content .page-editor-task-item p {
+  margin-bottom: 0;
 }
 
 .page-editor-content p.is-editor-empty:first-child::before {

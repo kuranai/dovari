@@ -113,6 +113,7 @@ export function createPageEditorExtensions(options: PageEditorExtensionOptions =
       codeBlock: false,
       heading: { levels: [1, 2, 3] },
       link: false,
+      trailingNode: { notAfter: ['taskList'] },
       underline: false,
     }),
     CodeBlockLowlight.configure({ lowlight }),
@@ -131,7 +132,10 @@ export function createPageEditorExtensions(options: PageEditorExtensionOptions =
     TaskList.configure({
       HTMLAttributes: { class: 'page-editor-task-list' },
     }),
-    TaskItem.configure({ nested: true }),
+    TaskItem.configure({
+      HTMLAttributes: { class: 'page-editor-task-item' },
+      nested: true,
+    }),
     Placeholder.configure({
       placeholder: 'Start writing…',
       showOnlyCurrent: false,
