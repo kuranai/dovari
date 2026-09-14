@@ -13,6 +13,7 @@ import { registerBackupRoutes } from './backup/routes';
 import { registerExportRoutes } from './export/routes';
 import { registerPageRoutes } from './pages/routes';
 import { registerSearchRoutes } from './search/routes';
+import { registerPublicSearchRoutes } from './public-search/routes';
 import { registerPublicationRoutes } from './publications/routes';
 import type { WorkerApp } from './types';
 
@@ -53,6 +54,7 @@ export function createApp() {
   registerBackupRoutes(app);
   registerExportRoutes(app);
   registerSearchRoutes(app);
+  registerPublicSearchRoutes(app);
   registerPublicationRoutes(app);
 
   app.all('*', async (c) => {

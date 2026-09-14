@@ -80,7 +80,7 @@ function contentHeaders(record: AssetRecord, etag: string, length: number) {
   const type = assetTypeForMimeType(record.mimeType);
   const headers = new Headers({
     'Accept-Ranges': 'bytes',
-    'Cache-Control': 'no-store',
+    'Cache-Control': 'public, max-age=0, must-revalidate',
     'Content-Disposition': contentDisposition(record.originalFilename, type.inline),
     'Content-Length': String(length),
     'Content-Type': record.mimeType,

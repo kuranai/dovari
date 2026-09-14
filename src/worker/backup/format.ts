@@ -128,6 +128,8 @@ export function publicationBackupRecord(
     content,
     publishedTitle: publication.publishedTitle,
     allowIndexing: publication.allowIndexing,
+    publishedParentPublicId: publication.publishedParentPublicId,
+    publishedPosition: publication.publishedPosition,
     publishedAt: publication.publishedAt,
     updatedAt: publication.updatedAt,
     assetIds,

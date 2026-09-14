@@ -47,8 +47,11 @@ interface PublicationDatabaseRow {
   public_id: string;
   source_revision: number;
   published_content_json: string;
+  published_content_text: string;
   published_title: string;
   allow_indexing: number;
+  published_parent_public_id: string | null;
+  published_position: number;
   published_at: string;
   updated_at: string;
 }
@@ -139,8 +142,11 @@ function toPublicationRecord(row: PublicationDatabaseRow): PublicationRecord {
     publicId: row.public_id,
     sourceRevision: row.source_revision,
     publishedContentJson: row.published_content_json,
+    publishedContentText: row.published_content_text,
     publishedTitle: row.published_title,
     allowIndexing: row.allow_indexing === 1,
+    publishedParentPublicId: row.published_parent_public_id,
+    publishedPosition: row.published_position,
     publishedAt: row.published_at,
     updatedAt: row.updated_at,
   };
@@ -181,8 +187,11 @@ const publicationColumns = `
   public_id,
   source_revision,
   published_content_json,
+  published_content_text,
   published_title,
   allow_indexing,
+  published_parent_public_id,
+  published_position,
   published_at,
   updated_at
 `;

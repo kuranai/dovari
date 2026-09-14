@@ -4,6 +4,8 @@ import { Link, useParams } from 'react-router-dom';
 import type { PublicPublication, PublicPublicationSummary } from '../../../shared/publications';
 import { fetchAllPublicPublications, fetchPublicPublication, publicationErrorMessage } from './api';
 import { PublicDocument } from './PublicDocument';
+import { flattenPublicNavigation } from './navigation';
+import { PublicSearch } from './PublicSearch';
 
 type PublicPageState =
   | { status: 'loading' }
@@ -153,6 +155,7 @@ export function PublicPage() {
   }
 
   const { publication, navigation, navigationError } = state;
+  const navigationItems = flattenPublicNavigation(navigation);
   return (
     <div className="public-shell">
       <PublicHeader publicId={publication.publicId} />
@@ -161,14 +164,16 @@ export function PublicPage() {
           <Link className="public-home-link" to="/">
             All public pages
           </Link>
+          <PublicSearch compact />
           {navigationError ? <p className="public-navigation-error">{navigationError}</p> : null}
-          {navigation.length > 0 ? (
+          {navigationItems.length > 0 ? (
             <ul>
-              {navigation.map((item) => (
+              {navigationItems.map((item) => (
                 <li key={item.publicId}>
                   <Link
                     aria-current={item.publicId === publication.publicId ? 'page' : undefined}
                     className={item.publicId === publication.publicId ? 'is-current' : ''}
+                    style={{ paddingLeft: `${10 + item.depth * 14}px` }}
                     to={`/p/${encodeURIComponent(item.publicId)}`}
                   >
                     {item.publishedTitle}

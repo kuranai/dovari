@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 
 import type { PublicPublicationSummary } from '../../../shared/publications';
 import { fetchPublicPublications, publicationErrorMessage } from './api';
+import { PublicSearch } from './PublicSearch';
 
 type LandingState =
   | { status: 'loading' }
@@ -78,6 +79,8 @@ export function PublicLandingPage() {
           <h1 id="public-home-title">Useful things, made public.</h1>
           <p>Browse the pages the owner has chosen to publish.</p>
         </section>
+
+        <PublicSearch />
 
         {state.status === 'loading' ? (
           <section aria-busy="true" aria-live="polite" className="public-state">

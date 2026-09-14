@@ -8,6 +8,7 @@ import {
 } from '../../shared/pages';
 import {
   collectPublicAssetIds,
+  derivePublicPlainText,
   publicIdSchema,
   publicPublicationSchema,
   publicTiptapDocumentSchema,
@@ -199,6 +200,8 @@ function privatePublication(record: PublicationRecord): PrivatePublication {
 function publicSummary(record: PublicationRecord): PublicPublicationSummary {
   return {
     allowIndexing: record.allowIndexing,
+    parentPublicId: record.publishedParentPublicId,
+    position: record.publishedPosition,
     publicId: record.publicId,
     publishedAt: record.publishedAt,
     publishedTitle: record.publishedTitle,
@@ -247,7 +250,7 @@ export class PublicationService {
     if (page.revision !== input.baseRevision) throw pageConflict(page.revision);
 
     const document = parsePrivateContent(page);
-    const [assetRecords, targetPublications, existing] = await Promise.all([
+    const [assetRecords, targetPublications, existing, parentPublicId] = await Promise.all([
       this.assets.findActiveByIds(collectAssetIds(document)),
       this.publications.findActiveTargetsByPageIds(
         collectWikiLinkReferences(document).flatMap((link) =>
@@ -255,6 +258,7 @@ export class PublicationService {
         ),
       ),
       this.publications.findByPageId(pageId),
+      this.publications.findNearestPublishedAncestor(pageId),
     ]);
     const activeAssets = new Set(assetRecords.map((asset) => asset.id));
     const snapshot = sanitizePublicDocument(document, activeAssets, targetPublications);
@@ -262,6 +266,8 @@ export class PublicationService {
     const snapshotAssetIds = collectPublicAssetIds(snapshot);
     const assetIds = new Set(assetRecords.map((asset) => asset.id));
     if (snapshotAssetIds.some((assetId) => !assetIds.has(assetId))) throw internalError();
+    const publishedContentJson = canonicalJson(snapshot);
+    const publishedContentText = derivePublicPlainText(snapshot);
 
     const timestamp = nowIso(existing?.updatedAt);
     const record = {
@@ -271,8 +277,11 @@ export class PublicationService {
       pageId,
       publicId: existing?.publicId ?? crypto.randomUUID(),
       publishedAt: timestamp,
-      publishedContentJson: canonicalJson(snapshot),
+      publishedContentJson,
+      publishedContentText,
       publishedTitle: page.title,
+      publishedParentPublicId: parentPublicId,
+      publishedPosition: page.position,
       sourceRevision: page.revision,
       updatedAt: timestamp,
     } as const;
@@ -324,10 +333,38 @@ export class PublicationService {
     };
   }
 
+  async listAllPublic() {
+    return (await this.publications.listActivePublications()).map(publicSummary);
+  }
+
   async getPublic(publicId: string) {
     const record = await this.publications.findByPublicId(publicId);
     if (!record) throw publicationNotFound();
     return { publication: publicDetail(record) };
+  }
+
+  async getPublicMetadata(publicId: string) {
+    const record = await this.publications.findByPublicId(publicId);
+    if (!record) throw publicationNotFound();
+    let content: unknown;
+    try {
+      content = JSON.parse(record.publishedContentJson) as unknown;
+    } catch {
+      throw internalError();
+    }
+    const parsed = publicTiptapDocumentSchema.safeParse(content);
+    if (!parsed.success) throw internalError();
+    const description = derivePublicPlainText(parsed.data)
+      .replace(/\s+/gu, ' ')
+      .trim()
+      .slice(0, 180);
+    return {
+      allowIndexing: record.allowIndexing,
+      description,
+      publicId: record.publicId,
+      title: record.publishedTitle,
+      updatedAt: record.updatedAt,
+    };
   }
 
   async publicAsset(publicId: string, assetId: string) {

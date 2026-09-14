@@ -29,7 +29,11 @@ import {
   estimatePageRowBytes,
   tiptapDocumentSchema,
 } from '../../shared/pages';
-import { collectPublicAssetIds, publicTiptapDocumentSchema } from '../../shared/publications';
+import {
+  collectPublicAssetIds,
+  derivePublicPlainText,
+  publicTiptapDocumentSchema,
+} from '../../shared/publications';
 import { assetTypeForMimeType } from '../assets/formats';
 import type { AuthIdentity } from '../auth/password';
 import type { AssetRecord } from '../assets/repository';
@@ -1001,6 +1005,17 @@ export class BackupService {
           'A publication references a missing public page.',
         );
       }
+      if (
+        publication.publishedParentPublicId !== undefined &&
+        publication.publishedParentPublicId !== null &&
+        !publicIds.has(publication.publishedParentPublicId)
+      ) {
+        throw new BackupError(
+          422,
+          'RESTORE_RECORD_MISMATCH',
+          'A publication references a missing public parent.',
+        );
+      }
     }
 
     for (const [parentId, positions] of siblingPositions) {
@@ -1232,8 +1247,9 @@ export class BackupService {
             .prepare(
               `INSERT INTO page_publications
                 (id, page_id, public_id, source_revision, published_content_json,
-                 published_title, allow_indexing, published_at, updated_at)
-               SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${ready}`,
+                 published_content_text, published_title, allow_indexing,
+                 published_parent_public_id, published_position, published_at, updated_at)
+               SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${ready}`,
             )
             .bind(
               ...bindReady([
@@ -1242,8 +1258,11 @@ export class BackupService {
                 publication.publicId,
                 publication.sourceRevision,
                 canonicalJson(publication.content),
+                derivePublicPlainText(publication.content),
                 publication.publishedTitle,
                 publication.allowIndexing ? 1 : 0,
+                publication.publishedParentPublicId ?? null,
+                publication.publishedPosition ?? 0,
                 publication.publishedAt,
                 publication.updatedAt,
               ]),

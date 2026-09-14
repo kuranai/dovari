@@ -6,8 +6,11 @@ export interface PublicationRecord {
   publicId: string;
   sourceRevision: number;
   publishedContentJson: string;
+  publishedContentText: string;
   publishedTitle: string;
   allowIndexing: boolean;
+  publishedParentPublicId: string | null;
+  publishedPosition: number;
   publishedAt: string;
   updatedAt: string;
 }
@@ -18,8 +21,11 @@ interface PublicationDatabaseRow {
   public_id: string;
   source_revision: number;
   published_content_json: string;
+  published_content_text: string;
   published_title: string;
   allow_indexing: number;
+  published_parent_public_id: string | null;
+  published_position: number;
   published_at: string;
   updated_at: string;
 }
@@ -30,8 +36,11 @@ const PUBLICATION_COLUMNS = `
   page_publications.public_id AS public_id,
   page_publications.source_revision AS source_revision,
   page_publications.published_content_json AS published_content_json,
+  page_publications.published_content_text AS published_content_text,
   page_publications.published_title AS published_title,
   page_publications.allow_indexing AS allow_indexing,
+  page_publications.published_parent_public_id AS published_parent_public_id,
+  page_publications.published_position AS published_position,
   page_publications.published_at AS published_at,
   page_publications.updated_at AS updated_at
 `;
@@ -43,8 +52,11 @@ function toPublicationRecord(row: PublicationDatabaseRow): PublicationRecord {
     publicId: row.public_id,
     sourceRevision: row.source_revision,
     publishedContentJson: row.published_content_json,
+    publishedContentText: row.published_content_text,
     publishedTitle: row.published_title,
     allowIndexing: row.allow_indexing === 1,
+    publishedParentPublicId: row.published_parent_public_id,
+    publishedPosition: row.published_position,
     publishedAt: row.published_at,
     updatedAt: row.updated_at,
   };
@@ -142,6 +154,49 @@ export class PublicationRepository {
     return result.results.map(toPublicationRecord);
   }
 
+  async listActivePublications() {
+    const result = await this.db
+      .prepare(
+        `SELECT ${PUBLICATION_COLUMNS}
+         FROM page_publications
+         INNER JOIN pages ON pages.id = page_publications.page_id
+         WHERE pages.deleted_at IS NULL
+         ORDER BY page_publications.published_position ASC,
+                  page_publications.published_title COLLATE NOCASE ASC,
+                  page_publications.public_id ASC`,
+      )
+      .all<PublicationDatabaseRow>();
+    return result.results.map(toPublicationRecord);
+  }
+
+  async findNearestPublishedAncestor(pageId: string) {
+    const row = await this.db
+      .prepare(
+        `WITH RECURSIVE ancestors(page_id, depth) AS (
+           SELECT parent_id, 1
+           FROM pages
+           WHERE id = ? AND deleted_at IS NULL AND parent_id IS NOT NULL
+           UNION ALL
+           SELECT pages.parent_id, ancestors.depth + 1
+           FROM ancestors
+           INNER JOIN pages ON pages.id = ancestors.page_id
+           WHERE pages.deleted_at IS NULL
+             AND pages.parent_id IS NOT NULL
+             AND ancestors.depth < 100
+         )
+         SELECT page_publications.public_id
+         FROM ancestors
+         INNER JOIN page_publications ON page_publications.page_id = ancestors.page_id
+         INNER JOIN pages ON pages.id = page_publications.page_id
+         WHERE pages.deleted_at IS NULL
+         ORDER BY ancestors.depth ASC
+         LIMIT 1`,
+      )
+      .bind(pageId)
+      .first<{ public_id: string }>();
+    return row?.public_id ?? null;
+  }
+
   async findActiveTargetsByPageIds(pageIds: string[]) {
     const publications = new Map<string, PublicationRecord>();
     for (let offset = 0; offset < pageIds.length; offset += 900) {
@@ -219,8 +274,11 @@ export class PublicationRepository {
     publicId: string;
     sourceRevision: number;
     publishedContentJson: string;
+    publishedContentText: string;
     publishedTitle: string;
     allowIndexing: boolean;
+    publishedParentPublicId: string | null;
+    publishedPosition: number;
     publishedAt: string;
     updatedAt: string;
     assetIds: string[];
@@ -237,8 +295,11 @@ export class PublicationRepository {
       input.publicId,
       input.sourceRevision,
       input.publishedContentJson,
+      input.publishedContentText,
       input.publishedTitle,
       input.allowIndexing ? 1 : 0,
+      input.publishedParentPublicId,
+      input.publishedPosition,
       input.publishedAt,
       input.updatedAt,
     ];
@@ -247,15 +308,20 @@ export class PublicationRepository {
         .prepare(
           `UPDATE page_publications
            SET public_id = ?, source_revision = ?, published_content_json = ?,
-               published_title = ?, allow_indexing = ?, published_at = ?, updated_at = ?
+               published_content_text = ?, published_title = ?, allow_indexing = ?,
+               published_parent_public_id = ?, published_position = ?,
+               published_at = ?, updated_at = ?
            WHERE page_id = ? AND ${pageIsCurrent}`,
         )
         .bind(
           input.publicId,
           input.sourceRevision,
           input.publishedContentJson,
+          input.publishedContentText,
           input.publishedTitle,
           input.allowIndexing ? 1 : 0,
+          input.publishedParentPublicId,
+          input.publishedPosition,
           input.publishedAt,
           input.updatedAt,
           input.pageId,
@@ -266,8 +332,9 @@ export class PublicationRepository {
         .prepare(
           `INSERT INTO page_publications
              (id, page_id, public_id, source_revision, published_content_json,
-              published_title, allow_indexing, published_at, updated_at)
-           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+              published_content_text, published_title, allow_indexing,
+              published_parent_public_id, published_position, published_at, updated_at)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
            WHERE NOT EXISTS (SELECT 1 FROM page_publications WHERE page_id = ?)
              AND ${pageIsCurrent}`,
         )

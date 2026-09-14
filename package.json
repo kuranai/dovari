@@ -19,6 +19,8 @@
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "db:fts:rebuild": "node scripts/fts-maintenance.mjs rebuild",
     "db:fts:integrity": "node scripts/fts-maintenance.mjs integrity",
+    "db:fts:public-rebuild": "node scripts/fts-maintenance.mjs public-rebuild",
+    "db:fts:public-integrity": "node scripts/fts-maintenance.mjs public-integrity",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

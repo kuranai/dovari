@@ -57,6 +57,18 @@ async function ftsRows(term: string) {
     .all<{ id: string; title: string }>();
 }
 
+async function publicFtsRows(term: string) {
+  return env.DB.prepare(
+    `SELECT page_publications.public_id, page_publications.published_title
+     FROM publications_fts
+     INNER JOIN page_publications ON page_publications.rowid = publications_fts.rowid
+     WHERE publications_fts MATCH ?
+     ORDER BY page_publications.public_id`,
+  )
+    .bind(term)
+    .all<{ public_id: string; published_title: string }>();
+}
+
 describe('D1 schema', () => {
   it('exposes the normal tables through Drizzle with their typed relations', async () => {
     const parent = registerPage(
@@ -210,6 +222,63 @@ describe('pages FTS5 synchronization', () => {
 
     await expect(
       env.DB.prepare("INSERT INTO pages_fts(pages_fts) VALUES ('integrity-check')").run(),
+    ).resolves.toMatchObject({ success: true });
+  });
+});
+
+describe('publications FTS5 synchronization', () => {
+  it('indexes only publication snapshot title and plaintext and supports integrity checks', async () => {
+    const page = registerPage(
+      createPageFixture({ title: 'Private source title', slug: 'public-fts-fixture' }),
+    );
+    const publicId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    await db.insert(pages).values(page).run();
+    await env.DB.prepare(
+      `INSERT INTO page_publications
+        (id, page_id, public_id, source_revision, published_content_json,
+         published_content_text, published_title, allow_indexing,
+         published_parent_public_id, published_position, published_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        page.id,
+        publicId,
+        1,
+        '{"type":"doc","content":[]}',
+        'Public snapshot marker',
+        'Published FTS title',
+        0,
+        null,
+        0,
+        '2026-09-14T00:00:00.000Z',
+        '2026-09-14T00:00:00.000Z',
+      )
+      .run();
+
+    await expect(publicFtsRows('snapshot')).resolves.toMatchObject({
+      results: [{ public_id: publicId, published_title: 'Published FTS title' }],
+    });
+    await expect(publicFtsRows('Private')).resolves.toMatchObject({ results: [] });
+
+    await env.DB.prepare(
+      `UPDATE page_publications
+       SET published_title = ?, published_content_text = ?
+       WHERE public_id = ?`,
+    )
+      .bind('Renamed published title', 'Updated public marker', publicId)
+      .run();
+    await expect(publicFtsRows('snapshot')).resolves.toMatchObject({ results: [] });
+    await expect(publicFtsRows('Updated')).resolves.toMatchObject({
+      results: [{ public_id: publicId, published_title: 'Renamed published title' }],
+    });
+
+    await env.DB.prepare('DELETE FROM page_publications WHERE public_id = ?').bind(publicId).run();
+    await expect(publicFtsRows('Updated')).resolves.toMatchObject({ results: [] });
+    await expect(
+      env.DB.prepare(
+        "INSERT INTO publications_fts(publications_fts) VALUES ('integrity-check')",
+      ).run(),
     ).resolves.toMatchObject({ success: true });
   });
 });

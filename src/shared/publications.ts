@@ -152,6 +152,8 @@ export const publicPublicationSummarySchema = z
     publishedAt: timestampSchema,
     updatedAt: timestampSchema,
     allowIndexing: z.boolean(),
+    parentPublicId: publicIdSchema.nullable().default(null),
+    position: z.number().int().nonnegative().default(0),
   })
   .strict();
 

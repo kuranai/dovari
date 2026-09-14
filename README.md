@@ -71,10 +71,15 @@ Wrangler keeps local D1 and R2 data separate from production.
 
 ## Using Dovari
 
-The site root `/` shows the pages that the owner has explicitly published. Open `/app` to enter the
-private workspace, where you can create and edit pages with **New page** or `Ctrl/Cmd+N`; Dovari
-saves changes automatically. Type `/` in an empty paragraph to open the command menu, or use
-`Ctrl/Cmd+K` to search and navigate.
+The site root `/` shows the pages that the owner has explicitly published. Public readers can search
+published titles and snapshot content from `/` or the public page navigation; published hierarchy
+skips unpublished intermediate pages. Open `/app` to enter the private workspace, where you can
+create and edit pages with **New page** or `Ctrl/Cmd+N`; Dovari saves changes automatically. Type
+`/` in an empty paragraph to open the command menu, or use `Ctrl/Cmd+K` to search and navigate.
+
+Public pages default to `noindex`. Only publications explicitly marked as indexable appear in
+`/sitemap.xml` and the matching `Allow` entries in `/robots.txt`. Republish and unpublish changes
+are revalidated immediately through versioned public responses.
 
 Settings contains recent pages, the Trash, version history, theme controls, and backup and restore.
 The sidebar also provides a Markdown and ZIP export for use outside Dovari.

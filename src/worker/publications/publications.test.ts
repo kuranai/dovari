@@ -172,14 +172,14 @@ describe('publications', () => {
     expect(await unchanged.text()).toContain('Private target');
   });
 
-  it('lists only active publications, protects mutations, and applies no-store', async () => {
+  it('lists only active publications, protects mutations, and revalidates caches', async () => {
     const page = await createPage('Visible page');
     const publication = await publish(page);
     const hidden = await createPage('Never visible draft');
 
     const list = await request('/api/public/publications', {}, false);
     expect(list.status).toBe(200);
-    expect(list.headers.get('Cache-Control')).toBe('no-store');
+    expect(list.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
     const body = (await list.json()) as {
       publications: Array<Record<string, unknown>>;
     };
@@ -234,7 +234,7 @@ describe('publications', () => {
       false,
     );
     expect(assetResponse.status).toBe(200);
-    expect(assetResponse.headers.get('Cache-Control')).toBe('no-store');
+    expect(assetResponse.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
     await expect(assetResponse.arrayBuffer()).resolves.toEqual(
       new Uint8Array([4, 8, 15, 16, 23, 42]).buffer,
     );

@@ -2,9 +2,9 @@
 
 **Dieses Dokument ist die kanonische Quelle für den aktuellen Implementierungsstand.**  
 **Letzte Aktualisierung:** 14. September 2026
-**Gesamtstatus:** P00–P25 abgeschlossen, P26 als Nächstes, P27–P29 geplant
-**Aktuelle Phase:** keine (P25 abgeschlossen)
-**Nächste Phase:** P26 – Öffentliche Suche, Navigation und Auffindbarkeit (`NEXT`)
+**Gesamtstatus:** P00–P26 abgeschlossen, P27 als Nächstes, P28–P29 geplant
+**Aktuelle Phase:** keine (P26 abgeschlossen)
+**Nächste Phase:** P27 – Tags und Favoriten (`NEXT`)
 
 ## 1. Zweck
 
@@ -117,8 +117,8 @@ nicht automatisch begonnen.
 | P23 | Produktreife | Settings, Slash Commands und Alltagsnavigation | `DONE` | Settings-Landing, Recent Pages, Slash-Command-Palette und Upload-/Wiki-Link-Abläufe umgesetzt und verifiziert |
 | P24 | Deployment | Deploy-to-Cloudflare und Version-1-Abnahme | `DONE` | Instanz-Passwort, eigene versionsgebundene D1-Sessions, Login/Logout, Dokumentation, lokale Abnahme und produktiver authentifizierter Deploy-Smoke sind umgesetzt und verifiziert |
 | P25 | Public | Öffentliche Knowledge Base und Veröffentlichungen | `DONE` | Publication-Migration, Snapshot-/Asset-Allowlist, private/public API, Read-only-UI, Backup-v2/v1-Restore-Kompatibilität, Soft-Delete-Rückzug und vollständige Verifikation umgesetzt |
-| P26 | Public | Öffentliche Suche, Navigation und Auffindbarkeit | `NEXT` | – |
-| P27 | Organisation | Tags und Favoriten | `PLANNED` | – |
+| P26 | Public | Öffentliche Suche, Navigation und Auffindbarkeit | `DONE` | Öffentlicher Snapshot-FTS5-Index, Public Search, snapshotbasierte Hierarchie-Navigation, sichere Metadaten, Robots/Sitemap und revalidierbare Public-Caches umgesetzt und verifiziert |
+| P27 | Organisation | Tags und Favoriten | `NEXT` | – |
 | P28 | Workflows | Templates und Daily Notes | `PLANNED` | – |
 | P29 | Datenportabilität | Markdown- und Obsidian-Import | `PLANNED` | – |
 
@@ -1051,6 +1051,7 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 | 2026-09-14 | P24 | Die externe Authentifizierung wurde gemäß ADR 0001 durch ein erforderliches Instanz-Passwort ersetzt: eigene Login-/Logout-/Session-Routen und UI, 30-Tage-Cookie, gehashte versionsgebundene D1-Sessions, IP-gehashtes Login-Limit, lokale Passwortentwicklung, Settings-Logout sowie angepasste Deploy-/Smoke-Dokumentation sind umgesetzt | `npm run ci` (Format-Check, Lint, Typecheck, 126 Tests in 30 Testdateien und Produktionsbuild), `npm run test:e2e` (10 Browser-Tests), `npm run release:install-smoke` (frischer Checkout, sieben Migrationen plus idempotenter Zweitlauf, FK-/FTS-Prüfung und Wrangler-Dry-Run), `npm run db:migrate:local`, `npx drizzle-kit check --config drizzle.config.ts`, direkter Wrangler-FTS-Integrity-Check, `npm run deploy:dry-run`, produktives `npm run deploy` und authentifiziertes sowie abschließend fail-closed `npm run release:smoke -- https://dovari.kuranai.workers.dev` erfolgreich | Remote-Migration 0006 und Worker-Version `82494200-5605-46a7-8358-b5e29945eb8e` wurden ausgerollt. Das zufällige Testpasswort wurde danach entfernt; die Testinstanz bleibt bis zum Setzen eines Betreiberpassworts mit `503 SETUP_REQUIRED` geschlossen. P25 ist `NEXT` |
 | 2026-09-14 | Planung | P25 als öffentliche Knowledge Base mit Login erst beim Bearbeiten detailliert; P26–P29 für Public Discovery, Tags/Favoriten, Templates/Daily Notes und Import ergänzt | Dokumente und tatsächliche Routing-/Auth-/Datenmodell-Grenzen abgeglichen; `npx prettier --write IMPLEMENTATION.md PLAN.md TECHNICAL_SPEC.md` und `git diff --check` erfolgreich; Implementierungstests nicht ausgeführt | P24 ist abgeschlossen; P25 ist regulär `NEXT` |
 | 2026-09-14 | P25 | Öffentliche Knowledge Base und Veröffentlichungen mit isolierten Snapshots, Public-API, Read-only-UI, Publish-Workflow und v2-Backup/Restore umgesetzt | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 136 Tests in 32 Testdateien und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (11 Browser-Tests einschließlich anonymem Public-Landing-/Read-only-/Edit-/Unpublish-Flow mit Desktop-/Mobile-Axe), `npx --yes -p node@26 node /usr/bin/npm run db:migrate:local` (0006 und 0007 angewendet), `npx --yes -p node@26 node /usr/bin/npm run db:fts:integrity`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts` sowie `git diff --check` erfolgreich | Public-Search, Sitemap, Robots und gezieltes Caching bleiben gemäß Scope P26 vorbehalten; P26 ist `NEXT` |
+| 2026-09-14 | P26 | Öffentlicher Snapshot-FTS5-Index mit Titelgewichtung und Snippets, debounced/zugängliche Public Search, snapshotbasierte Navigation mit übersprungenen unveröffentlichten Zwischeneltern, sichere serverseitige Title-/Description-/Open-Graph-Metadaten, Robots/Sitemap und sofort revalidierbare Public-Caches umgesetzt | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 142 Tests in 34 Testdateien und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (11 Browser-Tests einschließlich Public-Search-/Metadata-/Robots-/Sitemap-Flow mit Desktop-/Mobile-Axe), `npx --yes -p node@26 node /usr/bin/npm run db:migrate:local` (0008 angewendet), `npx --yes -p node@26 node /usr/bin/npm run db:fts:public-integrity`, `npx --yes -p node@26 node /usr/bin/npm run db:fts:public-rebuild`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts` sowie `git diff --check` erfolgreich | Standardmäßig bleiben öffentliche Seiten `noindex`; P27 ist `NEXT` |
 
 ## 9. Regeln zur Pflege dieses Dokuments
 

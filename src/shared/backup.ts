@@ -120,6 +120,8 @@ export const backupPublicationRecordSchema = z
     content: publicTiptapDocumentSchema,
     publishedTitle: z.string().trim().min(1).max(PAGE_TITLE_MAX_LENGTH),
     allowIndexing: z.boolean(),
+    publishedParentPublicId: publicIdSchema.nullable().optional(),
+    publishedPosition: z.number().int().nonnegative().optional(),
     publishedAt: timestampSchema,
     updatedAt: timestampSchema,
     assetIds: assetIdListSchema,

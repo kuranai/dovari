@@ -107,12 +107,33 @@ test('publishes a page for anonymous readers and returns to private editing for 
   }
   expect(publicUrl).toMatch(/^\/p\/[0-9a-f-]+$/u);
 
+  const metadataResponse = await page.request.get(publicUrl);
+  expect(metadataResponse.status()).toBe(200);
+  const metadataHtml = await metadataResponse.text();
+  expect(metadataHtml).toContain(`<title>${title} · Dovari</title>`);
+  expect(metadataHtml).toContain('name="robots" content="noindex,nofollow"');
+  expect(metadataHtml).toContain(`rel="canonical" href="http://127.0.0.1:4173${publicUrl}"`);
+  expect(metadataHtml).toContain('property="og:title"');
+
   await page.goto('/app/settings');
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL('/login');
 
   await page.goto('/');
   await expect(page.getByRole('link', { name: new RegExp(title) })).toBeVisible();
+  const publicSearch = page.getByRole('searchbox', { name: 'Search public pages' });
+  await publicSearch.fill('Anonymous readers');
+  await expect(page.getByRole('option').filter({ hasText: title })).toBeVisible();
+  await publicSearch.press('ArrowDown');
+  await publicSearch.press('Enter');
+  await expect(page).toHaveURL(publicUrl);
+  const robotsResponse = await page.request.get('/robots.txt');
+  expect(robotsResponse.status()).toBe(200);
+  expect(await robotsResponse.text()).not.toContain(publicUrl.slice('/p/'.length));
+  const sitemapResponse = await page.request.get('/sitemap.xml');
+  expect(sitemapResponse.status()).toBe(200);
+  expect(await sitemapResponse.text()).not.toContain(publicUrl.slice('/p/'.length));
+  await page.goto('/');
   const landingResults = await new AxeBuilder({ page }).analyze();
   expect(landingResults.violations.filter((violation) => violation.impact === 'critical')).toEqual(
     [],

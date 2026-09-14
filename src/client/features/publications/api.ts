@@ -13,6 +13,10 @@ import {
   type PublishPublicationRequest,
   type UnpublishPublicationRequest,
 } from '../../../shared/publications';
+import {
+  publicSearchResponseSchema,
+  type PublicSearchResponse,
+} from '../../../shared/public-search';
 import { PageApiError, request } from '../pages/api';
 
 export function fetchPrivatePublication(pageId: string, signal?: AbortSignal) {
@@ -66,6 +70,15 @@ export function fetchPublicPublication(publicId: string, signal?: AbortSignal) {
   return request<{ publication: PublicPublication }>(
     `/api/public/publications/${encodeURIComponent(publicId)}`,
     publicPublicationResponseSchema,
+    { signal },
+  );
+}
+
+export function searchPublicPages(query: string, signal?: AbortSignal) {
+  const params = new URLSearchParams({ limit: '20', q: query });
+  return request<PublicSearchResponse>(
+    `/api/public/search?${params.toString()}`,
+    publicSearchResponseSchema,
     { signal },
   );
 }
