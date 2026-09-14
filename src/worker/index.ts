@@ -56,11 +56,11 @@ export function createApp() {
     const pathname = new URL(c.req.url).pathname;
     const classification = classifyPath(pathname);
 
-    if (classification.kind === 'private' && classification.area === 'app') {
-      if (pathname === '/') {
-        return c.redirect('/app', 302);
-      }
+    if (classification.kind === 'redirect') {
+      return c.redirect(classification.location, 302);
+    }
 
+    if (classification.kind === 'private' && classification.area === 'app') {
       return fetchStaticAssets(c.req.raw, c.env.STATIC_ASSETS);
     }
 

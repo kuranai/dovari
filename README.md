@@ -55,15 +55,16 @@ und [Cloudflare Zero Trust öffnen](https://one.dash.cloudflare.com/).
 4. Klicke **Add public hostname** und trage deine Worker-Adresse ein. Wenn Cloudflare getrennte
    Felder zeigt, gehören `dovari.<dein-account-subdomain>` in **Subdomain** und `workers.dev` in
    **Domain**.
-5. Trage als **Path** `/app/*` ein. Klicke anschließend nochmals **Add public hostname** und
-   trage denselben Host mit dem Path `/api/private/*` ein. Beide Einträge müssen in derselben
-   Access-Anwendung bleiben.
+5. Lege für denselben Host vier Einträge in derselben Access-Anwendung an: die exakten Pfade
+   `/app` und `/api/private` sowie die Unterpfade `/app/*` und `/api/private/*`. Cloudflare
+   schließt bei einem Pfad wie `/app/*` den Elternpfad `/app` nicht automatisch ein.
 6. Unter **Access policies** eine Regel anlegen: **Decision: Allow**, **Selector: Emails**, bei
    **Value** deine eigene E-Mail-Adresse eintragen.
 7. Klicke **Save application** bzw. **Create application**.
 
-Access ist damit die Login-Seite vor Dovari. Dovari prüft zusätzlich das von Access ausgestellte
-JWT. Die [offizielle Anleitung für Self-hosted Applications](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
+Access ist damit die Login-Seite vor Dovari. Der öffentliche Einstieg `/` leitet auf das geschützte
+`/app` weiter. Dovari prüft zusätzlich das von Access ausgestellte JWT. Die
+[offizielle Anleitung für Self-hosted Applications](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
 und die [Regeln für Pfade und `*`-Wildcards](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/)
 zeigen dieselben Cloudflare-Menüs.
 
@@ -228,9 +229,15 @@ Allow policy for the intended editor email addresses, groups, or GitHub identiti
 paths:
 
 ```text
+/app
 /app/*
+/api/private
 /api/private/*
 ```
+
+Both the exact parent paths and their wildcard children are required because an Access path ending
+in `/*` does not include its parent path. The public `/` entry point redirects to the protected
+`/app` path.
 
 GitHub is an optional identity provider inside Access. Dovari does not run a separate OAuth or
 session service.

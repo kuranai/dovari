@@ -203,6 +203,21 @@ describe('worker security boundary', () => {
     expect(head).not.toHaveBeenCalled();
   });
 
+  it('redirects the public root to the private app without requiring Access first', async () => {
+    const { env, head, prepare, staticFetch } = makeEnvironment({
+      ACCESS_AUD: undefined,
+      ACCESS_TEAM_DOMAIN: undefined,
+    });
+
+    const response = await fetchApp('/', env);
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('Location')).toBe('/app');
+    expect(staticFetch).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+    expect(head).not.toHaveBeenCalled();
+  });
+
   it('keeps health and static files public without exposing private data', async () => {
     const { env, head, prepare, staticFetch } = makeEnvironment({
       ACCESS_AUD: undefined,

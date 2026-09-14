@@ -27,6 +27,11 @@ if (!targetUrl) {
       throw new Error('Public health check did not return { status: "ok" }.');
     }
 
+    const root = await request('/');
+    if (root.status !== 302 || root.headers.get('location') !== '/app') {
+      throw new Error('Public root did not redirect to /app.');
+    }
+
     for (const path of ['/app', '/api/private/pages']) {
       const response = await request(path);
       if (response.ok) {
