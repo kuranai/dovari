@@ -15,13 +15,20 @@
   --color-border-faint: #e8e8e1;
   --color-border-strong: #b7b7ad;
   --color-border-subtle: #e4e4dd;
-  --color-code-bg: #f1f2ed;
-  --color-code-comment: #657067;
-  --color-code-deletion: #a23f3a;
-  --color-code-keyword: #6841a5;
-  --color-code-number: #925000;
-  --color-code-string: #3f6f2a;
-  --color-code-text: #292b27;
+  --color-code-addition: #1a7f37;
+  --color-code-attribute: #0550ae;
+  --color-code-bg: #f6f8fa;
+  --color-code-bullet: #4d2d00;
+  --color-code-built-in: #953800;
+  --color-code-comment: #57606a;
+  --color-code-deletion: #cf222e;
+  --color-code-keyword: #cf222e;
+  --color-code-number: #0550ae;
+  --color-code-string: #0a3069;
+  --color-code-tag: #116329;
+  --color-code-text: #24292f;
+  --color-code-title: #8250df;
+  --color-code-variable: #953800;
   --color-danger: #9d413c;
   --color-danger-border: #ead8d5;
   --color-danger-hover: #fce5e1;
@@ -79,13 +86,20 @@
   --color-border-faint: #263028;
   --color-border-strong: #526154;
   --color-border-subtle: #29332c;
-  --color-code-bg: #0d100e;
-  --color-code-comment: #a6ad9c;
-  --color-code-deletion: #ffaaa0;
-  --color-code-keyword: #d7b5ff;
-  --color-code-number: #ffd28f;
-  --color-code-string: #b9dc9e;
-  --color-code-text: #f5f7f0;
+  --color-code-addition: #7ee787;
+  --color-code-attribute: #79c0ff;
+  --color-code-bg: #161b22;
+  --color-code-bullet: #f2cc60;
+  --color-code-built-in: #ffa657;
+  --color-code-comment: #8b949e;
+  --color-code-deletion: #ff7b72;
+  --color-code-keyword: #ff7b72;
+  --color-code-number: #79c0ff;
+  --color-code-string: #a5d6ff;
+  --color-code-tag: #7ee787;
+  --color-code-text: #c9d1d9;
+  --color-code-title: #d2a8ff;
+  --color-code-variable: #ffa657;
   --color-danger: #ffb0a5;
   --color-danger-border: #71433d;
   --color-danger-hover: #512d29;
@@ -1353,33 +1367,70 @@ kbd {
 }
 
 .page-editor-content pre .hljs-keyword,
-.page-editor-content pre .hljs-selector-tag,
-.page-editor-content pre .hljs-literal,
-.page-editor-content pre .hljs-section,
-.page-editor-content pre .hljs-link {
+.page-editor-content pre .hljs-doctag,
+.page-editor-content pre .hljs-template-tag,
+.page-editor-content pre .hljs-type,
+.page-editor-content pre .hljs-variable.language_ {
   color: var(--color-code-keyword);
 }
 
 .page-editor-content pre .hljs-string,
-.page-editor-content pre .hljs-title,
-.page-editor-content pre .hljs-name,
-.page-editor-content pre .hljs-type,
-.page-editor-content pre .hljs-attribute,
-.page-editor-content pre .hljs-symbol,
-.page-editor-content pre .hljs-bullet,
-.page-editor-content pre .hljs-addition,
-.page-editor-content pre .hljs-variable,
-.page-editor-content pre .hljs-template-tag,
-.page-editor-content pre .hljs-template-variable {
+.page-editor-content pre .hljs-regexp,
+.page-editor-content pre .hljs-meta .hljs-string {
   color: var(--color-code-string);
 }
 
+.page-editor-content pre .hljs-title,
+.page-editor-content pre .hljs-title.class_.inherited__,
+.page-editor-content pre .hljs-title.class_,
+.page-editor-content pre .hljs-title.function_ {
+  color: var(--color-code-title);
+}
+
+.page-editor-content pre .hljs-name,
+.page-editor-content pre .hljs-selector-tag,
+.page-editor-content pre .hljs-selector-pseudo {
+  color: var(--color-code-tag);
+}
+
 .page-editor-content pre .hljs-number,
+.page-editor-content pre .hljs-literal {
+  color: var(--color-code-number);
+}
+
 .page-editor-content pre .hljs-meta,
+.page-editor-content pre .hljs-operator,
+.page-editor-content pre .hljs-attr,
+.page-editor-content pre .hljs-attribute,
+.page-editor-content pre .hljs-selector-attr,
+.page-editor-content pre .hljs-selector-class,
+.page-editor-content pre .hljs-selector-id {
+  color: var(--color-code-attribute);
+}
+
+.page-editor-content pre .hljs-variable,
+.page-editor-content pre .hljs-template-variable {
+  color: var(--color-code-variable);
+}
+
 .page-editor-content pre .hljs-built_in,
 .page-editor-content pre .hljs-builtin-name,
-.page-editor-content pre .hljs-params {
-  color: var(--color-code-number);
+.page-editor-content pre .hljs-symbol {
+  color: var(--color-code-built-in);
+}
+
+.page-editor-content pre .hljs-bullet {
+  color: var(--color-code-bullet);
+}
+
+.page-editor-content pre .hljs-section,
+.page-editor-content pre .hljs-link {
+  color: var(--color-code-attribute);
+  font-weight: 700;
+}
+
+.page-editor-content pre .hljs-addition {
+  color: var(--color-code-addition);
 }
 
 .page-editor-content pre .hljs-deletion {
