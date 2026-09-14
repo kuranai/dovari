@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -33,6 +34,8 @@ import { PageView } from '../features/pages/PageView';
 import { TrashPage } from '../features/recovery/TrashPage';
 import { BackupRestorePage } from '../features/recovery/BackupRestorePage';
 import { CommandPalette } from '../features/search/CommandPalette';
+import { SettingsPage } from '../features/settings/SettingsPage';
+import { selectRecentPages } from '../features/pages/recentPages';
 import { ThemeControl } from './ThemeControl';
 import { ThemeProvider, useTheme } from './theme';
 
@@ -95,6 +98,19 @@ export interface WorkspaceOutletContext {
 
 function workspacePath(pageId: string) {
   return `/app/pages/${pageId}`;
+}
+
+function pageIdFromWorkspacePath(pathname: string) {
+  const match = pathname.match(/^\/app\/pages\/([^/]+)/u);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
 }
 
 function LoadingState() {
@@ -167,6 +183,7 @@ function PageRoute() {
   const { pageId } = useParams();
   const { deletePage, onPageUpdated, pages, refreshPages } =
     useOutletContext<WorkspaceOutletContext>();
+  const location = useLocation();
   const navigate = useNavigate();
 
   if (!pageId) {
@@ -180,6 +197,8 @@ function PageRoute() {
       onPageCreated={() => void refreshPages()}
       onPageDeleted={deletePage}
       onPageUpdated={onPageUpdated}
+      onHistoryClosed={() => navigate(workspacePath(pageId), { replace: true })}
+      openHistory={new URLSearchParams(location.search).get('history') === '1'}
       pageId={pageId}
       pageSummary={pages.find((page) => page.id === pageId)}
     />
@@ -195,6 +214,7 @@ function Sidebar({
   onPageUpdated,
   onPagesChanged,
   pages,
+  recentPages,
   state,
   error,
   onRetry,
@@ -213,6 +233,7 @@ function Sidebar({
   onPagesChanged: () => Promise<void>;
   onRetry: () => void;
   pages: PageSummary[];
+  recentPages: PageSummary[];
   state: PageListState;
   isOpen: boolean;
   isMobile: boolean;
@@ -303,6 +324,32 @@ function Sidebar({
           pages={pages}
         />
       ) : null}
+      {recentPages.length > 0 ? (
+        <section aria-labelledby="recent-pages-title" className="sidebar-recent">
+          <div className="sidebar-recent-heading">
+            <span className="state-kicker">Recently edited</span>
+            <h3 id="recent-pages-title">Recent pages</h3>
+          </div>
+          <nav aria-label="Recent pages">
+            <ul className="sidebar-recent-list">
+              {recentPages.map((page) => (
+                <li key={page.id}>
+                  <Link
+                    aria-label={`Open recent page: ${page.title}`}
+                    className="sidebar-recent-link"
+                    to={workspacePath(page.id)}
+                  >
+                    <span aria-hidden="true" className="sidebar-recent-icon">
+                      ↗
+                    </span>
+                    <span className="sidebar-recent-title">{page.title}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        </section>
+      ) : null}
 
       <div className="sidebar-footer">
         <button
@@ -324,7 +371,7 @@ function Sidebar({
         >
           {isExporting ? 'Preparing export…' : 'Export Markdown + ZIP'}
         </button>
-        <Link className="sidebar-settings-link" to="/app/settings/trash">
+        <Link className="sidebar-settings-link" to="/app/settings">
           Settings
         </Link>
         <Link className="sidebar-settings-link" to="/app/settings/backup">
@@ -358,6 +405,10 @@ function Workspace() {
   const navigate = useNavigate();
   const { toggleTheme } = useTheme();
   const isMobile = useMediaQuery('(max-width: 760px)');
+  const recentPages = useMemo(
+    () => selectRecentPages(pages, pageIdFromWorkspacePath(location.pathname)),
+    [location.pathname, pages],
+  );
 
   const loadPages = useCallback(async (signal?: AbortSignal) => {
     setListState('loading');
@@ -683,6 +734,7 @@ function Workspace() {
           onPagesChanged={refreshPages}
           onRetry={retryPages}
           pages={pages}
+          recentPages={recentPages}
           state={listState}
           isMobile={isMobile}
           isOpen={isSidebarOpen}
@@ -702,7 +754,6 @@ function Workspace() {
           onClose={closePalette}
           onCreatePage={() => void createPage()}
           onOpenPage={(url) => navigate(url)}
-          onPlaceholderAction={setActionError}
           onThemeToggle={toggleTheme}
         />
       ) : null}
@@ -716,6 +767,7 @@ export function AppRoutes() {
       <Route element={<Workspace />} path="/app">
         <Route element={<WorkspaceLanding />} index />
         <Route element={<PageRoute />} path="pages/:pageId" />
+        <Route element={<SettingsPage />} path="settings" />
         <Route element={<TrashPage />} path="settings/trash" />
         <Route element={<BackupRestorePage />} path="settings/backup" />
       </Route>

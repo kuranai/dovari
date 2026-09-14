@@ -344,10 +344,14 @@ export class AssetUploadController {
   }
 
   handlePaste(editor: Editor, files: File[]) {
-    this.enqueue(editor, files, editor.state.selection.from);
+    this.handleFiles(editor, files, editor.state.selection.from);
   }
 
   handleDrop(editor: Editor, files: File[], position: number) {
+    this.handleFiles(editor, files, position);
+  }
+
+  handleFiles(editor: Editor, files: File[], position: number) {
     this.enqueue(editor, files, position);
   }
 

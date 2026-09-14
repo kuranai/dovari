@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
+import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
 
@@ -26,6 +26,13 @@ import {
   wikiLinkTitle,
 } from './wikiLinks';
 import { WikiLinkPicker, type WikiLinkPickerOption } from './WikiLinkPicker';
+import { SlashCommandPalette } from './SlashCommandPalette';
+import {
+  filterSlashCommands,
+  findSlashCommandQuery,
+  type SlashCommandDefinition,
+  type SlashCommandQuery,
+} from './slashCommands';
 
 export interface PageEditorProps {
   content: TiptapDocument;
@@ -41,7 +48,11 @@ export interface PageEditorProps {
 
 interface WikiLinkSession extends WikiLinkQuery {
   position: LinkPopoverPosition;
-  source: 'autocomplete' | 'toolbar';
+  source: 'autocomplete' | 'slash' | 'toolbar';
+}
+
+interface SlashCommandSession extends SlashCommandQuery {
+  position: LinkPopoverPosition;
 }
 
 interface LinkPopoverSession extends EditorLinkSelection {
@@ -64,6 +75,19 @@ function sameWikiLinkSession(left: WikiLinkSession | null, right: WikiLinkSessio
     left?.position.left === right?.position.left &&
     left?.position.top === right?.position.top &&
     left?.source === right?.source
+  );
+}
+
+function sameSlashCommandSession(
+  left: SlashCommandSession | null,
+  right: SlashCommandSession | null,
+) {
+  return (
+    left?.from === right?.from &&
+    left?.to === right?.to &&
+    left?.query === right?.query &&
+    left?.position.left === right?.position.left &&
+    left?.position.top === right?.position.top
   );
 }
 
@@ -123,6 +147,8 @@ export function PageEditor({
 }: PageEditorProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const [slashCommandSession, setSlashCommandSession] = useState<SlashCommandSession | null>(null);
+  const [slashCommandActiveIndex, setSlashCommandActiveIndex] = useState(0);
   const [wikiLinkSession, setWikiLinkSession] = useState<WikiLinkSession | null>(null);
   const [wikiLinkPages, setWikiLinkPages] = useState<PageSummary[]>([]);
   const [wikiLinkActiveIndex, setWikiLinkActiveIndex] = useState(0);
@@ -130,12 +156,28 @@ export function PageEditor({
   const [isSearchingWikiLinks, setIsSearchingWikiLinks] = useState(false);
   const [isCreatingWikiLink, setIsCreatingWikiLink] = useState(false);
   const [linkPopoverSession, setLinkPopoverSession] = useState<LinkPopoverSession | null>(null);
+  const slashAssetInputRef = useRef<HTMLInputElement>(null);
+  const slashAssetPositionRef = useRef<number | null>(null);
   const assetUpload = useMemo(
     () => new AssetUploadController({ pageId, upload: uploadAsset }),
     [pageId, uploadAsset],
   );
   const extensions = useMemo(() => createPageEditorExtensions({ assetUpload }), [assetUpload]);
   const initialContent = useMemo(() => safeEditorDocument(content), [content]);
+
+  const updateSlashCommandSession = useCallback((currentEditor: Editor) => {
+    const query = findSlashCommandQuery(currentEditor);
+    if (!query) {
+      setSlashCommandSession((current) => (current === null ? current : null));
+      return;
+    }
+
+    const next: SlashCommandSession = {
+      ...query,
+      position: popupPosition(currentEditor, query.to),
+    };
+    setSlashCommandSession((current) => (sameSlashCommandSession(current, next) ? current : next));
+  }, []);
 
   const updateWikiLinkSession = useCallback((currentEditor: Editor) => {
     const query = findWikiLinkQuery(currentEditor);
@@ -171,13 +213,15 @@ export function PageEditor({
         if (serialized) {
           onChangeRef.current?.(serialized);
         }
+        updateSlashCommandSession(currentEditor);
         updateWikiLinkSession(currentEditor);
       },
       onSelectionUpdate: ({ editor: currentEditor }) => {
+        updateSlashCommandSession(currentEditor);
         updateWikiLinkSession(currentEditor);
       },
     },
-    [extensions, updateWikiLinkSession],
+    [extensions, updateSlashCommandSession, updateWikiLinkSession],
   );
 
   function editorSelectionForLink(link?: HTMLAnchorElement) {
@@ -251,6 +295,14 @@ export function PageEditor({
     ...wikiLinkPages.map((page) => ({ kind: 'page' as const, page })),
     ...(canCreatePage ? [{ kind: 'create' as const, title: linkTitle }] : []),
   ];
+  const slashCommandOptions = useMemo(
+    () => filterSlashCommands(slashCommandSession?.query ?? ''),
+    [slashCommandSession?.query],
+  );
+
+  useEffect(() => {
+    setSlashCommandActiveIndex(slashCommandOptions.length > 0 ? 0 : -1);
+  }, [slashCommandOptions.length, slashCommandSession?.query]);
 
   useEffect(() => {
     if (wikiLinkSession === null) {
@@ -290,6 +342,166 @@ export function PageEditor({
       controller.abort();
     };
   }, [searchWikiLinkPagesRequest, wikiLinkSession?.query]);
+
+  function dismissSlashCommands() {
+    setSlashCommandSession(null);
+    editor?.view.focus();
+  }
+
+  function deleteSlashQuery(session: SlashCommandSession) {
+    if (!editor) {
+      return null;
+    }
+
+    const deleted = editor
+      .chain()
+      .focus()
+      .deleteRange({ from: session.from, to: session.to })
+      .run();
+    return deleted ? session.from : null;
+  }
+
+  function openSlashWikiLinkPicker(session: SlashCommandSession) {
+    if (!editor) {
+      return;
+    }
+
+    setSlashCommandSession(null);
+    setLinkPopoverSession(null);
+    setWikiLinkError(null);
+    setWikiLinkSession({
+      from: session.from,
+      position: popupPosition(editor, session.to),
+      query: '',
+      source: 'slash',
+      to: session.to,
+    });
+  }
+
+  function openSlashAssetPicker(kind: 'image' | 'file', session: SlashCommandSession) {
+    const insertionPosition = deleteSlashQuery(session);
+    if (insertionPosition === null || !slashAssetInputRef.current) {
+      return;
+    }
+
+    setSlashCommandSession(null);
+    setWikiLinkSession(null);
+    setLinkPopoverSession(null);
+    slashAssetPositionRef.current = insertionPosition;
+    slashAssetInputRef.current.accept =
+      kind === 'image' ? 'image/png,image/jpeg,image/webp,image/gif' : '';
+    slashAssetInputRef.current.value = '';
+    slashAssetInputRef.current.click();
+  }
+
+  function handleSlashAssetSelection(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    const insertionPosition = slashAssetPositionRef.current;
+    slashAssetPositionRef.current = null;
+    event.target.value = '';
+
+    if (!editor || insertionPosition === null || files.length === 0) {
+      return;
+    }
+
+    assetUpload.handleFiles(editor, files, insertionPosition);
+  }
+
+  function executeSlashCommand(command: SlashCommandDefinition) {
+    if (!editor || !slashCommandSession) {
+      return;
+    }
+
+    if (command.id === 'wiki-link') {
+      openSlashWikiLinkPicker(slashCommandSession);
+      return;
+    }
+
+    if (command.id === 'image' || command.id === 'file') {
+      openSlashAssetPicker(command.id, slashCommandSession);
+      return;
+    }
+
+    const chain = editor
+      .chain()
+      .focus()
+      .deleteRange({ from: slashCommandSession.from, to: slashCommandSession.to });
+    switch (command.id) {
+      case 'text':
+        chain.setParagraph();
+        break;
+      case 'heading-1':
+        chain.setHeading({ level: 1 });
+        break;
+      case 'heading-2':
+        chain.setHeading({ level: 2 });
+        break;
+      case 'heading-3':
+        chain.setHeading({ level: 3 });
+        break;
+      case 'bullet-list':
+        chain.toggleBulletList();
+        break;
+      case 'ordered-list':
+        chain.toggleOrderedList();
+        break;
+      case 'checklist':
+        chain.toggleTaskList();
+        break;
+      case 'quote':
+        chain.toggleBlockquote();
+        break;
+      case 'inline-code':
+        chain.toggleCode();
+        break;
+      case 'code-block':
+        chain.toggleCodeBlock();
+        break;
+      case 'divider':
+        chain.setHorizontalRule();
+        break;
+      default:
+        return;
+    }
+
+    if (chain.run()) {
+      setSlashCommandSession(null);
+      editor.view.focus();
+    }
+  }
+
+  function handleSlashCommandKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (!slashCommandSession || !editor) {
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      dismissSlashCommands();
+      return;
+    }
+
+    if (slashCommandOptions.length === 0) {
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setSlashCommandActiveIndex((current) => (current + 1) % slashCommandOptions.length);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setSlashCommandActiveIndex(
+        (current) => (current - 1 + slashCommandOptions.length) % slashCommandOptions.length,
+      );
+    } else if (event.key === 'Enter' || event.key === 'Tab') {
+      const command = slashCommandOptions[slashCommandActiveIndex];
+      if (!command) {
+        return;
+      }
+      event.preventDefault();
+      executeSlashCommand(command);
+    }
+  }
 
   function dismissWikiLinkAutocomplete() {
     setWikiLinkSession(null);
@@ -358,6 +570,11 @@ export function PageEditor({
 
   function handleEditorKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
     if (!editor || !(event.target instanceof Node) || !editor.view.dom.contains(event.target)) {
+      return;
+    }
+
+    handleSlashCommandKeyDown(event);
+    if (event.defaultPrevented || slashCommandSession) {
       return;
     }
 
@@ -455,6 +672,25 @@ export function PageEditor({
           <div className="page-editor-surface">
             <EditorContent editor={editor} />
           </div>
+          <input
+            aria-label="Choose an image or file"
+            className="slash-command-file-input"
+            onChange={handleSlashAssetSelection}
+            ref={slashAssetInputRef}
+            tabIndex={-1}
+            type="file"
+          />
+          {slashCommandSession ? (
+            <SlashCommandPalette
+              activeIndex={slashCommandActiveIndex}
+              onActiveIndexChange={setSlashCommandActiveIndex}
+              onKeyDown={handleSlashCommandKeyDown}
+              onSelect={executeSlashCommand}
+              options={slashCommandOptions}
+              position={slashCommandSession.position}
+              query={slashCommandSession.query}
+            />
+          ) : null}
           {wikiLinkSession ? (
             <WikiLinkPicker
               activeIndex={wikiLinkActiveIndex}
@@ -465,7 +701,9 @@ export function PageEditor({
               onKeyDown={handleWikiLinkKeyDown}
               onQueryChange={(query) =>
                 setWikiLinkSession((current) =>
-                  current?.source === 'toolbar' ? { ...current, query } : current,
+                  current?.source === 'toolbar' || current?.source === 'slash'
+                    ? { ...current, query }
+                    : current,
                 )
               }
               onSelectPage={selectWikiLinkPage}

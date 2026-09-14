@@ -98,8 +98,17 @@ focus states, and `prefers-reduced-motion` support are included in the app shell
 
 Open `/app` to load the private workspace. The sidebar reads page metadata from the Pages API and
 opens each page at the stable client-side URL `/app/pages/<page-id>` without a full reload. `New
-page` creates an `Untitled` page, and the page view supports renaming and soft deletion. Content is
-currently shown as a safe text/JSON placeholder; the rich-text editor is added in a later phase.
+page` creates an `Untitled` page, and the page view supports direct title editing, rich-text editing,
+autosave, version history, and soft deletion. The sidebar keeps up to five active pages that were
+most recently updated; the current page is omitted from that list. `/app/settings` groups the
+theme, Trash, version history, backup, and restore workflows. The command palette's `Go to
+settings` action opens that route directly.
+
+In an empty editor paragraph, type `/` to filter the supported block commands. Arrow keys and Enter
+insert text, headings, lists, quotes, code, dividers, wiki links, images, or files; Escape closes
+the palette without changing the document. Image and file commands use the same validated upload
+pipeline as paste and drag and drop, including progress, retry, and remove states. The visible
+editor toolbar remains available as a keyboard-friendly fallback.
 
 ## Pages API
 

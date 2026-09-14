@@ -3,7 +3,7 @@ import type { KeyboardEventHandler } from 'react';
 
 import type { PageSummary } from '../../../../shared/pages';
 
-export type WikiLinkPickerSource = 'autocomplete' | 'toolbar';
+export type WikiLinkPickerSource = 'autocomplete' | 'slash' | 'toolbar';
 
 export type WikiLinkPickerOption =
   { kind: 'page'; page: PageSummary } | { kind: 'create'; title: string };
@@ -42,7 +42,7 @@ export function WikiLinkPicker({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (source === 'toolbar') {
+    if (source === 'toolbar' || source === 'slash') {
       searchInputRef.current?.focus();
       searchInputRef.current?.select();
     }
@@ -57,7 +57,7 @@ export function WikiLinkPicker({
       role="dialog"
       style={{ left: position.left, top: position.top }}
     >
-      {source === 'toolbar' ? (
+      {source === 'toolbar' || source === 'slash' ? (
         <label className="wiki-link-search-label" htmlFor={searchInputId}>
           Search pages to link
           <input

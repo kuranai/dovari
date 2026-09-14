@@ -433,6 +433,189 @@ describe('PageEditor', () => {
     );
   });
 
+  it('opens the slash palette, filters commands, and inserts a heading with Enter', async () => {
+    const onChange = vi.fn();
+    render(
+      <PageEditor
+        content={{ type: 'doc', content: [{ type: 'paragraph' }] }}
+        onChange={onChange}
+      />,
+    );
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [],
+        getData: (type: string) => (type === 'text/plain' ? '/heading' : ''),
+      },
+    });
+
+    const palette = await screen.findByRole('dialog', { name: 'Slash commands' });
+    expect(palette.textContent).toContain('Heading 1');
+    expect(palette.textContent).toContain('Heading 2');
+    expect(palette.textContent).not.toContain('Bullet List');
+
+    fireEvent.keyDown(editor, { key: 'Enter' });
+
+    await waitFor(() => expect(editor.querySelector('h1')).not.toBeNull());
+    expect(screen.queryByRole('dialog', { name: 'Slash commands' })).toBeNull();
+    expect(editor.textContent).not.toContain('/heading');
+    expect((onChange.mock.lastCall?.[0] as TiptapDocument).content[0]).toMatchObject({
+      attrs: { level: 1 },
+      type: 'heading',
+    });
+  });
+
+  it('closes the slash palette with Escape without removing the query', async () => {
+    render(<PageEditor content={{ type: 'doc', content: [{ type: 'paragraph' }] }} />);
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [],
+        getData: (type: string) => (type === 'text/plain' ? '/heading' : ''),
+      },
+    });
+    await screen.findByRole('dialog', { name: 'Slash commands' });
+
+    fireEvent.keyDown(editor, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Slash commands' })).toBeNull();
+    expect(editor.textContent).toBe('/heading');
+  });
+
+  it('uses the existing wiki-link picker after choosing Wiki Link', async () => {
+    const target: PageSummary = {
+      id: '66666666-6666-4666-8666-666666666666',
+      parentId: null,
+      position: 0,
+      revision: 1,
+      slug: 'cloudflare-workers',
+      title: 'Cloudflare Workers',
+      updatedAt: '2026-09-13T00:00:00.000Z',
+    };
+    const searchWikiLinks = vi.fn().mockResolvedValue({ pages: [target] });
+    const onChange = vi.fn();
+    render(
+      <PageEditor
+        content={{ type: 'doc', content: [{ type: 'paragraph' }] }}
+        onChange={onChange}
+        searchWikiLinkPages={searchWikiLinks}
+      />,
+    );
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [],
+        getData: (type: string) => (type === 'text/plain' ? '/' : ''),
+      },
+    });
+    await screen.findByRole('dialog', { name: 'Slash commands' });
+    fireEvent.click(screen.getByRole('option', { name: /Wiki Link/ }));
+
+    const search = await screen.findByRole('searchbox', { name: 'Search pages to link' });
+    fireEvent.change(search, { target: { value: 'Cloudflare' } });
+    await screen.findByRole('option', { name: /Cloudflare Workers/ });
+    fireEvent.keyDown(search, { key: 'Enter' });
+
+    await waitFor(() => expect(editor.querySelector('[data-dovari-wiki-link-id]')).not.toBeNull());
+    expect(editor.textContent).toContain('[[Cloudflare Workers]]');
+    expect(editor.textContent).not.toContain('/');
+    expect(onChange.mock.lastCall?.[0]).toMatchObject({
+      content: [
+        {
+          content: [
+            { attrs: { targetPageId: target.id, targetTitle: target.title }, type: 'wikiLink' },
+          ],
+          type: 'paragraph',
+        },
+      ],
+    });
+  });
+
+  it('opens the image picker and inserts through the shared upload pipeline', async () => {
+    const asset = {
+      contentUrl: '/api/private/assets/11111111-1111-4111-8111-111111111111/content',
+      filename: 'screenshot.png',
+      id: '11111111-1111-4111-8111-111111111111',
+      mimeType: 'image/png',
+      sizeBytes: 128,
+    } satisfies AssetResponse;
+    const uploadAsset = vi.fn<UploadAsset>().mockResolvedValue(asset);
+    const onChange = vi.fn();
+    render(
+      <PageEditor
+        content={{ type: 'doc', content: [{ type: 'paragraph' }] }}
+        onChange={onChange}
+        pageId="22222222-2222-4222-8222-222222222222"
+        uploadAsset={uploadAsset}
+      />,
+    );
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [],
+        getData: (type: string) => (type === 'text/plain' ? '/' : ''),
+      },
+    });
+    await screen.findByRole('dialog', { name: 'Slash commands' });
+    fireEvent.click(screen.getByRole('option', { name: /Image/ }));
+
+    const fileInput = screen.getByLabelText('Choose an image or file');
+    fireEvent.change(fileInput, {
+      target: { files: [new File(['png'], 'screenshot.png', { type: 'image/png' })] },
+    });
+
+    await waitFor(() => expect(uploadAsset).toHaveBeenCalledOnce());
+    await waitFor(() => expect(editor.querySelector('.asset-image-node')).not.toBeNull());
+    expect(editor.textContent).not.toContain('/');
+    expect(onChange.mock.lastCall?.[0]).toMatchObject({
+      content: [
+        {
+          content: [{ attrs: { assetId: asset.id }, type: 'assetImage' }],
+          type: 'paragraph',
+        },
+      ],
+    });
+  });
+
+  it('opens the file picker and inserts an attachment through the shared upload pipeline', async () => {
+    const asset = {
+      contentUrl: '/api/private/assets/33333333-3333-4333-8333-333333333333/content',
+      filename: 'notes.txt',
+      id: '33333333-3333-4333-8333-333333333333',
+      mimeType: 'text/plain',
+      sizeBytes: 20,
+    } satisfies AssetResponse;
+    const uploadAsset = vi.fn<UploadAsset>().mockResolvedValue(asset);
+    render(
+      <PageEditor
+        content={{ type: 'doc', content: [{ type: 'paragraph' }] }}
+        pageId="44444444-4444-4444-8444-444444444444"
+        uploadAsset={uploadAsset}
+      />,
+    );
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [],
+        getData: (type: string) => (type === 'text/plain' ? '/' : ''),
+      },
+    });
+    await screen.findByRole('dialog', { name: 'Slash commands' });
+    fireEvent.click(screen.getByRole('option', { name: /^File/ }));
+    fireEvent.change(screen.getByLabelText('Choose an image or file'), {
+      target: { files: [new File(['notes'], 'notes.txt', { type: 'text/plain' })] },
+    });
+
+    await waitFor(() => expect(uploadAsset).toHaveBeenCalledOnce());
+    await waitFor(() => expect(editor.querySelector('.asset-attachment-node')).not.toBeNull());
+    expect(editor.querySelector('.asset-attachment-node')?.textContent).toContain('notes.txt');
+  });
+
   it('opens wiki-link autocomplete and selects an existing page with the keyboard', async () => {
     const onChange = vi.fn();
     const target: PageSummary = {

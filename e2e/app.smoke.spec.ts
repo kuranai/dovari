@@ -27,6 +27,8 @@ test('validates and restores a lossless backup after the workspace is emptied', 
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
   await page.getByRole('button', { name: 'Delete page' }).click();
   await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL('/app/settings');
+  await page.getByRole('link', { name: 'Open Trash' }).click();
   await expect(page).toHaveURL('/app/settings/trash');
   const trashItem = page.locator('.trash-item').filter({ hasText: title });
   await trashItem.getByRole('button', { name: 'Delete permanently' }).click();
@@ -45,6 +47,8 @@ test('validates and restores a lossless backup after the workspace is emptied', 
 
   await page.getByRole('button', { name: 'Delete page' }).click();
   await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL('/app/settings');
+  await page.getByRole('link', { name: 'Open Trash' }).click();
   await expect(page).toHaveURL('/app/settings/trash');
   const restoredTrashItem = page.locator('.trash-item').filter({ hasText: title });
   await restoredTrashItem.getByRole('button', { name: 'Delete permanently' }).click();
@@ -85,11 +89,11 @@ test('creates, navigates, renames, reloads, and deletes pages', async ({ page })
   const secondPageUrl = page.url();
   expect(secondPageUrl).not.toBe(firstPageUrl);
 
-  await page.getByRole('link', { name: renamedTitle }).click();
+  await page.getByRole('link', { exact: true, name: renamedTitle }).click();
   await expect(page).toHaveURL(firstPageUrl);
   await expect(page.getByRole('heading', { name: renamedTitle })).toBeVisible();
 
-  await page.getByRole('link', { name: 'Untitled' }).click();
+  await page.getByRole('link', { exact: true, name: 'Untitled' }).click();
   await expect(page).toHaveURL(secondPageUrl);
   await page.getByRole('button', { name: 'Delete page' }).click();
   await expect(page).toHaveURL(firstPageUrl);
@@ -123,15 +127,15 @@ test('supports a navigable page tree with child creation, collapse, move, and in
   await page.getByRole('button', { name: 'Save title' }).click();
   await expect(page.getByRole('heading', { name: siblingTitle })).toBeVisible();
 
-  await page.getByRole('link', { name: rootTitle }).click();
+  await page.getByRole('link', { exact: true, name: rootTitle }).click();
   await page.getByRole('button', { name: `Create child of ${rootTitle}` }).click();
   await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Untitled' })).toBeVisible();
+  await expect(page.getByRole('link', { exact: true, name: 'Untitled' })).toBeVisible();
 
   await page.getByRole('button', { name: `Collapse ${rootTitle}` }).click();
-  await expect(page.getByRole('link', { name: 'Untitled' })).toHaveCount(0);
+  await expect(page.getByRole('link', { exact: true, name: 'Untitled' })).toHaveCount(0);
   await page.getByRole('button', { name: `Expand ${rootTitle}` }).click();
-  await expect(page.getByRole('link', { name: 'Untitled' })).toBeVisible();
+  await expect(page.getByRole('link', { exact: true, name: 'Untitled' })).toBeVisible();
 
   await page.getByRole('button', { name: `Move ${rootTitle}` }).click();
   await page.getByLabel('Position').selectOption({ label: `After ${siblingTitle}` });
@@ -141,12 +145,12 @@ test('supports a navigable page tree with child creation, collapse, move, and in
   await page.getByRole('button', { name: `Rename ${rootTitle}` }).click();
   await page.getByLabel('Page title').fill(`${rootTitle} renamed`);
   await page.getByRole('button', { name: 'Save title' }).click();
-  await expect(page.getByRole('link', { name: `${rootTitle} renamed` })).toBeVisible();
+  await expect(page.getByRole('link', { exact: true, name: `${rootTitle} renamed` })).toBeVisible();
 
-  await page.getByRole('link', { name: 'Untitled' }).click();
+  await page.getByRole('link', { exact: true, name: 'Untitled' }).click();
   await page.getByRole('button', { name: 'Delete page' }).click();
   const rootUrl = await page
-    .getByRole('link', { name: `${rootTitle} renamed` })
+    .getByRole('link', { exact: true, name: `${rootTitle} renamed` })
     .getAttribute('href');
   if (!rootUrl) {
     throw new Error('The renamed root page has no navigation URL.');
@@ -248,7 +252,7 @@ test('supports discoverable safe links and wiki-link navigation by mouse and key
   await page.getByLabel('Edit title').press('Enter');
   await expect(page.getByRole('heading', { name: targetTitle })).toBeVisible();
 
-  await page.getByRole('link', { name: sourceTitle }).click();
+  await page.getByRole('link', { exact: true, name: sourceTitle }).click();
   await expect(page).toHaveURL(sourceUrl);
   const editor = page.getByRole('textbox', { name: 'Page content' });
   await editor.click();
@@ -348,6 +352,8 @@ test('supports delete undo, Trash restore, and revision restore', async ({ page 
   await expect(page).toHaveURL('/app');
   await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible();
   await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL('/app/settings');
+  await page.getByRole('link', { name: 'Open Trash' }).click();
   await expect(page).toHaveURL('/app/settings/trash');
   const trashItem = page.locator('.trash-item').filter({ hasText: title });
   await expect(trashItem).toBeVisible();
@@ -366,6 +372,8 @@ test('supports delete undo, Trash restore, and revision restore', async ({ page 
   await expect(page).toHaveURL('/app');
   await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible();
   await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL('/app/settings');
+  await page.getByRole('link', { name: 'Open Trash' }).click();
   await expect(page).toHaveURL('/app/settings/trash');
   const finalTrashItem = page.locator('.trash-item').filter({ hasText: title });
   await finalTrashItem.getByRole('button', { name: 'Delete permanently' }).click();
@@ -373,4 +381,163 @@ test('supports delete undo, Trash restore, and revision restore', async ({ page 
   await confirmation.getByLabel(/Type .* to confirm/).fill(title);
   await confirmation.getByRole('button', { name: 'Confirm permanent delete' }).click();
   await expect(finalTrashItem).toHaveCount(0);
+});
+
+test('supports Settings, Recent Pages, and slash commands on desktop and mobile', async ({
+  page,
+}) => {
+  const sourceTitle = `P23 source ${Date.now()}`;
+  const targetTitle = `P23 target ${Date.now()}`;
+
+  await page.goto('/app');
+  await page.getByRole('button', { name: /New page/ }).click();
+  await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible();
+  const sourceUrl = page.url();
+  const sourceId = sourceUrl.split('/').pop();
+  if (!sourceId) {
+    throw new Error('The source page URL did not contain a page id.');
+  }
+  await page.getByLabel('Edit title').fill(sourceTitle);
+  await page.getByLabel('Edit title').press('Enter');
+  await expect(page.getByRole('heading', { name: sourceTitle })).toBeVisible();
+
+  await page.getByRole('button', { name: /New page/ }).click();
+  await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible();
+  const targetUrl = page.url();
+  const targetId = targetUrl.split('/').pop();
+  if (!targetId) {
+    throw new Error('The target page URL did not contain a page id.');
+  }
+  await page.getByLabel('Edit title').fill(targetTitle);
+  await page.getByLabel('Edit title').press('Enter');
+  await expect(page.getByRole('heading', { name: targetTitle })).toBeVisible();
+
+  const recentPages = page.getByRole('navigation', { name: 'Recent pages' });
+  await expect(
+    recentPages.getByRole('link', { name: `Open recent page: ${sourceTitle}` }),
+  ).toBeVisible();
+  await expect(
+    recentPages.getByRole('link', { name: `Open recent page: ${targetTitle}` }),
+  ).toHaveCount(0);
+
+  await page.getByRole('link', { name: `Open recent page: ${sourceTitle}` }).click();
+  await expect(page).toHaveURL(sourceUrl);
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL('/app/settings');
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open Trash' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open version history' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Create backup' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Restore a backup' })).toBeVisible();
+
+  await page.getByRole('link', { name: 'Open version history' }).click();
+  await expect(page).toHaveURL(/\/app\/pages\/[^/]+\?history=1$/);
+  await expect(page.getByRole('dialog', { name: 'Version history' })).toBeVisible();
+  await page.getByRole('button', { name: 'Close version history' }).click();
+  await expect(page).toHaveURL(/\/app\/pages\/[^?]+$/);
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL('/app/settings');
+
+  const desktopSettingsResults = await new AxeBuilder({ page }).analyze();
+  expect(
+    desktopSettingsResults.violations.filter((violation) => violation.impact === 'critical'),
+  ).toEqual([]);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  const navigationTrigger = page.getByRole('button', { name: 'Open pages navigation' });
+  await navigationTrigger.click();
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+  const mobileSettingsResults = await new AxeBuilder({ page }).analyze();
+  expect(
+    mobileSettingsResults.violations.filter((violation) => violation.impact === 'critical'),
+  ).toEqual([]);
+  await page.keyboard.press('Escape');
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(sourceUrl);
+  await expect(page.getByRole('heading', { name: sourceTitle })).toBeVisible();
+  const editor = page.getByRole('textbox', { name: 'Page content' });
+
+  await editor.click();
+  await page.keyboard.type('/heading 2');
+  await expect(page.getByRole('dialog', { name: 'Slash commands' })).toBeVisible();
+  const desktopSlashResults = await new AxeBuilder({ page }).analyze();
+  expect(
+    desktopSlashResults.violations.filter((violation) => violation.impact === 'critical'),
+  ).toEqual([]);
+  await page.keyboard.press('Enter');
+  await expect(editor.locator('h2')).toBeVisible();
+
+  await editor.click();
+  await editor.press('Control+A');
+  await editor.press('Backspace');
+  await page.keyboard.type('/wiki');
+  await page.keyboard.press('Enter');
+  const wikiPicker = page.getByRole('dialog', { name: 'Wiki link picker' });
+  const wikiSearch = page.getByRole('searchbox', { name: 'Search pages to link' });
+  await wikiSearch.fill(targetTitle);
+  await expect(
+    wikiPicker.getByRole('option', { name: new RegExp(`^${targetTitle}`) }),
+  ).toBeVisible();
+  await wikiSearch.press('Enter');
+  await expect(editor.locator(`[data-dovari-wiki-link-id="${targetId}"]`)).toBeVisible();
+
+  await editor.click();
+  await editor.press('Control+A');
+  await editor.press('Backspace');
+  await page.keyboard.type('/image');
+  await page.keyboard.press('Enter');
+  await page.locator('input.slash-command-file-input').setInputFiles({
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    ),
+    mimeType: 'image/png',
+    name: 'pixel.png',
+  });
+  await expect(editor.locator('.asset-image-node')).toBeVisible();
+
+  await editor.click();
+  await editor.press('Control+A');
+  await editor.press('Backspace');
+  await page.keyboard.type('/file');
+  await page.keyboard.press('Enter');
+  await page.locator('input.slash-command-file-input').setInputFiles({
+    buffer: Buffer.from('notes from slash command'),
+    mimeType: 'text/plain',
+    name: 'notes.txt',
+  });
+  await expect(editor.locator('.asset-attachment-node')).toBeVisible();
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(targetUrl);
+  await expect(page.getByRole('heading', { name: targetTitle })).toBeVisible();
+  const mobileEditor = page.getByRole('textbox', { name: 'Page content' });
+  await mobileEditor.click();
+  await page.keyboard.type('/');
+  await expect(page.getByRole('dialog', { name: 'Slash commands' })).toBeVisible();
+  const mobileSlashResults = await new AxeBuilder({ page }).analyze();
+  expect(
+    mobileSlashResults.violations.filter((violation) => violation.impact === 'critical'),
+  ).toEqual([]);
+  await page.keyboard.press('Escape');
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(targetUrl);
+  await expect(page.getByRole('heading', { name: targetTitle })).toBeVisible();
+  await page.getByRole('button', { name: 'Delete page' }).click();
+  await page.goto(sourceUrl);
+  await expect(page.getByRole('heading', { name: sourceTitle })).toBeVisible();
+  await page.getByRole('button', { name: 'Delete page' }).click();
+  await page.goto('/app/settings/trash');
+  for (const title of [sourceTitle, targetTitle]) {
+    const trashItem = page.locator('.trash-item').filter({ hasText: title });
+    await trashItem.getByRole('button', { name: 'Delete permanently' }).click();
+    const confirmation = page.getByRole('form', { name: `Permanently delete ${title}` });
+    await confirmation.getByLabel(/Type .* to confirm/).fill(title);
+    await confirmation.getByRole('button', { name: 'Confirm permanent delete' }).click();
+    await expect(trashItem).toHaveCount(0);
+  }
 });

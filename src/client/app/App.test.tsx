@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { PageDetail, PageSummary } from '../../shared/pages';
@@ -472,6 +472,52 @@ describe('Dovari app shell', () => {
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
     await waitFor(() => expect(document.activeElement).toBe(trigger));
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('opens the complete Settings route from the command palette', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({ pages: [] }));
+
+    render(<App />);
+
+    await screen.findByRole('heading', { name: 'Start with one useful page.' });
+    fireEvent.click(screen.getByRole('button', { name: 'Open command palette' }));
+    fireEvent.click(screen.getByRole('option', { name: /Go to settings/ }));
+
+    expect(await screen.findByRole('heading', { name: 'Settings' })).toBeTruthy();
+    expect(window.location.pathname).toBe('/app/settings');
+    expect(screen.getByRole('link', { name: 'Open Trash' }).getAttribute('href')).toBe(
+      '/app/settings/trash',
+    );
+    expect(screen.getByRole('link', { name: 'Create backup' }).getAttribute('href')).toBe(
+      '/app/settings/backup',
+    );
+    expect(screen.getByRole('link', { name: 'Restore a backup' }).getAttribute('href')).toBe(
+      '/app/settings/backup',
+    );
+  });
+
+  it('shows five most recently updated pages in the sidebar without duplicates', async () => {
+    const pages = Array.from({ length: 6 }, (_, index) => {
+      const page = createPage({
+        id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+        slug: `page-${index + 1}`,
+        title: `Page ${index + 1}`,
+        updatedAt: `2026-09-1${index}T00:00:00.000Z`,
+      });
+      return pageSummary(page);
+    });
+    window.history.pushState({}, '', '/app/settings');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({ pages }));
+
+    render(<App />);
+
+    await screen.findByRole('heading', { name: 'Settings' });
+    const recent = screen.getByRole('navigation', { name: 'Recent pages' });
+    const recentLinks = within(recent).getAllByRole('link');
+    expect(recentLinks).toHaveLength(5);
+    expect(
+      recentLinks.map((link) => link.querySelector('.sidebar-recent-title')?.textContent?.trim()),
+    ).toEqual(['Page 6', 'Page 5', 'Page 4', 'Page 3', 'Page 2']);
   });
 
   it('persists the selected theme and exposes the mobile navigation controls', async () => {

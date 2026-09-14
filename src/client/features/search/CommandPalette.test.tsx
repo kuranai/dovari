@@ -43,7 +43,6 @@ function renderPalette(overrides: Partial<React.ComponentProps<typeof CommandPal
       onClose={vi.fn()}
       onCreatePage={vi.fn()}
       onOpenPage={vi.fn()}
-      onPlaceholderAction={vi.fn()}
       {...overrides}
     />,
   );

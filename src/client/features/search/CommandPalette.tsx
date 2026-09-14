@@ -39,7 +39,6 @@ export interface CommandPaletteProps {
   onClose: () => void;
   onCreatePage: () => void;
   onOpenPage: (url: string) => void;
-  onPlaceholderAction: (message: string) => void;
   onThemeToggle?: () => void;
 }
 
@@ -259,7 +258,7 @@ export function CommandPalette({
         keywords: ['preferences', 'settings', 'configuration'],
         label: 'Go to settings',
         onSelect: () => {
-          onOpenPage('/app/settings/trash');
+          onOpenPage('/app/settings');
           onClose();
         },
       },

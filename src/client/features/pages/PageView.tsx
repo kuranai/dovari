@@ -29,8 +29,10 @@ export interface PageViewProps {
   pageId: string;
   onPageDeleted: (page: PageDetail) => Promise<void>;
   onPageCreated?: (page: PageSummary) => void;
+  onHistoryClosed?: () => void;
   onNavigateToPage?: (pageId: string) => void;
   onPageUpdated: (page: PageSummary) => void;
+  openHistory?: boolean;
   pageSummary?: PageSummary;
 }
 
@@ -447,19 +449,29 @@ function PageDetailContent({
   page,
   onPageDeleted,
   onPageUpdated,
+  onHistoryClosed,
+  openHistory = false,
 }: {
   onNavigateToPage?: (pageId: string) => void;
   onPageCreated?: (page: PageSummary) => void;
   page: PageDetail;
   onPageDeleted: (page: PageDetail) => Promise<void>;
   onPageUpdated: (page: PageDetail) => void;
+  onHistoryClosed?: () => void;
+  openHistory: boolean;
 }) {
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(openHistory);
   const [editorResetKey, setEditorResetKey] = useState(0);
   const [isTitleSaving, setIsTitleSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const historyTriggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (openHistory) {
+      setIsHistoryOpen(true);
+    }
+  }, [openHistory]);
 
   async function handleDelete() {
     setIsDeleting(true);
@@ -485,6 +497,7 @@ function PageDetailContent({
 
   function closeHistory() {
     setIsHistoryOpen(false);
+    onHistoryClosed?.();
     window.setTimeout(() => historyTriggerRef.current?.focus({ preventScroll: true }), 0);
   }
 
@@ -605,9 +618,11 @@ function Backlinks({ pageId }: { pageId: string }) {
 export function PageView({
   pageId,
   onPageCreated,
+  onHistoryClosed,
   onNavigateToPage,
   onPageDeleted,
   onPageUpdated,
+  openHistory = false,
   pageSummary,
 }: PageViewProps) {
   const [reloadKey, setReloadKey] = useState(0);
@@ -678,8 +693,10 @@ export function PageView({
       key={state.page.id}
       onNavigateToPage={onNavigateToPage}
       onPageCreated={onPageCreated}
+      onHistoryClosed={onHistoryClosed}
       onPageDeleted={onPageDeleted}
       onPageUpdated={handlePageUpdated}
+      openHistory={openHistory}
       page={state.page}
     />
   );
