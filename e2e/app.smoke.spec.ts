@@ -104,6 +104,98 @@ test('creates, navigates, renames, reloads, and deletes pages', async ({ page })
   await expect(page.getByRole('heading', { name: 'Start with one useful page.' })).toBeVisible();
 });
 
+test('covers search, screenshot paste, drag and drop, and Markdown export', async ({ page }) => {
+  const title = `P24 workflow ${Date.now()}`;
+
+  await page.goto('/app');
+  await page.getByRole('button', { name: /New page/ }).click();
+  await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible();
+  const pageUrl = page.url();
+
+  await page.getByLabel('Edit title').fill(title);
+  await page.getByLabel('Edit title').press('Enter');
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+
+  const editor = page.getByRole('textbox', { name: 'Page content' });
+  await editor.click();
+  await page.keyboard.type('Cloudflare deployment acceptance marker');
+
+  await editor.evaluate((element) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(
+      new File(
+        [
+          Uint8Array.from(
+            atob(
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+            ),
+            (character) => character.charCodeAt(0),
+          ),
+        ],
+        'screenshot.png',
+        { type: 'image/png' },
+      ),
+    );
+    element.dispatchEvent(
+      new ClipboardEvent('paste', {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: dataTransfer,
+      }),
+    );
+  });
+  await expect(editor.locator('.asset-image-node')).toHaveCount(1);
+
+  const editorBox = await editor.boundingBox();
+  if (!editorBox) {
+    throw new Error('The page editor has no visible bounding box for the drop smoke.');
+  }
+  await editor.evaluate(
+    (element, coordinates) => {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(
+        new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], 'dropped.png', {
+          type: 'image/png',
+        }),
+      );
+      element.dispatchEvent(
+        new DragEvent('drop', {
+          bubbles: true,
+          cancelable: true,
+          clientX: coordinates.x,
+          clientY: coordinates.y,
+          dataTransfer,
+        }),
+      );
+    },
+    { x: editorBox.x + 24, y: editorBox.y + 24 },
+  );
+  await expect(editor.locator('.asset-image-node')).toHaveCount(2);
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+
+  const exportDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export Markdown + ZIP' }).click();
+  const download = await exportDownload;
+  expect(download.suggestedFilename()).toBe('dovari-export.zip');
+
+  await page.keyboard.press('Control+K');
+  const palette = page.getByRole('dialog', { name: 'Search or run a command' });
+  const search = palette.getByRole('searchbox');
+  await search.fill('Cloudflare deployment acceptance marker');
+  await expect(palette.getByRole('option', { name: new RegExp(title) })).toBeVisible();
+  await palette.getByRole('option', { name: new RegExp(title) }).press('Enter');
+  await expect(page).toHaveURL(pageUrl);
+
+  await page.getByRole('button', { name: 'Delete page' }).click();
+  await page.goto('/app/settings/trash');
+  const trashItem = page.locator('.trash-item').filter({ hasText: title });
+  await trashItem.getByRole('button', { name: 'Delete permanently' }).click();
+  const confirmation = page.getByRole('form', { name: `Permanently delete ${title}` });
+  await confirmation.getByLabel(/Type .* to confirm/).fill(title);
+  await confirmation.getByRole('button', { name: 'Confirm permanent delete' }).click();
+  await expect(trashItem).toHaveCount(0);
+});
+
 test('supports a navigable page tree with child creation, collapse, move, and inline rename', async ({
   page,
 }) => {

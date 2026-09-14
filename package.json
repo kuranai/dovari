@@ -25,7 +25,10 @@
     "ci": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
-    "deploy": "npm run db:migrate:remote && npm run build && wrangler deploy"
+    "deploy": "node scripts/deploy.mjs",
+    "deploy:dry-run": "node scripts/deploy.mjs --dry-run",
+    "release:install-smoke": "node scripts/install-smoke.mjs",
+    "release:smoke": "node scripts/release-smoke.mjs"
   },
   "dependencies": {
     "@tiptap/extension-code-block-lowlight": "^3.31.3",
