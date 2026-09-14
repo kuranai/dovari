@@ -28,6 +28,13 @@ import {
   fetchPages,
   pageErrorMessage,
 } from '../features/pages/api';
+import { PageApiError } from '../features/pages/api';
+import { PublicLandingPage } from '../features/publications/PublicLandingPage';
+import { PublicPage } from '../features/publications/PublicPage';
+import {
+  publicationErrorMessage,
+  resolvePublicationEditorTarget,
+} from '../features/publications/api';
 import { restoreDeletedPage } from '../features/recovery/api';
 import { PageTree } from '../features/pages/PageTree';
 import { PageView } from '../features/pages/PageView';
@@ -203,6 +210,74 @@ function PageRoute() {
       pageId={pageId}
       pageSummary={pages.find((page) => page.id === pageId)}
     />
+  );
+}
+
+function PublicationEditorRoute() {
+  const { publicId } = useParams();
+  const navigate = useNavigate();
+  const [state, setState] = useState<
+    { status: 'loading' } | { status: 'error'; message: string; requiresLogin: boolean }
+  >({ status: 'loading' });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    if (!publicId) {
+      setState({
+        status: 'error',
+        message: 'This public page is not available for editing.',
+        requiresLogin: false,
+      });
+      return () => controller.abort();
+    }
+
+    setState({ status: 'loading' });
+    resolvePublicationEditorTarget(publicId, controller.signal)
+      .then((response) => {
+        if (!controller.signal.aborted) {
+          navigate(workspacePath(response.pageId), { replace: true });
+        }
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setState({
+            status: 'error',
+            message: publicationErrorMessage(
+              error,
+              'The public page could not be opened for editing.',
+            ),
+            requiresLogin:
+              error instanceof PageApiError &&
+              (error.code === 'AUTH_REQUIRED' || error.code === 'AUTH_INVALID'),
+          });
+        }
+      });
+
+    return () => controller.abort();
+  }, [navigate, publicId]);
+
+  if (state.status === 'loading') {
+    return <LoadingState />;
+  }
+
+  return (
+    <section aria-live="assertive" className="page-state page-state-error" role="alert">
+      <span className="state-kicker">Private editing</span>
+      <h1>Sign in to edit this page.</h1>
+      <p>{state.message}</p>
+      {state.requiresLogin ? (
+        <a
+          className="button button-primary"
+          href={`/login?next=${encodeURIComponent(`/app/publications/${publicId ?? ''}/edit`)}`}
+        >
+          Sign in
+        </a>
+      ) : (
+        <Link className="button button-secondary" to="/">
+          Back to public pages
+        </Link>
+      )}
+    </section>
   );
 }
 
@@ -769,12 +844,14 @@ export function AppRoutes() {
       <Route element={<Workspace />} path="/app">
         <Route element={<WorkspaceLanding />} index />
         <Route element={<PageRoute />} path="pages/:pageId" />
+        <Route element={<PublicationEditorRoute />} path="publications/:publicId/edit" />
         <Route element={<SettingsPage />} path="settings" />
         <Route element={<TrashPage />} path="settings/trash" />
         <Route element={<BackupRestorePage />} path="settings/backup" />
       </Route>
-      <Route element={<Navigate replace to="/app" />} path="/" />
-      <Route element={<Navigate replace to="/app" />} path="*" />
+      <Route element={<PublicLandingPage />} path="/" />
+      <Route element={<PublicPage />} path="/p/:publicId" />
+      <Route element={<Navigate replace to="/" />} path="*" />
     </Routes>
   );
 }

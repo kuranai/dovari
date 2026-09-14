@@ -2,6 +2,7 @@ import {
   backupAssetRecordSchema,
   backupManifestSchema,
   backupPageRecordSchema,
+  backupPublicationRecordSchema,
   backupRevisionRecordSchema,
   canonicalJson,
   type BackupAssetRecord,
@@ -11,6 +12,8 @@ import {
 import { assetTypeForMimeType } from '../assets/formats';
 import type { AssetRecord } from '../assets/repository';
 import type { PageRecord, PageRevisionRecord } from '../pages/repository';
+import type { PublicationRecord } from '../publications/repository';
+import type { PublicTiptapDocument } from '../../shared/publications';
 import { BackupError } from './errors';
 
 export function compareText(left: string, right: string) {
@@ -109,6 +112,25 @@ export function revisionBackupRecord(
     content,
     trigger: revision.trigger,
     createdAt: revision.createdAt,
+  });
+}
+
+export function publicationBackupRecord(
+  publication: PublicationRecord,
+  content: PublicTiptapDocument,
+  assetIds: string[],
+) {
+  return backupPublicationRecordSchema.parse({
+    id: publication.id,
+    pageId: publication.pageId,
+    publicId: publication.publicId,
+    sourceRevision: publication.sourceRevision,
+    content,
+    publishedTitle: publication.publishedTitle,
+    allowIndexing: publication.allowIndexing,
+    publishedAt: publication.publishedAt,
+    updatedAt: publication.updatedAt,
+    assetIds,
   });
 }
 

@@ -2,9 +2,9 @@
 
 **Dieses Dokument ist die kanonische Quelle für den aktuellen Implementierungsstand.**  
 **Letzte Aktualisierung:** 14. September 2026
-**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen, P06 abgeschlossen, P07 abgeschlossen, P08 abgeschlossen, P09 abgeschlossen, P10 abgeschlossen, P11 abgeschlossen, P12 abgeschlossen, P13 abgeschlossen, P14 abgeschlossen, P15 abgeschlossen, P16 abgeschlossen, P17 abgeschlossen, P18 abgeschlossen, P19 abgeschlossen, P20 abgeschlossen, P21 abgeschlossen, P22 abgeschlossen, P23 abgeschlossen, P24 abgeschlossen
-**Aktuelle Phase:** keine (P24 abgeschlossen)
-**Nächste Phase:** P25 – Öffentliche Veröffentlichungen (`NEXT`)
+**Gesamtstatus:** P00–P25 abgeschlossen, P26 als Nächstes, P27–P29 geplant
+**Aktuelle Phase:** keine (P25 abgeschlossen)
+**Nächste Phase:** P26 – Öffentliche Suche, Navigation und Auffindbarkeit (`NEXT`)
 
 ## 1. Zweck
 
@@ -73,7 +73,9 @@ Danach muss der Agent in **derselben Änderung**:
 4. die tatsächlich ausgeführten Prüfkommandos mit Ergebnis eintragen,
 5. nach dieser Phase stoppen und keine weitere Phase beginnen.
 
-Ist die Phase nicht fertig, bleibt sie `IN PROGRESS`. Bei einem echten externen Blocker erhält sie `BLOCKED`; Ursache und benötigte Aktion werden konkret dokumentiert. Die nächste Phase wird dann nicht automatisch begonnen.
+Ist die Phase nicht fertig, bleibt sie `IN PROGRESS`. Bei einem echten externen Blocker erhält sie
+`BLOCKED`; Ursache und benötigte Aktion werden konkret dokumentiert. Die nächste Phase wird dann
+nicht automatisch begonnen.
 
 ## 4. Statuswerte
 
@@ -114,7 +116,11 @@ Ist die Phase nicht fertig, bleibt sie `IN PROGRESS`. Bei einem echten externen 
 | P22 | Datensicherheit | Verlustfreies Backup und Restore | `DONE` | Versioniertes, verlustfreies Backup/Restore mit Manifest, Streaming-ZIP, resumierbaren Restore-Sessions, atomarer Finalisierung, lokaler Validierung und Settings-UI umgesetzt und verifiziert |
 | P23 | Produktreife | Settings, Slash Commands und Alltagsnavigation | `DONE` | Settings-Landing, Recent Pages, Slash-Command-Palette und Upload-/Wiki-Link-Abläufe umgesetzt und verifiziert |
 | P24 | Deployment | Deploy-to-Cloudflare und Version-1-Abnahme | `DONE` | Instanz-Passwort, eigene versionsgebundene D1-Sessions, Login/Logout, Dokumentation, lokale Abnahme und produktiver authentifizierter Deploy-Smoke sind umgesetzt und verifiziert |
-| P25 | Post-V1 | Öffentliche Veröffentlichungen | `NEXT` | – |
+| P25 | Public | Öffentliche Knowledge Base und Veröffentlichungen | `DONE` | Publication-Migration, Snapshot-/Asset-Allowlist, private/public API, Read-only-UI, Backup-v2/v1-Restore-Kompatibilität, Soft-Delete-Rückzug und vollständige Verifikation umgesetzt |
+| P26 | Public | Öffentliche Suche, Navigation und Auffindbarkeit | `NEXT` | – |
+| P27 | Organisation | Tags und Favoriten | `PLANNED` | – |
+| P28 | Workflows | Templates und Daily Notes | `PLANNED` | – |
+| P29 | Datenportabilität | Markdown- und Obsidian-Import | `PLANNED` | – |
 
 ## 6. Phasendefinitionen
 
@@ -149,7 +155,11 @@ Damit ein frischer Chat nicht erneut die gesamte Planung laden muss, gelten dies
 | P22 | §§ 6.1, 6.2, 6.6, 7.1, 7.3, 7.5, 9.1, 11.3 und 14 | §§ 27–29, 37–38, 43, 46, 53 und Phase 11 in § 45 |
 | P23 | §§ 3.2, 7.5, 8.1, 8.4, 9.2, 10, 14.3 und 16 | §§ 14, 20–21, 26, 41, 43, 46, 48 und Phase 12 in § 45 |
 | P24 | §§ 11.2, 12, 14 und 17 | §§ 30, 43, 46, 53 und Phase 13 in § 45 |
-| P25 | §§ 4, 6.7, 7.1, 11 und 17 | §§ 23, 44, Public Sharing in § 50 und Phase 14 in § 45 |
+| P25 | §§ 4, 6.6, 6.8, 7.1, 7.5, 7.6, 8.5, 11 und 17 | §§ 14–16, 23, 27–29, 44, Public Sharing in § 50 und Phase 14 in § 45 |
+| P26 | §§ 6.9, 7.7, 10, 11, 14.3 und 16 | §§ 19–20, 25–26, 47–48, Public Sharing und Custom Domains in § 50 sowie Phase 15 in § 45 |
+| P27 | §§ 6.6, 6.10, 7.5, 7.8, 10 und 14 | §§ 14–15, 19–20, 26–29, 38–39 und Phase 16 in § 45 |
+| P28 | §§ 6.6, 6.11, 7.5, 7.9, 8.1, 8.4 und 14.3 | §§ 7–8, 14–15, 21, 26–29, Templates und Daily Notes in § 50 sowie Phase 17 in § 45 |
+| P29 | §§ 6.1, 6.2, 7.10, 8.1, 9.1, 11.3 und 14 | §§ 27–29, 37–39, 46 und Phase 18 in § 45 |
 
 Zusätzlich wird nur der für die Phase relevante bestehende Code gelesen. Falls eine referenzierte Entscheidung widersprüchlich oder unvollständig ist, wird die Abweichung vor der Implementierung dokumentiert.
 
@@ -830,40 +840,175 @@ Repository sicher installieren und die vollständigen Kern- und Recovery-Abläuf
 **Nicht Teil dieser Phase:** Funktionen aus „Nicht Teil des MVP“ in `PLAN.md`, öffentliche Seiten
 oder die automatische Migration bestehender Fremdsysteme.
 
-### P25 – Öffentliche Veröffentlichungen
+### P25 – Öffentliche Knowledge Base und Veröffentlichungen
 
-**Ziel:** Einzelne Seiten können bewusst als sichere, schreibgeschützte Snapshots veröffentlicht werden, während Entwürfe und Bearbeitung privat bleiben.
+**Ziel:** Ohne Anmeldung ist unter `/` eine vollständige, schreibgeschützte Knowledge Base aus
+allen bewusst veröffentlichten Seiten sichtbar. Erst der Wechsel zu „Bearbeiten“ öffnet die
+Passwort-Anmeldung und danach den geschützten Workspace, in dem zusätzlich Entwürfe und
+unveröffentlichte Seiten sichtbar sind.
 
 **Scope:**
 
-- Tabellen `page_publications` und `publication_assets` als neue Migration
-- Publish, Update Publication und Unpublish ausschließlich über `/api/private/*`
-- bereinigter Snapshot statt Live-Freigabe des aktuellen Seitendokuments
-- öffentliche Seite unter `/p/:publicId`
-- strikt lesende Endpunkte unter `/api/public/*`
-- öffentliche Asset-Auslieferung nur bei Referenz durch die konkrete Publication
-- Behandlung privater Wiki Links, fehlender Assets und unveröffentlichter eingebetteter Inhalte
-- Option zur Suchmaschinenindexierung pro Publication
-- Tests der vollständigen Private-/Public-Routing-Matrix
+- Tabellen `page_publications` und `publication_assets` als neue Migration; genau eine aktive
+  Publication pro Seite, zufällige stabile `public_id` bei erneutem Publish und eine neue URL nach
+  Unpublish und späterer Neuveröffentlichung
+- private Publish-, Update-Publication- und Unpublish-Endpunkte ausschließlich unter
+  `/api/private/*`, mit optimistischer Prüfung der Seitenrevision beziehungsweise des erwarteten
+  Publication-Zeitstempels
+- expliziter, serverseitig validierter und bereinigter Snapshot aus Titel und Tiptap-Dokument statt
+  Live-Zugriff auf `pages`; Wiki Links werden nur auf bereits veröffentlichte Ziele umgeschrieben,
+  sonst zu normalem Text ohne private Ziel-ID
+- `/` wird eine öffentliche Landingpage mit allen aktiven Publications; die Public-API ist
+  cursorbasiert und liefert ausschließlich `publicId`, veröffentlichten Titel sowie öffentliche
+  Zeitstempel, nie private Page-IDs, Slugs, Parent-IDs, Revisionen oder Backlinks
+- öffentliche, responsive Read-only-Seite unter `/p/:publicId` mit Navigation durch die komplette
+  Liste veröffentlichter Seiten, verständlichen Empty-/404-/Fehlerzuständen und ohne Editor- oder
+  Mutationsbedienung
+- sichtbarer „Bearbeiten“-Einstieg über eine private `/app/publications/:publicId/edit`-Route; erst
+  nach Passwort-Anmeldung wird die Publication serverseitig zur privaten Seite aufgelöst und der
+  normale Editor geöffnet
+- strikt getrennte Public-Read-Router unter `/api/public/*`; ausschließlich `GET`, `HEAD` und
+  erforderliche `OPTIONS`, alle Mutationen liefern `405`
+- öffentliche Asset-Auslieferung nur mit Kombination aus gültiger Publication und tatsächlich im
+  Snapshot referenziertem Asset; private Asset-Endpunkte und R2 bleiben unverändert geschützt
+- Publish-Bedienung in der privaten Seitenansicht mit Status „nicht veröffentlicht“/„Änderungen
+  nicht veröffentlicht“/„aktuell“, URL kopieren, aktualisieren, öffentlich öffnen und bestätigtem
+  Unpublish
+- standardmäßig `noindex`; die bereits vorgesehene Option `allow_indexing` wird gespeichert und in
+  der öffentlichen Antwort berücksichtigt, die vollständige Crawler-/Metadaten-Unterstützung folgt
+  in P26
+- Public-Listen, -Details und -Assets verwenden in P25 `Cache-Control: no-store`, damit Republish
+  und Unpublish ohne veraltete Edge-/Browserantworten wirksam werden; gezieltes Caching folgt P26
+- Backupformat `dovari-backup-v2` einschließlich Publications und Publication-Asset-Zuordnung;
+  Restore akzeptiert weiterhin v1, erweitert Restore-Sessions migrationssicher um Publication-
+  Records und erhält bei v2 die öffentlichen URLs verlustfrei
+- Soft Delete einer privaten Seite entfernt ihre aktive Publication im selben atomaren Vorgang;
+  Restore der Seite veröffentlicht sie nicht automatisch erneut
+- vollständige Private-/Public-Routing-, Datenleck-, Cache-, Accessibility- und
+  Snapshot-Isolations-Tests
 
 **Akzeptanzkriterien:**
 
-- nur ein berechtigter Editor kann veröffentlichen, aktualisieren oder zurückziehen.
-- Änderungen am privaten Entwurf werden nicht ohne erneutes Publish öffentlich.
-- eine öffentliche URL funktioniert ohne Login und ermöglicht keinerlei Mutation.
-- private Seiten, Backlinks, Metadaten und nicht veröffentlichte Assets lassen sich über Public-Routes nicht ermitteln.
-- Unpublish macht Snapshot und zugehörige öffentliche Asset-Routen unmittelbar unerreichbar.
-- alle bisherigen privaten Authentifizierungs- und Editorabläufe bleiben unverändert geschützt.
+- `GET /` und jede gültige `/p/:publicId`-URL funktionieren in Produktion ohne Dovari-Session und
+  zeigen ausschließlich aktive Veröffentlichungen; bei null Publications erklärt `/` den leeren
+  öffentlichen Zustand und bietet nur den geschützten Bearbeiten-Einstieg an.
+- alle veröffentlichten Seiten sind von der öffentlichen Navigation aus erreichbar; Titel oder
+  Existenz unveröffentlichter Seiten lassen sich dort und über API-Fehler nicht ableiten.
+- nur ein berechtigter Editor kann veröffentlichen, aktualisieren oder zurückziehen; der
+  Bearbeiten-Link löst ohne Session die normale Dovari-Passwort-Anmeldung aus.
+- private Änderungen, einschließlich Titel, Wiki Links und Assets, bleiben bis zum erneuten Publish
+  unsichtbar; der öffentliche Snapshot bleibt währenddessen unverändert abrufbar.
+- Public JSON und öffentlich gerendertes HTML enthalten keine private Page-ID, Parent-ID, Revision,
+  Backlinks, unveröffentlichte Linkziele oder nicht referenzierte Asset-Metadaten.
+- `POST`, `PUT`, `PATCH` und `DELETE` unter `/api/public/*` liefern immer `405`; private
+  Mutationsendpunkte bleiben ohne gültige Passwort-Session fail-closed.
+- Unpublish macht Snapshot und zugehörige öffentliche Asset-Routen unmittelbar unerreichbar und
+  entfernt die Seite aus `/`; ein anschließendes neues Publish verwendet eine neue öffentliche URL.
+- Soft Delete hat denselben unmittelbaren öffentlichen Rückzugseffekt; Restore stellt nur die
+  private Seite wieder her. Ein Unpublish aus einem veralteten Tab löscht keine zwischenzeitlich
+  erneuerte Publication.
+- ein v2-Backup/Restore erhält aktive Publications, Snapshot-Inhalte und öffentliche IDs; v1-Backups
+  bleiben importierbar.
+- alle bisherigen privaten Authentifizierungs-, Editor-, Export- und Recovery-Abläufe bleiben
+  unverändert geschützt.
 
 **Verifikation:**
 
-- Schema-/Migrationstests für Publication-Snapshots und referenzierte Assets
-- Worker-Integrationstests der vollständigen Private-/Public-Routing-, Auth- und Asset-Matrix
-- Browser-E2E für Publish, erneutes Publish, öffentliche Ansicht und Unpublish
+- Schema-/Migrationstests für Publication-Snapshots, Eindeutigkeit und referenzierte Assets
+- Worker-Integrationstests der vollständigen Private-/Public-Routing-, Auth-, Method-,
+  Snapshot-, Cache- und Asset-Matrix einschließlich negativer Enumerationstests
+- Backup-v1-Kompatibilitäts- und Backup-v2-Roundtrip-Tests
+- Clienttests für Public Landing, Read-only-Renderer, Publish-Zustände und privaten Edit-Resolver
+- Browser-E2E ohne Login für Landing/Leseseite sowie mit lokalem Auth-Bypass für Publish,
+  unveröffentlichten Draft, erneutes Publish, Bearbeiten-Einstieg und Unpublish; Desktop/Mobile-Axe
 - vollständiges `npm run ci`, `npm run test:e2e` und `git diff --check`
 
-**Nicht Teil dieser Phase:** öffentliche Bearbeitung, Kommentare, Teams, Rollen, Custom Sharing
-ACLs oder passwortgeschützte Links.
+**Nicht Teil dieser Phase:** öffentliche Volltextsuche, SEO-/Open-Graph-Metadaten, Sitemap,
+öffentliche Hierarchie, öffentliche Bearbeitung, Kommentare, Teams, Rollen, Custom Sharing ACLs
+oder passwortgeschützte Links.
+
+### P26 – Öffentliche Suche, Navigation und Auffindbarkeit
+
+**Ziel:** Eine größere öffentliche Knowledge Base lässt sich schnell durchsuchen, sinnvoll
+navigieren und – nur nach ausdrücklicher Freigabe – von Suchmaschinen korrekt erfassen.
+
+**Scope:**
+
+- separater öffentlicher Suchindex ausschließlich aus Publication-Snapshots; keine Abfrage oder
+  Filterung des privaten FTS-Indexes
+- Suche auf `/` und der öffentlichen Seitenleiste mit Titelgewichtung, Snippets und Tastaturbedienung
+- öffentliche Hierarchie ausschließlich aus veröffentlichten Beziehungen; unveröffentlichte
+  Zwischeneltern werden übersprungen und niemals namentlich offengelegt
+- kanonische URLs, sichere serverseitige Title-/Description-/Open-Graph-Metadaten für `/p/*`
+- `robots.txt` und `sitemap.xml` enthalten nur Publications mit `allow_indexing = true`
+- Cache-Strategie mit sofortiger Invalidierung bei Republish und Unpublish
+
+**Akzeptanzkriterien:** Öffentliche Suche, Navigation, Sitemap und Metadaten verwenden nachweislich
+nur Snapshotdaten; `noindex` ist der Default; Unpublish verschwindet unmittelbar aus Suche,
+Navigation und Sitemap; Tastatur-, Mobile- und Axe-Tests sind grün.
+
+**Verifikation:** Schema-/Index- und Worker-Tests, Search-Leakage-Tests, Metadaten-/Crawler-Smokes,
+Clienttests, Desktop-/Mobile-E2E, `npm run ci`, `npm run test:e2e`, `git diff --check`.
+
+**Nicht Teil dieser Phase:** Analytics, Kommentare, öffentliche Bearbeitung oder eigener
+Crawler/Indexer.
+
+### P27 – Tags und Favoriten
+
+**Ziel:** Private Seiten lassen sich leicht gruppieren und häufig benötigte Seiten schneller
+erreichen, ohne die einfache Baumstruktur zu ersetzen.
+
+**Scope:** normalisierte Tags mit eindeutigen Namen, atomare Page-Tag-Zuordnung, Favoritenstatus,
+Filter in Sidebar und Command Palette, tagbasierte private Suche, Backup-/Restore-Erweiterung und
+optionale explizite Veröffentlichung von Snapshot-Tags ohne automatische Offenlegung privater Tags.
+
+**Akzeptanzkriterien:** Tags und Favoriten funktionieren mit Create/Rename/Delete/Restore,
+erscheinen in Suche und Backup konsistent und werden öffentlich nur als Bestandteil eines bewusst
+erneuerten Snapshots sichtbar.
+
+**Verifikation:** Migrations-/Repository-/Search-/Backup-Tests, Client- und Accessibility-Tests,
+E2E für Tagging/Favoriten/Restore, vollständige Qualitätsgates.
+
+**Nicht Teil dieser Phase:** AI-Tags, verschachtelte Tags oder tagbasierte ACLs.
+
+### P28 – Templates und Daily Notes
+
+**Ziel:** Wiederkehrende Seiten entstehen mit einem Schritt, ohne den Editor um ein komplexes
+Datenbanksystem zu erweitern.
+
+**Scope:** private, wiederverwendbare Seitentemplates aus gültigem Tiptap-JSON; Create-from-Template;
+konfigurierbares Daily-Note-Template; idempotentes „Heutige Notiz öffnen“ in lokaler Zeitzone;
+Slash-/Command-Palette-Integration; revisionssicheres Speichern und Backup/Restore.
+
+**Akzeptanzkriterien:** Mehrfaches Öffnen desselben Tages erzeugt keine Duplikate, Template-Inhalte
+werden kopiert statt live verknüpft, ungültige Templates werden abgewiesen und alle Abläufe sind
+per Tastatur und mobil nutzbar.
+
+**Verifikation:** Zeit-/DST-, Validierungs-, Backup-, Client-, E2E- und Accessibility-Tests sowie
+vollständige Qualitätsgates.
+
+**Nicht Teil dieser Phase:** Kalenderansicht, Automationen, Datenbank-Properties oder geteilte
+Template-Marktplätze.
+
+### P29 – Markdown- und Obsidian-Import
+
+**Ziel:** Nutzer können vorhandene Markdown-Wissensbestände kontrolliert nach Dovari übernehmen,
+ohne bestehende Daten oder Dateien zu verlieren.
+
+**Scope:** lokaler ZIP-Preflight vor Upload; Markdown-zu-Tiptap-Konvertierung für die unterstützte
+Allowlist; Verzeichnisstruktur, Wiki Links und sichere lokale Assets; Konfliktvorschau; resumierbare
+Import-Session; atomare Finalisierung; Import nur als explizites Hinzufügen, niemals stilles
+Überschreiben; Importbericht für nicht unterstützte Inhalte.
+
+**Akzeptanzkriterien:** Ein dokumentierter Obsidian-Beispieltresor importiert Seiten, Hierarchie,
+Links und Assets deterministisch; Pfadtraversal, HTML/SVG und Größenüberschreitungen werden
+abgewiesen; ein Fehler vor Finalisierung verändert den Workspace nicht.
+
+**Verifikation:** Parser-Fixtures, Security-/Pfadtests, Session-/Rollback-Tests,
+Roundtrip-Stichproben, Client-/E2E-/Accessibility-Tests und vollständige Qualitätsgates.
+
+**Nicht Teil dieser Phase:** Notion-API-Import, proprietäre Plugin-Syntax, bidirektionale
+Synchronisation oder automatischer Hintergrundimport.
 
 ## 7. Entdeckte Folgearbeit
 
@@ -904,6 +1049,8 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 | 2026-09-13 | P22 | Versioniertes, vollständiges `dovari-backup-v1.zip` mit kanonischem Manifest, Seiten-/Revisions-/Asset-Roundtrip, R2-Prüfsummen, resumierbaren und idempotenten Restore-Sessions, Empty-Workspace-Commit, lokaler ZIP-Validierung, Fortschritt/Abbruch und Backup-&-Restore-UI umgesetzt | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 108 Tests in 26 Testdateien und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (7 isolierte Browser-Tests einschließlich Download, lokaler Validierung und Restore), `npx --yes -p node@26 node /usr/bin/npm run db:migrate:local` (keine offenen Migrationen), `npx --yes -p node@26 node /usr/bin/npm run db:fts:integrity`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts` sowie `git diff --check` erfolgreich | Der bestehende Markdown-Export bleibt unverändert; P23 ist `NEXT` |
 | 2026-09-14 | P23 | Vollständige Settings-Landing-Route mit Theme-, Trash-, Versions-, Backup- und Restore-Navigation, direkte Command-Palette-Navigation, nach Aktualisierung sortierte Recent Pages sowie zugängliche Slash Commands für Textblöcke, Wiki Links, Bilder und Dateien umgesetzt; bestehende Wiki-Link- und Upload-Pipelines wiederverwendet und README aktualisiert | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 119 Tests in 28 Testdateien und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (8 isolierte Browser-Tests einschließlich Settings-/Recent-/Slash-Desktop-/Mobile-Axe-Smoke), `git diff --check` erfolgreich | Slash Commands verändern das persistierte Dokumentformat nicht; P24 ist `NEXT` |
 | 2026-09-14 | P24 | Die externe Authentifizierung wurde gemäß ADR 0001 durch ein erforderliches Instanz-Passwort ersetzt: eigene Login-/Logout-/Session-Routen und UI, 30-Tage-Cookie, gehashte versionsgebundene D1-Sessions, IP-gehashtes Login-Limit, lokale Passwortentwicklung, Settings-Logout sowie angepasste Deploy-/Smoke-Dokumentation sind umgesetzt | `npm run ci` (Format-Check, Lint, Typecheck, 126 Tests in 30 Testdateien und Produktionsbuild), `npm run test:e2e` (10 Browser-Tests), `npm run release:install-smoke` (frischer Checkout, sieben Migrationen plus idempotenter Zweitlauf, FK-/FTS-Prüfung und Wrangler-Dry-Run), `npm run db:migrate:local`, `npx drizzle-kit check --config drizzle.config.ts`, direkter Wrangler-FTS-Integrity-Check, `npm run deploy:dry-run`, produktives `npm run deploy` und authentifiziertes sowie abschließend fail-closed `npm run release:smoke -- https://dovari.kuranai.workers.dev` erfolgreich | Remote-Migration 0006 und Worker-Version `82494200-5605-46a7-8358-b5e29945eb8e` wurden ausgerollt. Das zufällige Testpasswort wurde danach entfernt; die Testinstanz bleibt bis zum Setzen eines Betreiberpassworts mit `503 SETUP_REQUIRED` geschlossen. P25 ist `NEXT` |
+| 2026-09-14 | Planung | P25 als öffentliche Knowledge Base mit Login erst beim Bearbeiten detailliert; P26–P29 für Public Discovery, Tags/Favoriten, Templates/Daily Notes und Import ergänzt | Dokumente und tatsächliche Routing-/Auth-/Datenmodell-Grenzen abgeglichen; `npx prettier --write IMPLEMENTATION.md PLAN.md TECHNICAL_SPEC.md` und `git diff --check` erfolgreich; Implementierungstests nicht ausgeführt | P24 ist abgeschlossen; P25 ist regulär `NEXT` |
+| 2026-09-14 | P25 | Öffentliche Knowledge Base und Veröffentlichungen mit isolierten Snapshots, Public-API, Read-only-UI, Publish-Workflow und v2-Backup/Restore umgesetzt | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 136 Tests in 32 Testdateien und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (11 Browser-Tests einschließlich anonymem Public-Landing-/Read-only-/Edit-/Unpublish-Flow mit Desktop-/Mobile-Axe), `npx --yes -p node@26 node /usr/bin/npm run db:migrate:local` (0006 und 0007 angewendet), `npx --yes -p node@26 node /usr/bin/npm run db:fts:integrity`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts` sowie `git diff --check` erfolgreich | Public-Search, Sitemap, Robots und gezieltes Caching bleiben gemäß Scope P26 vorbehalten; P26 ist `NEXT` |
 
 ## 9. Regeln zur Pflege dieses Dokuments
 
@@ -913,4 +1060,7 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 - Akzeptanzkriterien werden nicht nachträglich abgeschwächt, nur um eine Phase abzuschließen.
 - Wird der Plan fachlich geändert, werden zuerst `PLAN.md` oder `TECHNICAL_SPEC.md` angepasst und anschließend die betroffenen Phasen hier aktualisiert.
 - Datumsangaben verwenden `YYYY-MM-DD`.
-- Das Dokument wird mit jeder Phase committed beziehungsweise zusammen mit deren Änderungen gespeichert; eine Statusänderung ohne zugehörige Implementierung ist unzulässig.
+- Das Dokument wird mit jeder Phase committed beziehungsweise zusammen mit deren Änderungen
+  gespeichert. Eine reine Roadmap-Änderung darf `PLANNED` zu `NEXT` machen, wenn keine
+  Implementierung aktiv ist und dies als Planung im Kurzprotokoll dokumentiert wird; begonnene oder
+  abgeschlossene Implementierungsstatus dürfen nie ohne die zugehörige Arbeit geändert werden.

@@ -692,6 +692,14 @@ Sidebar:
 - Suchknopf
 - Einstellungen
 
+Ab Phase 14 besitzt Dovari zusätzlich eine bewusst einfachere öffentliche Navigation:
+
+- `/` zeigt ohne Login alle aktuell veröffentlichten Seiten.
+- `/p/:publicId` zeigt eine veröffentlichte Seite schreibgeschützt.
+- Entwürfe, unveröffentlichte Seiten und private Hierarchieeinträge fehlen vollständig.
+- „Bearbeiten“ wechselt in `/app` und löst erst dort die Dovari-Passwort-Anmeldung aus.
+- Nach der Anmeldung bleibt die bestehende private Sidebar die vollständige Sicht auf alle Seiten.
+
 ---
 
 # 15. Neue Seite
@@ -955,6 +963,7 @@ Login-Seite bereit und verwaltet zeitlich begrenzte, opake Sessions in D1.
 Vorgesehene Trennung:
 
 ```text
+/                       öffentliche Liste veröffentlichter Seiten ab Phase 14
 /app/*                  private Anwendung
 /api/private/*          private API und alle Schreibzugriffe
 /p/*                    später öffentliche Seiten
@@ -968,6 +977,17 @@ bei einem neuen Deployment ungültig. Fehlversuche werden pro gehashter Quell-IP
 Nicht Teil von Version 1 sind Passwort-Reset, individuelle Konten, Rollen, MFA und GitHub OAuth.
 Öffentliche Routen dürfen niemals Mutationen anbieten oder auf private Seiten beziehungsweise
 private Assets zugreifen.
+
+Beispiel für den privaten Bereich:
+
+```text
+wiki.example.com
+```
+
+Zugriff auf `/app/*` nur nach Login. Der öffentliche Einstieg und veröffentlichte Seiten bleiben
+ohne Login erreichbar. „Passwort eingeben“ bedeutet im Produkt weiterhin die Anmeldung über die
+eingebaute Dovari-Login-Seite mit dem `DOVARI_PASSWORD`. Dovari speichert das Passwort nur als
+Worker-Secret und hält in D1 ausschließlich Hashes zufälliger Session-Tokens.
 
 ---
 
@@ -1909,16 +1929,89 @@ Ein neuer Nutzer soll Dovari ohne Cloudflare-Expertenwissen installieren können
 Aufgaben:
 
 - explizite, bereinigte Publication-Snapshots
+- `/` als öffentliche Landingpage mit vollständiger Liste aller aktiven Publications
 - öffentliche Read-only-Seite unter `/p/:publicId`
 - private Publish-, Update- und Unpublish-Aktionen
+- Publish-Status und Sharing-Aktionen in der privaten Seitenansicht
+- Bearbeiten-Link, der erst beim Wechsel nach `/app` die Passwort-Anmeldung verlangt
 - öffentliche Asset-Auslieferung nur für Assets des konkreten Snapshots
-- Behandlung privater Wiki-Links und unveröffentlichter Inhalte
+- private Wiki-Links werden nur auf bereits veröffentlichte Ziele umgeschrieben, sonst zu Text
+- private IDs, Hierarchie, Backlinks, Revisionen und unveröffentlichte Inhalte bleiben verborgen
+- Backup v2 erhält Publications und öffentliche URLs; Restore bleibt mit Backup v1 kompatibel
 - vollständige Private-/Public-Routing- und Security-Tests
 
 Ziel:
 
-Einzelne Seiten können nach Version 1 bewusst veröffentlicht werden, ohne private Entwürfe,
-Metadaten oder Assets offenzulegen.
+Besucher sehen ohne Login alle bewusst veröffentlichten Seiten. Erst wenn jemand „Bearbeiten“
+wählt, schützt die Dovari-Passwort-Session den vollständigen Workspace einschließlich aller
+Entwürfe und unveröffentlichten Seiten.
+
+---
+
+## Phase 15 – Öffentliche Suche und Auffindbarkeit
+
+Aufgaben:
+
+- eigener Volltextindex nur für Publication-Snapshots
+- öffentliche Suche und veröffentlichte Navigation
+- kanonische URLs sowie sichere Title-, Description- und Open-Graph-Metadaten
+- `robots.txt` und `sitemap.xml` nur für explizit indexierbare Publications
+- Cache-Invalidierung bei Republish und Unpublish
+
+Ziel:
+
+Auch eine größere öffentliche Knowledge Base bleibt gut navigierbar, ohne dass Suche oder
+Suchmaschinen private Inhalte ableiten können.
+
+---
+
+## Phase 16 – Tags und Favoriten
+
+Aufgaben:
+
+- private Tags mit Rename, Filter und Search-Integration
+- Favoriten in Sidebar und Command Palette
+- konsistentes Verhalten bei Papierkorb, Restore und Backup
+- Tags nur nach ausdrücklicher Aufnahme in einen Publication-Snapshot öffentlich zeigen
+
+Ziel:
+
+Häufige und thematisch zusammengehörige Seiten sind schneller erreichbar, ohne die einfache
+Seitenhierarchie zu ersetzen.
+
+---
+
+## Phase 17 – Templates und Daily Notes
+
+Aufgaben:
+
+- wiederverwendbare Seitentemplates
+- Seite aus Template erstellen
+- idempotente tägliche Notiz in der konfigurierten Zeitzone
+- Integration in Slash Commands und Command Palette
+- Backup-/Restore-Unterstützung
+
+Ziel:
+
+Wiederkehrende Notizen benötigen weniger Handarbeit, ohne ein komplexes Datenbanksystem
+einzuführen.
+
+---
+
+## Phase 18 – Markdown- und Obsidian-Import
+
+Aufgaben:
+
+- lokaler ZIP-Preflight und Konfliktvorschau
+- unterstütztes Markdown sicher nach Tiptap konvertieren
+- Ordnerhierarchie, Wiki Links und sichere lokale Assets übernehmen
+- resumierbare Import-Session und atomare Finalisierung
+- verständlicher Bericht für nicht unterstützte Inhalte
+
+Ziel:
+
+Bestehende Markdown- und Obsidian-Wissensbestände können sicher übernommen werden, ohne vorhandene
+Dovari-Inhalte still zu überschreiben.
 
 ---
 
@@ -2061,7 +2154,7 @@ Automatisch ähnliche Seiten anzeigen.
 
 ## Public Sharing
 
-Einzelne Seiten öffentlich teilen.
+Alle bewusst veröffentlichten Seiten ohne Login lesen; einzelne Seiten über stabile URLs teilen.
 
 Beispiel:
 
@@ -2082,6 +2175,20 @@ bereinigter Publication Snapshot
 ```
 
 Nur Assets, die der veröffentlichte Snapshot tatsächlich referenziert, dürfen über die öffentliche Route ausgeliefert werden. Änderungen an der privaten Seite erscheinen erst nach erneutem Veröffentlichen. Private Wiki Links und nicht veröffentlichte eingebettete Inhalte dürfen durch eine öffentliche Seite nicht offengelegt werden.
+
+Die Domain-Wurzel zeigt eine öffentliche Übersicht aller aktiven Publications. Diese Übersicht ist
+keine gefilterte private Seitenliste, sondern wird ausschließlich aus Publication-Snapshots
+gebildet. Sie enthält weder unveröffentlichte Titel noch private Seiten-IDs, Hierarchie,
+Backlinks oder Revisionen.
+
+Eine öffentliche Seite bietet einen klaren „Bearbeiten“-Einstieg. Dieser führt in den privaten
+`/app`-Bereich und verlangt dort die Dovari-Passwort-Anmeldung. Erst nach erfolgreicher Anmeldung
+darf Dovari die öffentliche ID zur privaten Seite auflösen. Ein
+öffentlicher Besucher erhält dadurch keinerlei zusätzliche Metadaten.
+
+Unpublish entfernt eine Seite sofort aus Übersicht und Public API und macht ihre öffentlichen
+Assets unerreichbar. Ein späteres neues Publish erhält eine neue URL. Suchmaschinenindexierung ist
+pro Publication opt-in; Standard ist `noindex`.
 
 ---
 

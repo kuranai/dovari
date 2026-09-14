@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { PageDetail, PageSummary } from '../../shared/pages';
 import { App } from './App';
@@ -43,13 +43,17 @@ function response(body: unknown, status = 200) {
   });
 }
 
+beforeEach(() => {
+  window.history.pushState({}, '', '/app');
+});
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   window.localStorage.removeItem(THEME_STORAGE_KEY);
   delete document.documentElement.dataset.theme;
   document.documentElement.style.colorScheme = '';
-  window.history.pushState({}, '', '/');
+  window.history.pushState({}, '', '/app');
 });
 
 describe('Dovari app shell', () => {

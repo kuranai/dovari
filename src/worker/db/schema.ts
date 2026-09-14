@@ -153,6 +153,54 @@ export const pageRevisions = sqliteTable(
   ],
 );
 
+export const pagePublications = sqliteTable(
+  'page_publications',
+  {
+    id: text('id').primaryKey(),
+    pageId: text('page_id').notNull().unique(),
+    publicId: text('public_id').notNull().unique(),
+    sourceRevision: integer('source_revision').notNull(),
+    publishedContentJson: text('published_content_json').notNull(),
+    publishedTitle: text('published_title').notNull(),
+    allowIndexing: integer('allow_indexing', { mode: 'boolean' }).notNull().default(false),
+    publishedAt: text('published_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('page_publications_updated').on(desc(table.updatedAt), desc(table.publicId)),
+    check('page_publications_source_revision_positive', sql`${table.sourceRevision} > 0`),
+    check('page_publications_title_length', sql`length(${table.publishedTitle}) BETWEEN 1 AND 200`),
+    check('page_publications_allow_indexing_boolean', sql`${table.allowIndexing} IN (0, 1)`),
+    foreignKey({
+      columns: [table.pageId],
+      foreignColumns: [pages.id],
+      name: 'page_publications_page_id_fkey',
+    }).onDelete('cascade'),
+  ],
+);
+
+export const publicationAssets = sqliteTable(
+  'publication_assets',
+  {
+    publicationId: text('publication_id').notNull(),
+    assetId: text('asset_id').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.publicationId, table.assetId] }),
+    index('publication_assets_asset').on(table.assetId),
+    foreignKey({
+      columns: [table.publicationId],
+      foreignColumns: [pagePublications.id],
+      name: 'publication_assets_publication_id_fkey',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.assetId],
+      foreignColumns: [assets.id],
+      name: 'publication_assets_asset_id_fkey',
+    }).onDelete('restrict'),
+  ],
+);
+
 export const authSessions = sqliteTable(
   'auth_sessions',
   {
@@ -191,6 +239,7 @@ export const restoreSessions = sqliteTable(
     expectedPages: integer('expected_pages').notNull(),
     expectedRevisions: integer('expected_revisions').notNull(),
     expectedAssets: integer('expected_assets').notNull(),
+    expectedPublications: integer('expected_publications').notNull().default(0),
     expectedBytes: integer('expected_bytes').notNull(),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
@@ -201,10 +250,14 @@ export const restoreSessions = sqliteTable(
       'restore_sessions_status_allowed',
       sql`${table.status} IN ('uploading', 'finalizing', 'failed')`,
     ),
-    check('restore_sessions_backup_version_supported', sql`${table.backupVersion} = 1`),
+    check('restore_sessions_backup_version_supported', sql`${table.backupVersion} IN (1, 2)`),
     check('restore_sessions_expected_pages_nonnegative', sql`${table.expectedPages} >= 0`),
     check('restore_sessions_expected_revisions_nonnegative', sql`${table.expectedRevisions} >= 0`),
     check('restore_sessions_expected_assets_nonnegative', sql`${table.expectedAssets} >= 0`),
+    check(
+      'restore_sessions_expected_publications_nonnegative',
+      sql`${table.expectedPublications} >= 0`,
+    ),
     check('restore_sessions_expected_bytes_nonnegative', sql`${table.expectedBytes} >= 0`),
     index('restore_sessions_owner_updated').on(table.ownerIdentity, desc(table.updatedAt)),
     index('restore_sessions_status').on(table.status),
@@ -224,7 +277,10 @@ export const restoreSessionRecords = sqliteTable(
   (table) => [
     primaryKey({ columns: [table.sessionId, table.recordType, table.recordId] }),
     index('restore_session_records_session').on(table.sessionId, table.recordType),
-    check('restore_session_records_type_allowed', sql`${table.recordType} IN ('page', 'revision')`),
+    check(
+      'restore_session_records_type_allowed',
+      sql`${table.recordType} IN ('page', 'revision', 'publication')`,
+    ),
     foreignKey({
       columns: [table.sessionId],
       foreignColumns: [restoreSessions.id],
@@ -266,6 +322,10 @@ export type PageLink = typeof pageLinks.$inferSelect;
 export type NewPageLink = typeof pageLinks.$inferInsert;
 export type PageRevision = typeof pageRevisions.$inferSelect;
 export type NewPageRevision = typeof pageRevisions.$inferInsert;
+export type PagePublication = typeof pagePublications.$inferSelect;
+export type NewPagePublication = typeof pagePublications.$inferInsert;
+export type PublicationAsset = typeof publicationAssets.$inferSelect;
+export type NewPublicationAsset = typeof publicationAssets.$inferInsert;
 export type AuthSession = typeof authSessions.$inferSelect;
 export type NewAuthSession = typeof authSessions.$inferInsert;
 export type AuthLoginAttempt = typeof authLoginAttempts.$inferSelect;

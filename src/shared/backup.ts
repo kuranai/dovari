@@ -9,10 +9,13 @@ import {
   tiptapDocumentSchema,
   type TiptapDocument,
 } from './pages';
+import { publicIdSchema, publicTiptapDocumentSchema } from './publications';
 
 export const BACKUP_FORMAT = 'dovari-backup' as const;
-export const BACKUP_VERSION = 1 as const;
-export const BACKUP_FILENAME = 'dovari-backup-v1.zip';
+export const BACKUP_V1_VERSION = 1 as const;
+export const BACKUP_VERSION = 2 as const;
+export const BACKUP_V1_FILENAME = 'dovari-backup-v1.zip';
+export const BACKUP_FILENAME = 'dovari-backup-v2.zip';
 export const BACKUP_MANIFEST_FILENAME = 'backup.json';
 export const RESTORE_SESSION_TTL_MS = 24 * 60 * 60 * 1_000;
 
@@ -101,10 +104,34 @@ export const backupAssetRecordSchema = z
 
 export type BackupAssetRecord = z.infer<typeof backupAssetRecordSchema>;
 
-export const backupManifestSchema = z
+const assetIdListSchema = z
+  .array(assetIdSchema)
+  .max(10_000)
+  .refine((values) => new Set(values).size === values.length, {
+    message: 'Asset ids must be unique.',
+  });
+
+export const backupPublicationRecordSchema = z
+  .object({
+    id: pageIdSchema,
+    pageId: pageIdSchema,
+    publicId: publicIdSchema,
+    sourceRevision: baseRevisionSchema,
+    content: publicTiptapDocumentSchema,
+    publishedTitle: z.string().trim().min(1).max(PAGE_TITLE_MAX_LENGTH),
+    allowIndexing: z.boolean(),
+    publishedAt: timestampSchema,
+    updatedAt: timestampSchema,
+    assetIds: assetIdListSchema,
+  })
+  .strict();
+
+export type BackupPublicationRecord = z.infer<typeof backupPublicationRecordSchema>;
+
+export const backupManifestV1Schema = z
   .object({
     format: z.literal(BACKUP_FORMAT),
-    version: z.literal(BACKUP_VERSION),
+    version: z.literal(BACKUP_V1_VERSION),
     exportedAt: timestampSchema,
     pages: z.array(backupPageRecordSchema),
     revisions: z.array(backupRevisionRecordSchema),
@@ -112,14 +139,36 @@ export const backupManifestSchema = z
   })
   .strict();
 
+export type BackupManifestV1 = z.infer<typeof backupManifestV1Schema>;
+
+export const backupManifestV2Schema = z
+  .object({
+    format: z.literal(BACKUP_FORMAT),
+    version: z.literal(BACKUP_VERSION),
+    exportedAt: timestampSchema,
+    pages: z.array(backupPageRecordSchema),
+    revisions: z.array(backupRevisionRecordSchema),
+    assets: z.array(backupAssetRecordSchema),
+    publications: z.array(backupPublicationRecordSchema),
+  })
+  .strict();
+
+export type BackupManifestV2 = z.infer<typeof backupManifestV2Schema>;
+
+export const backupManifestSchema = z.discriminatedUnion('version', [
+  backupManifestV1Schema,
+  backupManifestV2Schema,
+]);
+
 export type BackupManifest = z.infer<typeof backupManifestSchema>;
 
 export const restoreSessionCreateRequestSchema = z
   .object({
-    backupVersion: z.literal(BACKUP_VERSION),
+    backupVersion: z.union([z.literal(BACKUP_V1_VERSION), z.literal(BACKUP_VERSION)]),
     expectedPages: nonnegativeIntegerSchema,
     expectedRevisions: nonnegativeIntegerSchema,
     expectedAssets: nonnegativeIntegerSchema,
+    expectedPublications: nonnegativeIntegerSchema.default(0),
     expectedBytes: nonnegativeIntegerSchema,
   })
   .strict();
@@ -130,10 +179,11 @@ export const restoreSessionStatusSchema = z
   .object({
     id: pageIdSchema,
     status: z.enum(['uploading', 'finalizing', 'failed']),
-    backupVersion: z.literal(BACKUP_VERSION),
+    backupVersion: z.union([z.literal(BACKUP_V1_VERSION), z.literal(BACKUP_VERSION)]),
     expectedPages: nonnegativeIntegerSchema,
     expectedRevisions: nonnegativeIntegerSchema,
     expectedAssets: nonnegativeIntegerSchema,
+    expectedPublications: nonnegativeIntegerSchema.default(0),
     expectedBytes: nonnegativeIntegerSchema,
     receivedPages: nonnegativeIntegerSchema,
     receivedRevisions: nonnegativeIntegerSchema,
@@ -142,6 +192,7 @@ export const restoreSessionStatusSchema = z
     pageIds: z.array(pageIdSchema),
     revisionIds: z.array(pageIdSchema),
     assetIds: z.array(assetIdSchema),
+    publicationIds: z.array(pageIdSchema).default([]),
     createdAt: timestampSchema,
     updatedAt: timestampSchema,
     expiresAt: timestampSchema,
@@ -158,7 +209,7 @@ export type RestoreSessionResponse = z.infer<typeof restoreSessionResponseSchema
 export const restoreRecordResponseSchema = z
   .object({
     accepted: z.literal(true),
-    recordType: z.enum(['page', 'revision']),
+    recordType: z.enum(['page', 'revision', 'publication']),
     recordId: pageIdSchema,
   })
   .strict();
@@ -177,6 +228,7 @@ export const restoreFinalizeResponseSchema = z
     pageCount: nonnegativeIntegerSchema,
     revisionCount: nonnegativeIntegerSchema,
     assetCount: nonnegativeIntegerSchema,
+    publicationCount: nonnegativeIntegerSchema.default(0),
   })
   .strict();
 

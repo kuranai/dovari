@@ -1,5 +1,6 @@
 import type { AssetRecord } from '../assets/repository';
 import type { PageRecord, PageRevisionRecord } from '../pages/repository';
+import type { PublicationRecord } from '../publications/repository';
 
 interface PageDatabaseRow {
   search_id: number;
@@ -40,9 +41,21 @@ interface AssetDatabaseRow {
   deleted_at: string | null;
 }
 
+interface PublicationDatabaseRow {
+  id: string;
+  page_id: string;
+  public_id: string;
+  source_revision: number;
+  published_content_json: string;
+  published_title: string;
+  allow_indexing: number;
+  published_at: string;
+  updated_at: string;
+}
+
 export interface RestoreSessionRecordRow {
   session_id: string;
-  record_type: 'page' | 'revision';
+  record_type: 'page' | 'revision' | 'publication';
   record_id: string;
   payload_json: string;
   sha256: string;
@@ -63,10 +76,11 @@ export interface RestoreSessionRow {
   id: string;
   owner_identity: string;
   status: 'uploading' | 'finalizing' | 'failed';
-  backup_version: 1;
+  backup_version: 1 | 2;
   expected_pages: number;
   expected_revisions: number;
   expected_assets: number;
+  expected_publications: number;
   expected_bytes: number;
   created_at: string;
   updated_at: string;
@@ -118,6 +132,20 @@ function toAssetRecord(row: AssetDatabaseRow): AssetRecord {
   };
 }
 
+function toPublicationRecord(row: PublicationDatabaseRow): PublicationRecord {
+  return {
+    id: row.id,
+    pageId: row.page_id,
+    publicId: row.public_id,
+    sourceRevision: row.source_revision,
+    publishedContentJson: row.published_content_json,
+    publishedTitle: row.published_title,
+    allowIndexing: row.allow_indexing === 1,
+    publishedAt: row.published_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 const pageColumns = `
   search_id,
   id,
@@ -145,6 +173,18 @@ const assetColumns = `
   uploaded_for_page_id,
   created_at,
   deleted_at
+`;
+
+const publicationColumns = `
+  id,
+  page_id,
+  public_id,
+  source_revision,
+  published_content_json,
+  published_title,
+  allow_indexing,
+  published_at,
+  updated_at
 `;
 
 export class BackupRepository {
@@ -175,6 +215,21 @@ export class BackupRepository {
     return result.results.map(toAssetRecord);
   }
 
+  async listPublications(): Promise<PublicationRecord[]> {
+    const result = await this.db
+      .prepare(`SELECT ${publicationColumns} FROM page_publications ORDER BY id`)
+      .all<PublicationDatabaseRow>();
+    return result.results.map(toPublicationRecord);
+  }
+
+  async listPublicationAssetIds(publicationId: string) {
+    const result = await this.db
+      .prepare(`SELECT asset_id FROM publication_assets WHERE publication_id = ? ORDER BY asset_id`)
+      .bind(publicationId)
+      .all<{ asset_id: string }>();
+    return result.results.map((row) => row.asset_id);
+  }
+
   async hasWorkspaceData() {
     const row = await this.db
       .prepare(
@@ -189,7 +244,7 @@ export class BackupRepository {
     return this.db
       .prepare(
         `SELECT id, owner_identity, status, backup_version, expected_pages, expected_revisions,
-                expected_assets, expected_bytes, created_at, updated_at, expires_at
+                expected_assets, expected_publications, expected_bytes, created_at, updated_at, expires_at
          FROM restore_sessions
          WHERE status IN ('uploading', 'finalizing', 'failed')
          ORDER BY created_at
@@ -202,7 +257,7 @@ export class BackupRepository {
     return this.db
       .prepare(
         `SELECT id, owner_identity, status, backup_version, expected_pages, expected_revisions,
-                expected_assets, expected_bytes, created_at, updated_at, expires_at
+                expected_assets, expected_publications, expected_bytes, created_at, updated_at, expires_at
          FROM restore_sessions
          WHERE id = ? AND owner_identity = ?`,
       )
@@ -213,10 +268,11 @@ export class BackupRepository {
   async insertSession(session: {
     id: string;
     ownerIdentity: string;
-    backupVersion: 1;
+    backupVersion: 1 | 2;
     expectedPages: number;
     expectedRevisions: number;
     expectedAssets: number;
+    expectedPublications: number;
     expectedBytes: number;
     createdAt: string;
     updatedAt: string;
@@ -226,8 +282,8 @@ export class BackupRepository {
       .prepare(
         `INSERT INTO restore_sessions
           (id, owner_identity, status, backup_version, expected_pages, expected_revisions,
-           expected_assets, expected_bytes, created_at, updated_at, expires_at)
-         SELECT ?, ?, 'uploading', ?, ?, ?, ?, ?, ?, ?, ?
+           expected_assets, expected_publications, expected_bytes, created_at, updated_at, expires_at)
+         SELECT ?, ?, 'uploading', ?, ?, ?, ?, ?, ?, ?, ?, ?
          WHERE NOT EXISTS (
            SELECT 1 FROM restore_sessions
            WHERE status IN ('uploading', 'finalizing', 'failed')
@@ -240,6 +296,7 @@ export class BackupRepository {
         session.expectedPages,
         session.expectedRevisions,
         session.expectedAssets,
+        session.expectedPublications,
         session.expectedBytes,
         session.createdAt,
         session.updatedAt,
@@ -261,7 +318,11 @@ export class BackupRepository {
     return result.results;
   }
 
-  async findRecord(sessionId: string, recordType: 'page' | 'revision', recordId: string) {
+  async findRecord(
+    sessionId: string,
+    recordType: 'page' | 'revision' | 'publication',
+    recordId: string,
+  ) {
     return this.db
       .prepare(
         `SELECT session_id, record_type, record_id, payload_json, sha256, uploaded_at
@@ -274,7 +335,7 @@ export class BackupRepository {
 
   async insertRecord(record: {
     sessionId: string;
-    recordType: 'page' | 'revision';
+    recordType: 'page' | 'revision' | 'publication';
     recordId: string;
     payloadJson: string;
     sha256: string;

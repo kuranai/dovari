@@ -3,10 +3,11 @@
 [![CI](https://github.com/kuranai/dovari/actions/workflows/ci.yml/badge.svg)](https://github.com/kuranai/dovari/actions/workflows/ci.yml)
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/kuranai/dovari)
 
-Dovari is a private, browser-first knowledge base that you host in your own Cloudflare account.
-It combines a fast, document-style editor with page hierarchy, search, file attachments, version
-history, and lossless backups. A single deployment runs the React application and its API, while
-your structured data and private assets remain in Cloudflare D1 and R2.
+Dovari is a browser-first knowledge base that you host in your own Cloudflare account. It combines
+a fast, document-style editor with page hierarchy, search, file attachments, version history,
+lossless backups, and an owner-controlled public reading area. A single deployment runs the React
+application and its API, while your structured data and private assets remain in Cloudflare D1 and
+R2.
 
 Dovari is designed for individuals who want a focused personal workspace without operating a
 traditional server or handing their notes to a hosted knowledge-base provider.
@@ -19,10 +20,12 @@ traditional server or handing their notes to a hosted knowledge-base provider.
 - Paste screenshots and drag files directly into a document.
 - Recover deleted pages and restore earlier revisions.
 - Export Markdown and attachments, or create a complete backup for lossless restore.
+- Publish selected pages as read-only public snapshots while keeping drafts and private metadata hidden.
 - Use a responsive, keyboard-accessible interface with light and dark themes.
 - Deploy the complete application to Cloudflare Workers with D1 and a private R2 bucket.
 
 ## Screenshots
+
 ![light](docs/images/light.png)
 ![dark](docs/images/dark.png)
 
@@ -68,9 +71,10 @@ Wrangler keeps local D1 and R2 data separate from production.
 
 ## Using Dovari
 
-Open `/app` to enter the private workspace. Create a page with **New page** or `Ctrl/Cmd+N`, then
-start writing; Dovari saves changes automatically. Type `/` in an empty paragraph to open the
-command menu, or use `Ctrl/Cmd+K` to search and navigate.
+The site root `/` shows the pages that the owner has explicitly published. Open `/app` to enter the
+private workspace, where you can create and edit pages with **New page** or `Ctrl/Cmd+N`; Dovari
+saves changes automatically. Type `/` in an empty paragraph to open the command menu, or use
+`Ctrl/Cmd+K` to search and navigate.
 
 Settings contains recent pages, the Trash, version history, theme controls, and backup and restore.
 The sidebar also provides a Markdown and ZIP export for use outside Dovari.
@@ -92,9 +96,10 @@ requests retrieve files through the Worker.
 
 ## Data, backup, and restore
 
-The full backup available in Settings includes active and deleted pages, hierarchy, revisions,
-Wiki Links, and all assets. Dovari verifies asset sizes and SHA-256 checksums during restore. For
-safety, a full backup can only be restored into an empty workspace.
+The full v2 backup available in Settings includes active and deleted pages, hierarchy, revisions,
+publications, Wiki Links, and all assets. Dovari verifies asset sizes and SHA-256 checksums during
+restore; v1 backups remain importable. For safety, a full backup can only be restored into an empty
+workspace.
 
 Deploying a new Worker version invalidates existing sessions. Changing `DOVARI_PASSWORD` therefore
 signs out every device.
@@ -145,10 +150,11 @@ in the Cloudflare dashboard.
 
 ## Security model and current limitations
 
-Dovari version 1 is intended for one owner or a small trusted group sharing one instance password.
-It does not provide individual accounts, password reset, MFA, roles, comments, or public pages.
-Private APIs require an authenticated session, browser mutations require a matching same-origin
-`Origin` header, and asset storage remains private.
+Dovari is intended for one owner or a small trusted group sharing one instance password. It does
+not provide individual accounts, password reset, MFA, roles, or comments. The owner can explicitly
+publish read-only snapshots; private APIs and editing require an authenticated session, browser
+mutations require a matching same-origin `Origin` header, and asset storage remains private behind
+the Worker.
 
 The application is not a substitute for an identity platform when separate user accounts or
 fine-grained access control are required.

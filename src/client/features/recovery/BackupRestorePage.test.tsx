@@ -56,7 +56,7 @@ describe('BackupRestorePage', () => {
   it('validates a selected archive and shows its lossless contents', async () => {
     renderBackupPage();
     const file = await emptyBackupFile();
-    fireEvent.change(screen.getByLabelText('Select a dovari-backup-v1.zip file'), {
+    fireEvent.change(screen.getByLabelText('Select a Dovari backup ZIP (v1 or v2)'), {
       target: { files: [file] },
     });
 
@@ -107,7 +107,7 @@ describe('BackupRestorePage', () => {
     });
 
     renderBackupPage(refreshPages);
-    fireEvent.change(screen.getByLabelText('Select a dovari-backup-v1.zip file'), {
+    fireEvent.change(screen.getByLabelText('Select a Dovari backup ZIP (v1 or v2)'), {
       target: { files: [await emptyBackupFile()] },
     });
     fireEvent.click(await screen.findByRole('button', { name: 'Start restore' }));

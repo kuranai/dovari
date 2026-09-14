@@ -221,17 +221,21 @@ describe('worker password security boundary', () => {
     expect(extraField.status).toBe(400);
   });
 
-  it('keeps health, login, and static files public without forwarding credentials', async () => {
+  it('keeps health, public pages, login, and static files public without forwarding credentials', async () => {
     const { bindings, staticFetch } = makeEnvironment({ DOVARI_PASSWORD: undefined });
     const health = await fetchApp('/api/health', bindings);
+    const landingPage = await fetchApp('/', bindings, {
+      headers: { Authorization: 'secret', Cookie: 'private=value' },
+    });
     const loginPage = await fetchApp('/login', bindings, {
       headers: { Authorization: 'secret', Cookie: 'private=value' },
     });
     const asset = await fetchApp('/assets/app.js', bindings);
     expect(health.status).toBe(200);
+    expect(landingPage.status).toBe(200);
     expect(loginPage.status).toBe(200);
     expect(asset.status).toBe(200);
-    expect(staticFetch).toHaveBeenCalledTimes(2);
+    expect(staticFetch).toHaveBeenCalledTimes(3);
     const staticRequest = staticFetch.mock.calls[0]?.[0];
     expect(staticRequest?.headers.has('Authorization')).toBe(false);
     expect(staticRequest?.headers.has('Cookie')).toBe(false);

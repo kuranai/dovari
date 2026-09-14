@@ -1,0 +1,215 @@
+import { useEffect, useState } from 'react';
+
+import type { PageDetail } from '../../../shared/pages';
+import {
+  fetchPrivatePublication,
+  publicationErrorMessage,
+  publishPrivatePublication,
+  unpublishPrivatePublication,
+} from './api';
+import type { PrivatePublication } from '../../../shared/publications';
+
+type PublicationState =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'ready'; publication: PrivatePublication | null };
+
+function publicationStatus(
+  page: PageDetail,
+  publication: PrivatePublication | null,
+  allowIndexing: boolean,
+) {
+  if (publication === null) return 'Not published';
+  if (publication.sourceRevision !== page.revision || publication.allowIndexing !== allowIndexing) {
+    return 'Changes not published';
+  }
+  return 'Published';
+}
+
+export function PublicationPanel({ page }: { page: PageDetail }) {
+  const [reloadKey, setReloadKey] = useState(0);
+  const [state, setState] = useState<PublicationState>({ status: 'loading' });
+  const [allowIndexing, setAllowIndexing] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [isUnpublishing, setIsUnpublishing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [copyNotice, setCopyNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ status: 'loading' });
+    setActionError(null);
+    fetchPrivatePublication(page.id, controller.signal)
+      .then((response) => {
+        if (!controller.signal.aborted) {
+          setAllowIndexing(response.publication?.allowIndexing ?? false);
+          setState({ status: 'ready', publication: response.publication });
+        }
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setState({
+            status: 'error',
+            message: publicationErrorMessage(error, 'The publication status could not be loaded.'),
+          });
+        }
+      });
+    return () => controller.abort();
+  }, [page.id, reloadKey]);
+
+  async function handlePublish() {
+    if (state.status !== 'ready' || isPublishing || isUnpublishing) return;
+    setIsPublishing(true);
+    setActionError(null);
+    setCopyNotice(null);
+    try {
+      const response = await publishPrivatePublication(page.id, {
+        allowIndexing,
+        baseRevision: page.revision,
+      });
+      setAllowIndexing(response.publication.allowIndexing);
+      setState({ status: 'ready', publication: response.publication });
+    } catch (error: unknown) {
+      setActionError(publicationErrorMessage(error, 'The page could not be published.'));
+    } finally {
+      setIsPublishing(false);
+    }
+  }
+
+  async function handleUnpublish() {
+    if (state.status !== 'ready' || state.publication === null || isPublishing || isUnpublishing) {
+      return;
+    }
+    if (!window.confirm('Remove this page from the public knowledge base?')) return;
+    setIsUnpublishing(true);
+    setActionError(null);
+    setCopyNotice(null);
+    try {
+      await unpublishPrivatePublication(page.id, {
+        expectedUpdatedAt: state.publication.updatedAt,
+        publicId: state.publication.publicId,
+      });
+      setAllowIndexing(false);
+      setState({ status: 'ready', publication: null });
+    } catch (error: unknown) {
+      setActionError(publicationErrorMessage(error, 'The page could not be unpublished.'));
+    } finally {
+      setIsUnpublishing(false);
+    }
+  }
+
+  async function handleCopyUrl() {
+    if (state.status !== 'ready' || state.publication === null) return;
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard access is unavailable.');
+      await navigator.clipboard.writeText(
+        `${window.location.origin}${state.publication.publicUrl}`,
+      );
+      setCopyNotice('Public URL copied.');
+    } catch {
+      setCopyNotice('The public URL could not be copied automatically.');
+    }
+  }
+
+  return (
+    <section aria-labelledby="publication-panel-title" className="publication-panel">
+      <div className="publication-panel-heading">
+        <div>
+          <span className="state-kicker">Sharing</span>
+          <h2 id="publication-panel-title">Public page</h2>
+        </div>
+        {state.status === 'ready' ? (
+          <span aria-live="polite" className="publication-status">
+            {publicationStatus(page, state.publication, allowIndexing)}
+          </span>
+        ) : null}
+      </div>
+
+      {state.status === 'loading' ? (
+        <p aria-live="polite" className="publication-state">
+          Loading publication status…
+        </p>
+      ) : null}
+      {state.status === 'error' ? (
+        <div className="publication-state publication-state-error" role="alert">
+          <p>{state.message}</p>
+          <button
+            className="button button-quiet"
+            onClick={() => setReloadKey((value) => value + 1)}
+            type="button"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      {state.status === 'ready' ? (
+        <>
+          <p className="publication-description">
+            Publish a safe snapshot when this page is ready to share. Private edits stay private
+            until you publish again.
+          </p>
+          <label className="publication-indexing-option">
+            <input
+              checked={allowIndexing}
+              onChange={(event) => setAllowIndexing(event.target.checked)}
+              type="checkbox"
+            />
+            <span>Allow search engine indexing</span>
+          </label>
+          <div className="publication-actions">
+            <button
+              className="button button-primary"
+              disabled={isPublishing || isUnpublishing}
+              onClick={() => void handlePublish()}
+              type="button"
+            >
+              {isPublishing
+                ? 'Publishing…'
+                : state.publication === null
+                  ? 'Publish page'
+                  : 'Update publication'}
+            </button>
+            {state.publication ? (
+              <>
+                <a
+                  className="button button-secondary"
+                  href={state.publication.publicUrl}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  Open public page
+                </a>
+                <button
+                  className="button button-quiet"
+                  disabled={isPublishing || isUnpublishing}
+                  onClick={() => void handleCopyUrl()}
+                  type="button"
+                >
+                  Copy public URL
+                </button>
+                <button
+                  className="button button-danger"
+                  disabled={isPublishing || isUnpublishing}
+                  onClick={() => void handleUnpublish()}
+                  type="button"
+                >
+                  {isUnpublishing ? 'Unpublishing…' : 'Unpublish'}
+                </button>
+              </>
+            ) : null}
+          </div>
+          {copyNotice ? (
+            <p aria-live="polite" className="publication-copy-notice" role="status">
+              {copyNotice}
+            </p>
+          ) : null}
+          {actionError ? (
+            <p className="publication-action-error" role="alert">
+              {actionError}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+    </section>
+  );
+}

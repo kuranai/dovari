@@ -8,6 +8,7 @@ import {
   restoreSessionResponseSchema,
   type BackupAssetRecord,
   type BackupPageRecord,
+  type BackupPublicationRecord,
   type BackupRevisionRecord,
   type RestoreSessionCreateRequest,
   type RestoreSessionStatus,
@@ -78,15 +79,15 @@ export function fetchRestoreSession(id: string, signal?: AbortSignal) {
 
 export async function uploadRestoreRecordWithChecksum(
   sessionId: string,
-  recordType: 'page' | 'revision',
-  record: BackupPageRecord | BackupRevisionRecord,
+  recordType: 'page' | 'revision' | 'publication',
+  record: BackupPageRecord | BackupRevisionRecord | BackupPublicationRecord,
   checksum: string,
   signal?: AbortSignal,
 ) {
   const payload = canonicalJson(record);
   return request<{
     accepted: true;
-    recordType: 'page' | 'revision';
+    recordType: 'page' | 'revision' | 'publication';
     recordId: string;
   }>(
     `/api/private/restore/sessions/${encodeURIComponent(sessionId)}/records/${recordType}/${encodeURIComponent(record.id)}`,
@@ -173,6 +174,7 @@ export function finalizeRestoreSession(id: string, signal?: AbortSignal) {
     pageCount: number;
     revisionCount: number;
     assetCount: number;
+    publicationCount: number;
   }>(
     `/api/private/restore/sessions/${encodeURIComponent(id)}/finalize`,
     restoreFinalizeResponseSchema,
@@ -214,7 +216,9 @@ export async function downloadDovariBackup() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'dovari-backup-v1.zip';
+  const contentDisposition = response.headers.get('Content-Disposition');
+  const filenameMatch = contentDisposition?.match(/filename="([^"]+)"/u);
+  link.download = filenameMatch?.[1] ?? 'dovari-backup-v2.zip';
   link.style.display = 'none';
   document.body.appendChild(link);
   link.click();

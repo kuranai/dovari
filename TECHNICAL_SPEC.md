@@ -83,7 +83,7 @@ Browser
 Cloudflare Worker (Hono)
   ├── /app/* und /api/private/*
   │     └── Dovari-Session prüfen
-  ├── /p/* und /api/public/*
+  ├── /, /p/* und /api/public/*
   │     └── explizit öffentliche Read-only-Routes
   ├── /api/health
   │     └── generische öffentliche Liveness
@@ -112,7 +112,7 @@ Die Wrangler-Konfiguration setzt für Static Assets:
 Für das MVP gilt:
 
 ```text
-/                         Redirect auf /app
+/                         öffentliche Knowledge-Base-Landingpage ab Phase 14; zuvor Redirect auf /app
 /app/*                    geschützte Anwendungshülle
 /api/private/*            geschützte API einschließlich Assets
 /api/health               öffentliche, inhaltsfreie Liveness
@@ -122,6 +122,7 @@ Für das MVP gilt:
 Für die spätere Veröffentlichung werden reserviert:
 
 ```text
+/                         öffentliche Liste aller aktiven Publications
 /p/:publicId              öffentliche, schreibgeschützte Seite
 /api/public/*             ausschließlich öffentliche GET-/HEAD-Endpunkte
 ```
@@ -404,8 +405,9 @@ R2-Objekte werden nicht physisch gelöscht.
 ### 6.6 Backup- und Restore-Daten
 
 Der menschenlesbare Export aus Phase 7 bleibt unverändert `dovari-export` Version 1. Das
-verlustfreie Backup verwendet ein separates ZIP-Format mit `format: "dovari-backup"` und
-`version: 1` und wird als `dovari-backup-v1.zip` heruntergeladen.
+verlustfreie Backup verwendet ein separates ZIP-Format mit `format: "dovari-backup"` und wird in
+P25 als Version 2 mit `dovari-backup-v2.zip` heruntergeladen. Version-1-Archive bleiben als
+Importformat kompatibel.
 
 `backup.json` enthält mindestens:
 
@@ -415,6 +417,8 @@ verlustfreie Backup verwendet ein separates ZIP-Format mit `format: "dovari-back
 - alle `page_revisions`,
 - alle Asset-Zeilen einschließlich unreferenzierter oder soft-gelöschter Einträge mit stabiler ID,
   relativem ZIP-Pfad, Byte-Größe und SHA-256-Prüfsumme sowie jedes dazu vorhandene R2-Objekt.
+- In Version 2 zusätzlich alle aktiven `page_publications` mit ihrem Public-Snapshot, stabiler
+  `public_id`, Indexierungsoption und den zugehörigen `publication_assets`.
 
 `page_assets`, `page_links`, `content_text` und der FTS-Index werden beim Restore deterministisch
 aus den validierten Dokumenten rekonstruiert. Das Backup enthält keine Worker-Variablen, Secrets,
@@ -422,10 +426,11 @@ Authentifizierungskonfiguration, Cloudflare-Account- oder Resource-IDs. Vor dem 
 Existenz, Größe und Prüfsumme aller erwarteten R2-Objekte. Bei Abweichungen bricht das vollständige
 Backup mit einer Liste neutraler Asset-IDs ab.
 
-Restore ist in Version 1 nur erlaubt, wenn keine Page- oder Asset-Datensätze existieren und keine
-andere aktive Restore-Session läuft. Der Client liest das ZIP lokal, validiert Format, Pfade,
-Anzahlen und deklarierte Größen und überträgt Datensätze und Assets einzeln. Dadurch muss weder das
-gesamte Archiv noch die gesamte Datenbankrepräsentation in einen Worker-Request passen.
+Restore ist in Version 1 und 2 nur erlaubt, wenn keine Page- oder Asset-Datensätze existieren und
+keine andere aktive Restore-Session läuft. Der Client liest das ZIP lokal, validiert Format, Pfade,
+Anzahlen und deklarierte Größen und überträgt Datensätze, Publications und Assets einzeln. Dadurch
+muss weder das gesamte Archiv noch die gesamte Datenbankrepräsentation in einen Worker-Request
+passen.
 
 Für wiederaufnehmbare Sessions werden temporäre Verwaltungsdaten persistiert:
 
@@ -482,29 +487,91 @@ Ablaufzeit. `auth_login_attempts` speichert pro gehashter Quell-IP den Beginn de
 Fensters und die Anzahl fehlgeschlagener Versuche. Beide Tabellen enthalten weder Passwort noch
 einen wiederverwendbaren Passwort-Verifier und sind nicht Teil von Backup oder Export.
 
-### 6.8 Vorgemerktes Veröffentlichungsmodell
+### 6.8 Veröffentlichungsmodell
 
-Öffentliche Seiten sind nicht Teil des MVP und werden daher nicht durch die initiale Migration angelegt. Die spätere Implementierung verwendet bewusst keine bloße `visibility`-Spalte mit Live-Zugriff auf den aktuellen Entwurf. Stattdessen wird beim Veröffentlichen ein expliziter, bereinigter Snapshot erzeugt:
+Öffentliche Seiten verwenden keine `visibility`-Spalte mit Live-Zugriff auf den aktuellen Entwurf.
+Beim Veröffentlichen entsteht ein eigener, serverseitig bereinigter Snapshot:
 
-```text
-page_publications
-  id
-  page_id
-  public_id
-  published_content_json
-  published_title
-  allow_indexing
-  published_at
-  updated_at
+```sql
+CREATE TABLE page_publications (
+  id TEXT PRIMARY KEY,
+  page_id TEXT NOT NULL UNIQUE REFERENCES pages(id) ON DELETE CASCADE,
+  public_id TEXT NOT NULL UNIQUE,
+  source_revision INTEGER NOT NULL CHECK (source_revision > 0),
+  published_content_json TEXT NOT NULL,
+  published_title TEXT NOT NULL CHECK (length(published_title) BETWEEN 1 AND 200),
+  allow_indexing INTEGER NOT NULL DEFAULT 0 CHECK (allow_indexing IN (0, 1)),
+  published_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 
-publication_assets
-  publication_id
-  asset_id
+CREATE INDEX page_publications_updated
+  ON page_publications (updated_at DESC, public_id DESC);
+
+CREATE TABLE publication_assets (
+  publication_id TEXT NOT NULL REFERENCES page_publications(id) ON DELETE CASCADE,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE RESTRICT,
+  PRIMARY KEY (publication_id, asset_id)
+);
+
+CREATE INDEX publication_assets_asset
+  ON publication_assets (asset_id);
 ```
 
-`public_id` ist eine stabile, zufällige URL-ID. `publication_assets` enthält ausschließlich Assets, die der veröffentlichte Snapshot tatsächlich referenziert. Öffentliche Asset-Auslieferung erfolgt später nur im Kontext einer gültigen Publication; die Kenntnis einer privaten Asset-ID allein gewährt keinen Zugriff.
+Es existiert höchstens eine aktive Publication pro privater Seite. `public_id` ist eine zufällige
+UUID und bleibt beim Aktualisieren der Publication stabil. Unpublish löscht Publication und
+Zuordnungen atomar; ein späteres neues Publish erzeugt eine neue `public_id`, damit eine bewusst
+zurückgezogene URL nicht unerwartet wiederverwendet wird.
 
-Der Publish-Service muss private Wiki Links, unveröffentlichte eingebettete Inhalte und gelöschte Assets erkennen. Änderungen im Editor werden erst nach einer bewussten erneuten Veröffentlichung öffentlich.
+`published_content_json` folgt einer eigenen Public-Allowlist. Normale Text- und Format-Nodes
+bleiben erhalten. Asset-Nodes bleiben nur erhalten, wenn das Asset existiert, nicht gelöscht ist
+und in `publication_assets` aufgenommen wird. Ein Wiki Link auf eine zu diesem Zeitpunkt aktive
+Publication wird auf deren `public_id` umgeschrieben; andernfalls wird er zu normalem Text. Der
+Snapshot enthält niemals private Page-IDs, Slugs, Parent-IDs, Revisionen oder Backlinks. Eine
+spätere Veröffentlichung oder Zurücknahme eines Linkziels verändert bestehende Snapshots nicht;
+die Quellseite muss bewusst erneut veröffentlicht werden.
+
+`publication_assets` enthält ausschließlich Assets, die der Snapshot tatsächlich referenziert.
+Öffentliche Asset-Auslieferung verlangt Publication-ID und Asset-ID und prüft diese Beziehung vor
+jedem R2-Zugriff. Die Kenntnis einer privaten Asset-ID allein gewährt keinen Zugriff.
+
+Das verlustfreie Backup wird mit P25 auf `dovari-backup-v2` erweitert. Version 2 enthält
+`page_publications` und `publication_assets` einschließlich stabiler IDs und Snapshotdaten;
+Restore akzeptiert weiterhin Version 1. Version-2-Restore validiert die Public-Allowlist und alle
+Assetbeziehungen, bevor der Gesamtzustand atomar sichtbar wird.
+
+Die P25-Migration baut die Restore-Verwaltungstabellen unter Erhalt eventuell vorhandener
+Sessiondaten so um, dass `backup_version IN (1, 2)` erlaubt ist, `restore_sessions` ein
+`expected_publications` mit Default `0` besitzt und `restore_session_records.record_type` zusätzlich
+`publication` akzeptiert. Publication-Records enthalten die Zeile aus `page_publications`; die
+Zuordnung in `publication_assets` wird beim Finalisieren deterministisch aus dem validierten
+Public-Dokument rekonstruiert. Ein v1-Restore erzeugt keine Publications.
+
+Soft Delete einer privaten Seite löscht eine aktive Publication und ihre Assetzuordnungen im
+selben atomaren Ablauf. Ein Page-Restore veröffentlicht sie nicht erneut. Normale Titel-, Inhalts-
+und Revisions-Restores verändern eine aktive Publication dagegen nicht; dafür ist weiterhin ein
+bewusstes Republish erforderlich.
+
+### 6.9 Öffentlicher Suchindex
+
+P26 verwendet einen separaten externen FTS5-Index, dessen Content-Tabelle ausschließlich
+`page_publications` ist. Er wird nur aus `published_title` und dem aus
+`published_content_json` abgeleiteten öffentlichen Plaintext gespeist. Public Search darf weder
+den privaten `pages_fts`-Index abfragen noch private Treffer nachträglich herausfiltern.
+
+### 6.10 Tags und Favoriten
+
+P27 ergänzt `tags`, `page_tags` und einen booleschen Favoritenstatus an der privaten Page-Domäne.
+Tagnamen werden Unicode-getrimmt, besitzen eine normalisierte eindeutige Vergleichsform und sind
+1–50 Zeichen lang. Private Tags werden nicht automatisch Teil einer Publication; veröffentlichte
+Snapshot-Tags müssen beim Publish explizit ausgewählt und im Snapshot dupliziert werden.
+
+### 6.11 Templates und Daily Notes
+
+P28 speichert Templates als eigene Datensätze mit Titel und validiertem Tiptap-JSON. Eine daraus
+erzeugte Seite erhält eine Kopie und keine Live-Referenz. Daily Notes besitzen zusätzlich einen
+eindeutigen lokalen Datumsschlüssel `YYYY-MM-DD`; der Server akzeptiert IANA-Zeitzone und Datum,
+prüft deren Konsistenz und erzeugt je Installation und Datum höchstens eine Daily Note.
 
 ## 7. HTTP-API
 
@@ -734,6 +801,69 @@ RESTORE_FINALIZE_FAILED
 Fehlerantworten enthalten keine Seitentitel, Dateinamen oder Inhalte. Zulässige Detailfelder sind
 betroffene UUIDs, erwartete und empfangene Byte-Größen sowie erwartete und berechnete Prüfsummen.
 
+### 7.6 Veröffentlichungen und öffentliche Lesezugriffe
+
+Private Publication-Endpunkte:
+
+```text
+GET    /api/private/pages/:pageId/publication
+PUT    /api/private/pages/:pageId/publication
+DELETE /api/private/pages/:pageId/publication
+GET    /api/private/publications/:publicId/editor-target
+```
+
+`PUT` akzeptiert `{ "baseRevision": 12, "allowIndexing": false }`. Es erzeugt oder ersetzt den
+bereinigten Snapshot atomar und liefert Public URL, Quellrevision und Zeitstempel. Eine abweichende
+Seitenrevision liefert `409 PAGE_CONFLICT`; gelöschte Seiten sind nicht veröffentlichbar.
+`DELETE` akzeptiert `{ "publicId": "…", "expectedUpdatedAt": "…" }` und entfernt nur genau
+diese aktive Version atomar; ein veralteter Tab erhält `409 PUBLICATION_CONFLICT`. `editor-target`
+liegt bewusst privat: Erst nach gültiger Dovari-Passwort-Session wird `publicId` zur privaten
+Page-ID aufgelöst.
+
+Public-Endpunkte:
+
+```text
+GET|HEAD /api/public/publications?cursor=<cursor>&limit=100
+GET|HEAD /api/public/publications/:publicId
+GET|HEAD /api/public/publications/:publicId/assets/:assetId/content
+```
+
+Die Liste ist nach `updated_at DESC, public_id DESC` cursorbasiert und gibt nur `publicId`,
+`publishedTitle`, `publishedAt`, `updatedAt` und `allowIndexing` zurück. Das Detail ergänzt allein
+das bereinigte Public-Dokument. Assets unterstützen die sicheren ETag-, Conditional- und
+Range-Regeln der privaten Asset-Auslieferung, werden aber nur nach Prüfung der konkreten
+Publication-Zuordnung gelesen. Fehlende, zurückgezogene und unbekannte Publications antworten
+gleichförmig mit `404 PUBLICATION_NOT_FOUND` und ohne unterscheidbare Details. Jede nicht explizit
+erlaubte Methode unter `/api/public/*` liefert `405 METHOD_NOT_ALLOWED` mit `Allow: GET, HEAD` vor
+jeglichem D1-/R2-Mutationszugriff. Bis zur expliziten Cache-Strategie in P26 senden alle Public-
+Listen-, Detail- und Assetantworten `Cache-Control: no-store`, damit Republish und Unpublish nicht
+durch veraltete Browser- oder Edge-Antworten verzögert werden.
+
+### 7.7 Öffentliche Suche und Discovery
+
+P26 ergänzt `GET /api/public/search`, `GET /sitemap.xml` und `GET /robots.txt`. Search liest nur
+den Index aus Abschnitt 6.9. Sitemap und indexierbare Metadaten enthalten ausschließlich aktive
+Publications mit `allow_indexing = 1`; alle anderen öffentlichen Seiten senden `noindex`.
+
+### 7.8 Tags und Favoriten
+
+P27 ergänzt private CRUD-Endpunkte für Tags, atomare Page-Tag-Zuordnung und eine idempotente
+Favorite-Mutation. Listen- und Search-Verträge erhalten optionale Tag-/Favorite-Filter. Kein
+Public-Endpunkt liest die privaten Zuordnungstabellen.
+
+### 7.9 Templates und Daily Notes
+
+P28 ergänzt private CRUD-Endpunkte für Templates, `POST /api/private/pages/from-template` und
+`PUT /api/private/daily-notes/:localDate`. Die Daily-Note-Operation ist idempotent und liefert bei
+wiederholtem Aufruf dieselbe Seite.
+
+### 7.10 Markdown- und Obsidian-Import
+
+P29 verwendet resumierbare, an den authentifizierten Dovari-Betreiber gebundene Import-Sessions
+nach dem Muster des Restore-Protokolls. Vor Finalisierung bleiben Records und Assets unerreichbar. Die Finalisierung
+fügt ausschließlich neue IDs ein, validiert normalisierte ZIP-Pfade, die Tiptap-Allowlist,
+Größenlimits und Asset-Prüfsummen und wird bei Konflikten vollständig zurückgerollt.
+
 ## 8. Editor und Autosave
 
 ### 8.1 Tiptap-Dokument
@@ -823,6 +953,22 @@ Backup und Restore. Der bisherige Command-Palette-Platzhalter navigiert auf dies
 Die Sidebar zeigt höchstens fünf aktive, zuletzt bearbeitete Seiten aus den bereits geladenen
 Page-Metadaten, sortiert nach `updatedAt` absteigend und ohne Duplikate zur aktuell geöffneten
 Seite. Favoriten und Tags werden daraus nicht abgeleitet.
+
+### 8.5 Öffentliche Anwendung
+
+Ab P25 ist `/` keine private Weiterleitung mehr, sondern die öffentliche Landingpage. Sie lädt
+alle Cursor-Seiten der Publication-Liste progressiv und macht jede aktive Publication erreichbar.
+`/p/:publicId` verwendet einen eigenständigen Read-only-Renderer und bietet keine Editorbefehle,
+Autosave-, Backlink-, Revisions- oder private Suchfunktion. Der öffentliche Bereich funktioniert
+ohne Dovari-Session und wird auch durch eine fehlende Passwortkonfiguration nicht gesperrt; er
+besitzt Loading-, Empty-, 404- und Retry-Zustände.
+
+Ein sichtbarer „Bearbeiten“-Link zeigt auf `/app/publications/:publicId/edit`. Diese Route bleibt
+Teil der privaten App-Klassifikation. Nach erfolgreicher Passwort-Anmeldung löst sie die
+Publication über den privaten `editor-target`-Endpunkt auf und navigiert nach
+`/app/pages/:pageId`. Dadurch erscheint keine private Page-ID im öffentlichen HTML oder Public
+JSON. `/app` behält die gesamte
+private Navigation und zeigt aktive, unveröffentlichte und geänderte Seiten.
 
 ## 9. Screenshot-, Bild- und Datei-Upload
 
@@ -1135,8 +1281,13 @@ Diese Spezifikation ändert die Produktphasen nicht, konkretisiert aber ihre tec
 13. **Phase 12:** Settings, zuletzt bearbeitete Seiten und Slash Commands gemäß Abschnitt 8.4.
 14. **Phase 13:** Deploy-Button, integrierte Passwort-Anmeldung, Dokumentation, frischer
     Installations-Smoke und vollständige Version-1-Abnahme.
-15. **Phase 14 nach Version 1:** explizite Publication-Snapshots und öffentliche Read-only-Routes
-    gemäß Abschnitt 6.8.
+15. **Phase 14 nach Version 1:** öffentliche Landingpage, explizite Publication-Snapshots,
+    öffentliche Read-only-Routes und privater Bearbeiten-Einstieg gemäß Abschnitten 6.8, 7.6 und 8.5.
+16. **Phase 15:** separater Public-Suchindex, veröffentlichte Navigation und indexierungsabhängige
+    Discovery-Metadaten gemäß Abschnitten 6.9 und 7.7.
+17. **Phase 16:** private Tags und Favoriten mit expliziter Snapshot-Grenze gemäß Abschnitt 6.10.
+18. **Phase 17:** kopierte Templates und idempotente Daily Notes gemäß Abschnitt 6.11.
+19. **Phase 18:** sicherer, resumierbarer Markdown-/Obsidian-Import gemäß Abschnitt 7.10.
 
 ### Definition of Done für Phase 0
 
@@ -1162,10 +1313,10 @@ Diese Punkte blockieren Phase 0 nicht und werden erst mit ihrer Produktphase ent
 - Exporterzeugung im Request versus asynchroner Workflow bei sehr großen Wikis,
 - Fuzzy Search oder Trigram-Index nach realen Suchmetriken,
 - Thumbnailing und Bildtransformation,
-- Tags und Favoriten,
-- Fremd-, Markdown- und Obsidian-Import,
+- Detailentscheidungen für Tags und Favoriten jenseits des in P27 festgelegten Minimalmodells,
+- Fremdimportformate jenseits von Markdown und dem in P29 festgelegten Obsidian-Subset,
 - automatische beziehungsweise zeitgesteuerte Backups,
-- öffentliche Publication-Snapshots und Public-Read-Routes.
+- öffentliche Bearbeitung, passwortgeschützte Einzellinks und Sharing-ACLs.
 
 ## 19. Geprüfte Primärquellen
 

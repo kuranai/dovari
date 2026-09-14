@@ -6,6 +6,7 @@ import {
   backupAssetRecordSchema,
   backupManifestSchema,
   backupPageRecordSchema,
+  backupPublicationRecordSchema,
   backupRevisionRecordSchema,
   canonicalJson,
   restoreSessionCreateRequestSchema,
@@ -13,6 +14,7 @@ import {
   type BackupAssetRecord,
   type BackupManifest,
   type BackupPageRecord,
+  type BackupPublicationRecord,
   type BackupRevisionRecord,
   type RestoreSessionCreateRequest,
   type RestoreSessionStatus,
@@ -27,6 +29,7 @@ import {
   estimatePageRowBytes,
   tiptapDocumentSchema,
 } from '../../shared/pages';
+import { collectPublicAssetIds, publicTiptapDocumentSchema } from '../../shared/publications';
 import { assetTypeForMimeType } from '../assets/formats';
 import type { AuthIdentity } from '../auth/password';
 import type { AssetRecord } from '../assets/repository';
@@ -41,6 +44,7 @@ import {
   objectSha256,
   normalizeSha256,
   pageBackupRecord,
+  publicationBackupRecord,
   parseSha256Header,
   parseStoredBackupContent,
   restoreTemporaryObjectKey,
@@ -54,7 +58,7 @@ import {
 } from './repository';
 import { createZipStream, textZipEntry, type ZipEntrySource } from '../export/zip';
 
-const RECORD_TYPE_VALUES = ['page', 'revision'] as const;
+const RECORD_TYPE_VALUES = ['page', 'revision', 'publication'] as const;
 type RestoreRecordType = (typeof RECORD_TYPE_VALUES)[number];
 
 function isRecordType(value: string): value is RestoreRecordType {
@@ -126,6 +130,10 @@ function incompleteRestore(message = 'The restore session is incomplete.') {
   return new BackupError(422, 'RESTORE_INCOMPLETE', message);
 }
 
+function recordMismatch(message = 'The restore record does not match the backup version.') {
+  return new BackupError(422, 'RESTORE_RECORD_MISMATCH', message);
+}
+
 function canonicalAssetMetadata(value: BackupAssetRecord) {
   return canonicalJson(value);
 }
@@ -148,6 +156,7 @@ function summaryFromSession(
   received: {
     pages: string[];
     revisions: string[];
+    publications: string[];
     assets: string[];
     bytes: number;
   },
@@ -159,6 +168,7 @@ function summaryFromSession(
     expectedPages: session.expected_pages,
     expectedRevisions: session.expected_revisions,
     expectedAssets: session.expected_assets,
+    expectedPublications: session.expected_publications,
     expectedBytes: session.expected_bytes,
     receivedPages: received.pages.length,
     receivedRevisions: received.revisions.length,
@@ -166,6 +176,7 @@ function summaryFromSession(
     receivedBytes: received.bytes,
     pageIds: received.pages,
     revisionIds: received.revisions,
+    publicationIds: received.publications,
     assetIds: received.assets,
     createdAt: session.created_at,
     updatedAt: session.updated_at,
@@ -219,14 +230,16 @@ export class BackupService {
   }
 
   async prepareBackup(): Promise<PreparedBackup> {
-    const [pages, revisions, assets] = await Promise.all([
+    const [pages, revisions, assets, publications] = await Promise.all([
       this.repository.listPages(),
       this.repository.listRevisions(),
       this.repository.listAssets(),
+      this.repository.listPublications(),
     ]);
 
     let pageRecords: BackupPageRecord[];
     let revisionRecords: BackupRevisionRecord[];
+    let publicationRecords: BackupPublicationRecord[];
     try {
       pageRecords = pages
         .map((page) => pageBackupRecord(page, pageContent(page)))
@@ -245,6 +258,38 @@ export class BackupService {
           return revisionBackupRecord(revision, parsed.data);
         })
         .sort((left, right) => compareText(left.id, right.id));
+      publicationRecords = [];
+      for (const publication of publications) {
+        const contentValue = parseStoredBackupContent(publication.publishedContentJson);
+        const content = publicTiptapDocumentSchema.safeParse(contentValue);
+        if (!content.success) {
+          throw new BackupError(
+            500,
+            'BACKUP_FAILED',
+            'A stored publication contains invalid content.',
+          );
+        }
+        const [documentAssetIds, relationAssetIds] = await Promise.all([
+          Promise.resolve(collectPublicAssetIds(content.data)),
+          this.repository.listPublicationAssetIds(publication.id),
+        ]);
+        const sortedDocumentAssetIds = [...documentAssetIds].sort(compareText);
+        const sortedRelationAssetIds = [...relationAssetIds].sort(compareText);
+        if (
+          sortedDocumentAssetIds.length !== sortedRelationAssetIds.length ||
+          sortedDocumentAssetIds.some((assetId, index) => assetId !== sortedRelationAssetIds[index])
+        ) {
+          throw new BackupError(
+            500,
+            'BACKUP_FAILED',
+            'Publication asset metadata is inconsistent.',
+          );
+        }
+        publicationRecords.push(
+          publicationBackupRecord(publication, content.data, sortedDocumentAssetIds),
+        );
+      }
+      publicationRecords.sort((left, right) => compareText(left.id, right.id));
     } catch (error) {
       if (error instanceof BackupError) {
         throw error;
@@ -287,6 +332,7 @@ export class BackupService {
       pages: pageRecords,
       revisions: revisionRecords,
       assets: assetRecords.sort((left, right) => compareText(left.id, right.id)),
+      publications: publicationRecords,
     });
     const manifestJson = `${canonicalJson(manifest)}\n`;
 
@@ -327,6 +373,10 @@ export class BackupService {
       .filter((record) => record.record_type === 'revision')
       .map((record) => record.record_id)
       .sort(compareText);
+    const publicationIds = records
+      .filter((record) => record.record_type === 'publication')
+      .map((record) => record.record_id)
+      .sort(compareText);
     const receivedAssetIds: string[] = [];
     let receivedBytes = 0;
     for (const asset of assets) {
@@ -345,6 +395,7 @@ export class BackupService {
       assets: receivedAssetIds.sort(compareText),
       bytes: receivedBytes,
       pages: pageIds,
+      publications: publicationIds,
       revisions: revisionIds,
     });
   }
@@ -367,6 +418,9 @@ export class BackupService {
 
   async createSession(input: RestoreSessionCreateRequest, identity?: AuthIdentity) {
     const parsed = restoreSessionCreateRequestSchema.parse(input);
+    if (parsed.backupVersion === 1 && parsed.expectedPublications !== 0) {
+      throw recordMismatch('Backup version 1 cannot contain publications.');
+    }
     if (await this.repository.hasWorkspaceData()) {
       throw workspaceNotEmpty();
     }
@@ -383,6 +437,7 @@ export class BackupService {
       expectedPages: parsed.expectedPages,
       expectedRevisions: parsed.expectedRevisions,
       expectedAssets: parsed.expectedAssets,
+      expectedPublications: parsed.expectedPublications,
       expectedBytes: parsed.expectedBytes,
       createdAt,
       updatedAt: createdAt,
@@ -423,6 +478,9 @@ export class BackupService {
     if (!isRecordType(recordTypeValue) || !/^[0-9a-f-]{36}$/iu.test(recordId)) {
       throw new BackupError(400, 'INVALID_REQUEST', 'The restore record identifier is invalid.');
     }
+    if (session.backup_version === 1 && recordTypeValue === 'publication') {
+      throw recordMismatch('Backup version 1 cannot contain publications.');
+    }
 
     const contentLength = request.headers.get('Content-Length');
     if (
@@ -451,7 +509,9 @@ export class BackupService {
     const parsed =
       recordTypeValue === 'page'
         ? backupPageRecordSchema.safeParse(value)
-        : backupRevisionRecordSchema.safeParse(value);
+        : recordTypeValue === 'revision'
+          ? backupRevisionRecordSchema.safeParse(value)
+          : backupPublicationRecordSchema.safeParse(value);
     if (!parsed.success || parsed.data.id !== recordId) {
       throw new BackupError(
         422,
@@ -485,7 +545,11 @@ export class BackupService {
 
     const currentRecords = await this.repository.listRecords(session.id);
     const expectedCount =
-      recordTypeValue === 'page' ? session.expected_pages : session.expected_revisions;
+      recordTypeValue === 'page'
+        ? session.expected_pages
+        : recordTypeValue === 'revision'
+          ? session.expected_revisions
+          : session.expected_publications;
     if (
       currentRecords.filter((record) => record.record_type === recordTypeValue).length >=
       expectedCount
@@ -670,9 +734,11 @@ export class BackupService {
   ) {
     const pageRows = recordRows.filter((row) => row.record_type === 'page');
     const revisionRows = recordRows.filter((row) => row.record_type === 'revision');
+    const publicationRows = recordRows.filter((row) => row.record_type === 'publication');
     if (
       pageRows.length !== session.expected_pages ||
       revisionRows.length !== session.expected_revisions ||
+      publicationRows.length !== session.expected_publications ||
       assetRows.length !== session.expected_assets
     ) {
       throw incompleteRestore();
@@ -744,6 +810,45 @@ export class BackupService {
       }
       revisionIds.add(parsed.data.id);
       revisions.push(parsed.data);
+    }
+
+    const publications: BackupPublicationRecord[] = [];
+    const publicationIds = new Set<string>();
+    const publicIds = new Set<string>();
+    for (const row of publicationRows) {
+      let value: unknown;
+      try {
+        value = JSON.parse(row.payload_json) as unknown;
+      } catch {
+        throw new BackupError(
+          422,
+          'RESTORE_RECORD_MISMATCH',
+          'A staged publication record is invalid.',
+        );
+      }
+      const parsed = backupPublicationRecordSchema.safeParse(value);
+      if (!parsed.success || parsed.data.id !== row.record_id) {
+        throw new BackupError(
+          422,
+          'RESTORE_RECORD_MISMATCH',
+          'A staged publication record is invalid.',
+        );
+      }
+      if (
+        canonicalJson(parsed.data) !== row.payload_json ||
+        (await sha256Hex(row.payload_json)) !== row.sha256 ||
+        publicationIds.has(parsed.data.id) ||
+        publicIds.has(parsed.data.publicId)
+      ) {
+        throw new BackupError(
+          422,
+          'RESTORE_RECORD_MISMATCH',
+          'The staged publication metadata changed.',
+        );
+      }
+      publicationIds.add(parsed.data.id);
+      publicIds.add(parsed.data.publicId);
+      publications.push(parsed.data);
     }
 
     const assets: BackupAssetRecord[] = [];
@@ -847,6 +952,57 @@ export class BackupService {
       }
     }
 
+    for (const publication of publications) {
+      const page = pagesById.get(publication.pageId);
+      if (!page || page.deletedAt !== null || publication.sourceRevision > page.revision) {
+        throw new BackupError(
+          422,
+          'RESTORE_RECORD_MISMATCH',
+          'A publication references an invalid page.',
+        );
+      }
+      const documentAssets = collectPublicAssetIds(publication.content).sort(compareText);
+      const declaredAssets = [...publication.assetIds].sort(compareText);
+      if (
+        documentAssets.length !== declaredAssets.length ||
+        documentAssets.some((assetId, index) => assetId !== declaredAssets[index]) ||
+        documentAssets.some((assetId) => !assetIds.has(assetId))
+      ) {
+        throw new BackupError(
+          422,
+          'RESTORE_RECORD_MISMATCH',
+          'A publication references an invalid asset.',
+        );
+      }
+      const targetPublicIds = new Set<string>();
+      const visit = (node: {
+        type: string;
+        attrs?: Record<string, unknown>;
+        content?: unknown[];
+      }) => {
+        if (node.type === 'publicWikiLink' && typeof node.attrs?.targetPublicId === 'string') {
+          targetPublicIds.add(node.attrs.targetPublicId);
+        }
+        if (Array.isArray(node.content)) {
+          node.content.forEach((child) => {
+            if (typeof child === 'object' && child !== null) {
+              visit(
+                child as { type: string; attrs?: Record<string, unknown>; content?: unknown[] },
+              );
+            }
+          });
+        }
+      };
+      publication.content.content.forEach((node) => visit(node));
+      if ([...targetPublicIds].some((targetId) => !publicIds.has(targetId))) {
+        throw new BackupError(
+          422,
+          'RESTORE_RECORD_MISMATCH',
+          'A publication references a missing public page.',
+        );
+      }
+    }
+
     for (const [parentId, positions] of siblingPositions) {
       const sorted = [...positions].sort((left, right) => left - right);
       if (sorted.some((position, index) => position !== index)) {
@@ -920,7 +1076,7 @@ export class BackupService {
     };
     pages.forEach((page) => visit(page.id));
 
-    return { assets, pages, revisions };
+    return { assets, pages, publications, revisions };
   }
 
   private async copyAssets(sessionId: string, assets: BackupAssetRecord[]) {
@@ -1070,6 +1226,44 @@ export class BackupService {
         );
       }
 
+      for (const publication of validated.publications) {
+        statements.push(
+          this.repository.db
+            .prepare(
+              `INSERT INTO page_publications
+                (id, page_id, public_id, source_revision, published_content_json,
+                 published_title, allow_indexing, published_at, updated_at)
+               SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${ready}`,
+            )
+            .bind(
+              ...bindReady([
+                publication.id,
+                publication.pageId,
+                publication.publicId,
+                publication.sourceRevision,
+                canonicalJson(publication.content),
+                publication.publishedTitle,
+                publication.allowIndexing ? 1 : 0,
+                publication.publishedAt,
+                publication.updatedAt,
+              ]),
+            ),
+        );
+      }
+
+      for (const publication of validated.publications) {
+        for (const assetId of publication.assetIds) {
+          statements.push(
+            this.repository.db
+              .prepare(
+                `INSERT INTO publication_assets (publication_id, asset_id)
+                 SELECT ?, ? WHERE ${ready}`,
+              )
+              .bind(...bindReady([publication.id, assetId])),
+          );
+        }
+      }
+
       for (const page of validated.pages) {
         for (const assetId of collectAssetIds(page.content)) {
           statements.push(
@@ -1148,6 +1342,7 @@ export class BackupService {
         pageCount: validated.pages.length,
         revisionCount: validated.revisions.length,
         assetCount: validated.assets.length,
+        publicationCount: validated.publications.length,
       };
     } catch (error) {
       await Promise.allSettled(copiedKeys.map((key) => this.bucket.delete(key)));

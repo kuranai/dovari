@@ -665,6 +665,16 @@ export class PageRepository {
            WHERE id = ? AND revision = ? AND deleted_at IS NULL`,
         )
         .bind(deletedAt, deletedAt, id, baseRevision),
+      this.db
+        .prepare(
+          `DELETE FROM page_publications
+           WHERE page_id = ?
+             AND EXISTS (
+               SELECT 1 FROM pages
+               WHERE id = ? AND revision = ? AND deleted_at IS NOT NULL
+             )`,
+        )
+        .bind(id, id, baseRevision + 1),
       this.retentionStatement(id, baseRevision + 1, true),
     ];
 

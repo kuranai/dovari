@@ -4,7 +4,8 @@ import { authorizePasswordRequest } from '../auth/password';
 import { classifyPath } from '../routing';
 import type { WorkerApp } from '../types';
 
-export type ApiErrorStatus = 400 | 401 | 403 | 404 | 409 | 413 | 415 | 416 | 422 | 429 | 500 | 503;
+export type ApiErrorStatus =
+  400 | 401 | 403 | 404 | 405 | 409 | 413 | 415 | 416 | 422 | 429 | 500 | 503;
 
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",

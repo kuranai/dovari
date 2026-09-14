@@ -99,9 +99,9 @@ function encodeBase64Url(value: string) {
   return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '');
 }
 
-async function request(path: string, init: RequestInit = {}) {
+async function request(path: string, init: RequestInit = {}, authenticated = true) {
   const headers = new Headers(init.headers);
-  headers.set('Cookie', authCookie);
+  if (authenticated) headers.set('Cookie', authCookie);
   if (init.body !== undefined && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
@@ -189,7 +189,7 @@ describe('Dovari backup and restore', () => {
     const backupResponse = await request('/api/private/backup');
     expect(backupResponse.status).toBe(200);
     expect(backupResponse.headers.get('Content-Disposition')).toBe(
-      'attachment; filename="dovari-backup-v1.zip"',
+      'attachment; filename="dovari-backup-v2.zip"',
     );
     const entries = readZipEntries(new Uint8Array(await backupResponse.arrayBuffer()));
     const manifest = backupManifestSchema.parse(
@@ -301,6 +301,155 @@ describe('Dovari backup and restore', () => {
     const year = createdAt.getUTCFullYear().toString().padStart(4, '0');
     const month = (createdAt.getUTCMonth() + 1).toString().padStart(2, '0');
     await expect(env.ASSETS.get(`assets/${year}/${month}/${assetId}.bin`)).resolves.not.toBeNull();
+  });
+
+  it('round-trips v2 publications, snapshots, public ids, and publication assets', async () => {
+    const page = await createPage('Public backup page');
+    const assetBytes = new Uint8Array([7, 11, 13, 17]);
+    const assetId = await uploadAsset(page.id, assetBytes);
+    const content: TiptapDocument = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'Published backup content' },
+            { type: 'attachment', attrs: { assetId, filename: 'roundtrip.bin' } },
+          ],
+        },
+      ],
+    };
+    const save = await request(`/api/private/pages/${page.id}/content`, {
+      body: JSON.stringify({ baseRevision: page.revision, content }),
+      method: 'PUT',
+    });
+    expect(save.status).toBe(200);
+    const savedPage = ((await save.json()) as { page: PageDetail }).page;
+
+    const publish = await request(`/api/private/pages/${page.id}/publication`, {
+      body: JSON.stringify({ allowIndexing: true, baseRevision: savedPage.revision }),
+      method: 'PUT',
+    });
+    expect(publish.status).toBe(200);
+
+    const backupResponse = await request('/api/private/backup');
+    expect(backupResponse.status).toBe(200);
+    const entries = readZipEntries(new Uint8Array(await backupResponse.arrayBuffer()));
+    const manifest = backupManifestSchema.parse(
+      JSON.parse(new TextDecoder().decode(entries.get(BACKUP_MANIFEST_FILENAME)!)) as unknown,
+    );
+    if (manifest.version !== 2) {
+      throw new Error('The publication roundtrip requires a v2 backup manifest.');
+    }
+    expect(manifest.publications).toHaveLength(1);
+    const publication = manifest.publications[0]!;
+    expect(publication.pageId).toBe(page.id);
+    expect(publication.assetIds).toEqual([assetId]);
+
+    await deleteWorkspace();
+
+    const sessionResponse = await request('/api/private/restore/sessions', {
+      body: JSON.stringify({
+        backupVersion: 2,
+        expectedAssets: manifest.assets.length,
+        expectedBytes: manifest.assets.reduce((sum, asset) => sum + asset.sizeBytes, 0),
+        expectedPages: manifest.pages.length,
+        expectedPublications: manifest.publications.length,
+        expectedRevisions: manifest.revisions.length,
+      }),
+      method: 'POST',
+    });
+    expect(sessionResponse.status).toBe(201);
+    const session = ((await sessionResponse.json()) as { session: { id: string } }).session;
+    createdSessionIds.add(session.id);
+
+    for (const pageRecord of manifest.pages) {
+      const payload = canonicalJson(pageRecord);
+      const recordResponse = await request(
+        `/api/private/restore/sessions/${session.id}/records/page/${pageRecord.id}`,
+        {
+          body: payload,
+          headers: { 'X-Dovari-SHA-256': await sha256Hex(payload) },
+          method: 'PUT',
+        },
+      );
+      expect(recordResponse.status).toBe(200);
+    }
+    for (const revision of manifest.revisions) {
+      const payload = canonicalJson(revision);
+      const recordResponse = await request(
+        `/api/private/restore/sessions/${session.id}/records/revision/${revision.id}`,
+        {
+          body: payload,
+          headers: { 'X-Dovari-SHA-256': await sha256Hex(payload) },
+          method: 'PUT',
+        },
+      );
+      expect(recordResponse.status).toBe(200);
+    }
+    for (const publicationRecord of manifest.publications) {
+      const payload = canonicalJson(publicationRecord);
+      const recordResponse = await request(
+        `/api/private/restore/sessions/${session.id}/records/publication/${publicationRecord.id}`,
+        {
+          body: payload,
+          headers: { 'X-Dovari-SHA-256': await sha256Hex(payload) },
+          method: 'PUT',
+        },
+      );
+      expect(recordResponse.status).toBe(200);
+    }
+    for (const asset of manifest.assets) {
+      const bytes = entries.get(asset.path);
+      expect(bytes).toBeDefined();
+      const recordResponse = await request(
+        `/api/private/restore/sessions/${session.id}/assets/${asset.id}`,
+        {
+          body: bytes!.buffer as ArrayBuffer,
+          headers: {
+            'Content-Length': String(bytes!.byteLength),
+            'X-Dovari-Asset-Metadata': encodeBase64Url(canonicalJson(asset)),
+            'X-Dovari-SHA-256': asset.sha256,
+          },
+          method: 'PUT',
+        },
+      );
+      expect(recordResponse.status).toBe(200);
+    }
+
+    const finalize = await request(`/api/private/restore/sessions/${session.id}/finalize`, {
+      method: 'POST',
+    });
+    expect(finalize.status).toBe(200);
+    await expect(finalize.json()).resolves.toMatchObject({
+      assetCount: 1,
+      pageCount: 1,
+      publicationCount: 1,
+      revisionCount: manifest.revisions.length,
+      restored: true,
+    });
+
+    const publicResponse = await request(
+      `/api/public/publications/${publication.publicId}`,
+      {},
+      false,
+    );
+    expect(publicResponse.status).toBe(200);
+    await expect(publicResponse.json()).resolves.toMatchObject({
+      publication: {
+        allowIndexing: true,
+        content: publication.content,
+        publicId: publication.publicId,
+        publishedTitle: publication.publishedTitle,
+      },
+    });
+    const publicAssetResponse = await request(
+      `/api/public/publications/${publication.publicId}/assets/${assetId}/content`,
+      {},
+      false,
+    );
+    expect(publicAssetResponse.status).toBe(200);
+    await expect(publicAssetResponse.arrayBuffer()).resolves.toEqual(assetBytes.buffer);
   });
 
   it('rejects incomplete backups before offering a download', async () => {

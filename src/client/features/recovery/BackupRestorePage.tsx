@@ -5,6 +5,7 @@ import {
   canonicalJson,
   sha256Hex,
   type BackupPageRecord,
+  type BackupPublicationRecord,
   type BackupRevisionRecord,
   type RestoreSessionStatus,
 } from '../../../shared/backup';
@@ -88,14 +89,20 @@ function clearStoredSession() {
 
 function recordWorkBytes(archive: ValidatedBackupArchive) {
   const encoder = new TextEncoder();
-  return [...archive.manifest.pages, ...archive.manifest.revisions].reduce(
+  const publications = archive.manifest.version === 2 ? archive.manifest.publications : [];
+  return [...archive.manifest.pages, ...archive.manifest.revisions, ...publications].reduce(
     (sum, record) => sum + encoder.encode(canonicalJson(record)).byteLength,
     0,
   );
 }
 
-function recordIdSet(status: RestoreSessionStatus | null, type: 'page' | 'revision') {
-  return new Set(type === 'page' ? (status?.pageIds ?? []) : (status?.revisionIds ?? []));
+function recordIdSet(
+  status: RestoreSessionStatus | null,
+  type: 'page' | 'revision' | 'publication',
+) {
+  if (type === 'page') return new Set(status?.pageIds ?? []);
+  if (type === 'revision') return new Set(status?.revisionIds ?? []);
+  return new Set(status?.publicationIds ?? []);
 }
 
 function formatBytes(value: number) {
@@ -185,11 +192,13 @@ export function BackupRestorePage() {
       let currentSessionId = sessionId;
       if (!currentSession || !currentSessionId) {
         const response = await createRestoreSession({
-          backupVersion: 1,
+          backupVersion: archive.manifest.version,
           expectedAssets: archive.manifest.assets.length,
           expectedBytes: archive.totalAssetBytes,
           expectedPages: archive.manifest.pages.length,
           expectedRevisions: archive.manifest.revisions.length,
+          expectedPublications:
+            archive.manifest.version === 2 ? archive.manifest.publications.length : 0,
         });
         currentSession = response.session;
         currentSessionId = response.session.id;
@@ -200,16 +209,22 @@ export function BackupRestorePage() {
 
       const uploadedPages = recordIdSet(currentSession, 'page');
       const uploadedRevisions = recordIdSet(currentSession, 'revision');
+      const uploadedPublications = recordIdSet(currentSession, 'publication');
       const uploadedAssets = new Set(currentSession.assetIds);
       const encoder = new TextEncoder();
 
       const uploadRecord = async (
-        type: 'page' | 'revision',
-        record: BackupPageRecord | BackupRevisionRecord,
+        type: 'page' | 'revision' | 'publication',
+        record: BackupPageRecord | BackupRevisionRecord | BackupPublicationRecord,
       ) => {
         const payload = canonicalJson(record);
         const bytes = encoder.encode(payload).byteLength;
-        const ids = type === 'page' ? uploadedPages : uploadedRevisions;
+        const ids =
+          type === 'page'
+            ? uploadedPages
+            : type === 'revision'
+              ? uploadedRevisions
+              : uploadedPublications;
         if (ids.has(record.id)) {
           completed += bytes;
           setProgressBytes(completed);
@@ -233,6 +248,11 @@ export function BackupRestorePage() {
       }
       for (const revision of archive.manifest.revisions) {
         await uploadRecord('revision', revision);
+      }
+      if (archive.manifest.version === 2) {
+        for (const publication of archive.manifest.publications) {
+          await uploadRecord('publication', publication);
+        }
       }
 
       for (const asset of archive.manifest.assets) {
@@ -264,7 +284,7 @@ export function BackupRestorePage() {
       setSessionId(null);
       setProgressBytes(total);
       setSuccess(
-        `Restored ${result.pageCount} pages, ${result.revisionCount} versions, and ${result.assetCount} assets.`,
+        `Restored ${result.pageCount} pages, ${result.revisionCount} versions, ${result.assetCount} assets, and ${result.publicationCount} publications.`,
       );
       setPhase('success');
       await refreshPages();
@@ -345,7 +365,7 @@ export function BackupRestorePage() {
             uploaded.
           </p>
           <label className="backup-file-picker">
-            <span>Select a dovari-backup-v1.zip file</span>
+            <span>Select a Dovari backup ZIP (v1 or v2)</span>
             <input
               accept=".zip,application/zip"
               onChange={(event) => void handleFileChange(event)}
@@ -385,6 +405,10 @@ export function BackupRestorePage() {
             <div>
               <dt>Assets</dt>
               <dd>{archive.manifest.assets.length}</dd>
+            </div>
+            <div>
+              <dt>Publications</dt>
+              <dd>{archive.manifest.version === 2 ? archive.manifest.publications.length : 0}</dd>
             </div>
             <div>
               <dt>Asset data</dt>

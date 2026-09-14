@@ -38,7 +38,7 @@ test('validates and restores a lossless backup after the workspace is emptied', 
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download Dovari backup' }).click();
   const download = await downloadPromise;
-  const backupPath = testInfo.outputPath('dovari-backup-v1.zip');
+  const backupPath = testInfo.outputPath('dovari-backup-v2.zip');
   await download.saveAs(backupPath);
 
   await page.getByRole('link', { name: 'Back to pages' }).click();
@@ -56,7 +56,7 @@ test('validates and restores a lossless backup after the workspace is emptied', 
   await expect(trashItem).toHaveCount(0);
 
   await page.getByRole('link', { name: 'Backup & restore' }).first().click();
-  await page.getByLabel('Select a dovari-backup-v1.zip file').setInputFiles(backupPath);
+  await page.getByLabel('Select a Dovari backup ZIP (v1 or v2)').setInputFiles(backupPath);
   await expect(page.getByRole('heading', { name: 'Validated backup' })).toBeVisible();
   await page.getByRole('button', { name: 'Start restore' }).click();
   await expect(page.getByRole('status')).toContainText('Restored 1 pages');
@@ -74,6 +74,95 @@ test('validates and restores a lossless backup after the workspace is emptied', 
   await restoredConfirmation.getByLabel(/Type .* to confirm/).fill(title);
   await restoredConfirmation.getByRole('button', { name: 'Confirm permanent delete' }).click();
   await expect(restoredTrashItem).toHaveCount(0);
+});
+
+test('publishes a page for anonymous readers and returns to private editing for unpublish', async ({
+  page,
+}) => {
+  const title = `Public E2E page ${Date.now()}`;
+
+  await page.goto('/app');
+  await page.getByRole('button', { name: /New page/ }).click();
+  await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible();
+  const privatePageUrl = page.url();
+  const privatePageId = privatePageUrl.split('/').pop();
+  if (!privatePageId) {
+    throw new Error('The private page URL did not contain a page id.');
+  }
+  await page.getByLabel('Edit title').fill(title);
+  await page.getByLabel('Edit title').press('Enter');
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+
+  const editor = page.getByRole('textbox', { name: 'Page content' });
+  await editor.click();
+  await page.keyboard.type('Anonymous readers can see this snapshot.');
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await expect(page.getByText('Not published', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Publish page' }).click();
+  await expect(page.getByText('Published', { exact: true })).toBeVisible();
+
+  const publicUrl = await page.getByRole('link', { name: 'Open public page' }).getAttribute('href');
+  if (!publicUrl) {
+    throw new Error('The publication did not expose a public URL.');
+  }
+  expect(publicUrl).toMatch(/^\/p\/[0-9a-f-]+$/u);
+
+  await page.goto('/app/settings');
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page).toHaveURL('/login');
+
+  await page.goto('/');
+  await expect(page.getByRole('link', { name: new RegExp(title) })).toBeVisible();
+  const landingResults = await new AxeBuilder({ page }).analyze();
+  expect(landingResults.violations.filter((violation) => violation.impact === 'critical')).toEqual(
+    [],
+  );
+
+  await page.getByRole('link', { name: new RegExp(title) }).click();
+  await expect(page).toHaveURL(publicUrl);
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  await expect(page.getByText('Anonymous readers can see this snapshot.')).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Page content' })).toHaveCount(0);
+  await expect(page.locator('body')).not.toContainText(privatePageId);
+  const publicResults = await new AxeBuilder({ page }).analyze();
+  expect(publicResults.violations.filter((violation) => violation.impact === 'critical')).toEqual(
+    [],
+  );
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  const mobilePublicResults = await new AxeBuilder({ page }).analyze();
+  expect(
+    mobilePublicResults.violations.filter((violation) => violation.impact === 'critical'),
+  ).toEqual([]);
+
+  await page.getByRole('link', { name: 'Edit page' }).click();
+  await expect(page).toHaveURL(/\/login\?next=/u);
+  await page.getByLabel('Password').fill(e2ePassword);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page).toHaveURL(privatePageUrl);
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  await expect(page.getByText('Published', { exact: true })).toBeVisible();
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Unpublish' }).click();
+  await expect(page.getByText('Not published', { exact: true })).toBeVisible();
+  await page.goto(publicUrl);
+  await expect(page.getByRole('heading', { name: 'This public page is gone.' })).toBeVisible();
+
+  await page.goto(privatePageUrl);
+  await page.getByRole('button', { name: 'Delete page' }).click();
+  await page.goto('/app/settings/trash');
+  const trashItem = page.locator('.trash-item').filter({ hasText: title });
+  await trashItem.getByRole('button', { name: 'Delete permanently' }).click();
+  const confirmation = page.getByRole('form', { name: `Permanently delete ${title}` });
+  await confirmation.getByLabel(/Type .* to confirm/).fill(title);
+  await confirmation.getByRole('button', { name: 'Confirm permanent delete' }).click();
+  await expect(trashItem).toHaveCount(0);
 });
 
 test('creates, navigates, renames, reloads, and deletes pages', async ({ page }) => {

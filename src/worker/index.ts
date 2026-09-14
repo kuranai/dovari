@@ -13,6 +13,7 @@ import { registerBackupRoutes } from './backup/routes';
 import { registerExportRoutes } from './export/routes';
 import { registerPageRoutes } from './pages/routes';
 import { registerSearchRoutes } from './search/routes';
+import { registerPublicationRoutes } from './publications/routes';
 import type { WorkerApp } from './types';
 
 async function checkBindings(env: WorkerApp['Bindings']) {
@@ -52,14 +53,11 @@ export function createApp() {
   registerBackupRoutes(app);
   registerExportRoutes(app);
   registerSearchRoutes(app);
+  registerPublicationRoutes(app);
 
   app.all('*', async (c) => {
     const pathname = new URL(c.req.url).pathname;
     const classification = classifyPath(pathname);
-
-    if (classification.kind === 'redirect') {
-      return c.redirect(classification.location, 302);
-    }
 
     if (
       (classification.kind === 'private' && classification.area === 'app') ||
@@ -70,6 +68,24 @@ export function createApp() {
 
     if (classification.kind === 'static') {
       return fetchStaticAssets(c.req.raw, c.env.STATIC_ASSETS);
+    }
+
+    if (classification.kind === 'public' && classification.area === 'page') {
+      if (c.req.method === 'GET' || c.req.method === 'HEAD') {
+        return fetchStaticAssets(c.req.raw, c.env.STATIC_ASSETS);
+      }
+      return apiError(c, 405, 'METHOD_NOT_ALLOWED', 'Method not allowed.');
+    }
+
+    if (classification.kind === 'public' && classification.area === 'api') {
+      if (c.req.method === 'OPTIONS') {
+        c.header('Allow', 'GET, HEAD, OPTIONS');
+        return c.body(null, 204);
+      }
+      if (!['GET', 'HEAD'].includes(c.req.method)) {
+        c.header('Allow', 'GET, HEAD');
+        return apiError(c, 405, 'METHOD_NOT_ALLOWED', 'Method not allowed.');
+      }
     }
 
     if (isApiPath(pathname)) {

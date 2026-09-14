@@ -6,6 +6,7 @@ import {
   type BackupManifest,
 } from '../../../shared/backup';
 import { collectAssetIds } from '../../../shared/pages';
+import { collectPublicAssetIds } from '../../../shared/publications';
 
 const ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
 const ZIP_CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
@@ -172,6 +173,55 @@ function validateManifestSemantics(manifest: BackupManifest) {
     }
     assetIds.add(asset.id);
     assetPaths.add(asset.path);
+  }
+
+  if (manifest.version === 2) {
+    const publicationIds = new Set<string>();
+    const publicIds = new Set<string>();
+    const pagesById = new Map(manifest.pages.map((page) => [page.id, page]));
+    for (const publication of manifest.publications) {
+      if (publicationIds.has(publication.id) || publicIds.has(publication.publicId)) {
+        throw new BackupArchiveError('The backup contains duplicate publication metadata.');
+      }
+      const page = pagesById.get(publication.pageId);
+      if (!page || page.deletedAt !== null || publication.sourceRevision > page.revision) {
+        throw new BackupArchiveError('A publication references an invalid page.');
+      }
+      const documentAssetIds = [...collectPublicAssetIds(publication.content)].sort();
+      const declaredAssetIds = [...publication.assetIds].sort();
+      if (
+        documentAssetIds.length !== declaredAssetIds.length ||
+        documentAssetIds.some((assetId, index) => assetId !== declaredAssetIds[index]) ||
+        documentAssetIds.some((assetId) => !assetIds.has(assetId))
+      ) {
+        throw new BackupArchiveError('A publication references an invalid asset.');
+      }
+      const referencedPublicIds = new Set<string>();
+      const visit = (node: {
+        type: string;
+        attrs?: Record<string, unknown>;
+        content?: unknown[];
+      }) => {
+        if (node.type === 'publicWikiLink' && typeof node.attrs?.targetPublicId === 'string') {
+          referencedPublicIds.add(node.attrs.targetPublicId);
+        }
+        for (const child of node.content ?? []) {
+          if (typeof child === 'object' && child !== null) {
+            visit(child as { type: string; attrs?: Record<string, unknown>; content?: unknown[] });
+          }
+        }
+      };
+      publication.content.content.forEach((node) => visit(node));
+      publicationIds.add(publication.id);
+      publicIds.add(publication.publicId);
+      if (
+        [...referencedPublicIds].some(
+          (targetId) => !manifest.publications.some((candidate) => candidate.publicId === targetId),
+        )
+      ) {
+        throw new BackupArchiveError('A publication references a missing public page.');
+      }
+    }
   }
 }
 

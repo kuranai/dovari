@@ -11,6 +11,7 @@ import {
 import { Link } from 'react-router-dom';
 
 import type { PageDetail, PageSummary } from '../../../shared/pages';
+import { PublicationPanel } from '../publications/PublicationPanel';
 import { RevisionHistory } from '../recovery/RevisionHistory';
 import { fetchBacklinks, fetchPage, pageErrorMessage, updatePageTitle } from './api';
 import { usePageAutosave, type AutosaveSnapshot } from './editor/autosave';
@@ -543,6 +544,7 @@ function PageDetailContent({
         onPageUpdated={onPageUpdated}
         page={page}
       />
+      <PublicationPanel page={page} />
       <Backlinks pageId={page.id} />
       {isHistoryOpen ? (
         <RevisionHistory onClose={closeHistory} onRestored={handleRevisionRestored} page={page} />
