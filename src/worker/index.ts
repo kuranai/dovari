@@ -1,11 +1,12 @@
 import { Hono } from 'hono';
 
 import {
-  accessMiddleware,
+  authMiddleware,
   apiError,
   requestIdMiddleware,
   securityHeadersMiddleware,
 } from './middleware/security';
+import { registerAuthRoutes } from './auth/routes';
 import { classifyPath, isApiPath } from './routing';
 import { registerAssetRoutes } from './assets/routes';
 import { registerBackupRoutes } from './backup/routes';
@@ -24,7 +25,6 @@ async function checkBindings(env: WorkerApp['Bindings']) {
 function fetchStaticAssets(request: Request, assets: Fetcher) {
   const headers = new Headers(request.headers);
   headers.delete('Authorization');
-  headers.delete('Cf-Access-Jwt-Assertion');
   headers.delete('Cookie');
 
   return assets.fetch(new Request(request, { headers }));
@@ -35,7 +35,7 @@ export function createApp() {
 
   app.use('*', requestIdMiddleware);
   app.use('*', securityHeadersMiddleware);
-  app.use('*', accessMiddleware);
+  app.use('*', authMiddleware);
 
   app.on(['GET', 'HEAD'], '/api/health', async (c) => {
     try {
@@ -46,6 +46,7 @@ export function createApp() {
     }
   });
 
+  registerAuthRoutes(app);
   registerPageRoutes(app);
   registerAssetRoutes(app);
   registerBackupRoutes(app);
@@ -60,7 +61,10 @@ export function createApp() {
       return c.redirect(classification.location, 302);
     }
 
-    if (classification.kind === 'private' && classification.area === 'app') {
+    if (
+      (classification.kind === 'private' && classification.area === 'app') ||
+      (classification.kind === 'auth' && classification.area === 'app')
+    ) {
       return fetchStaticAssets(c.req.raw, c.env.STATIC_ASSETS);
     }
 

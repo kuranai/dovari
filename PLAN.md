@@ -85,7 +85,7 @@ Geplante Infrastruktur:
 - Cloudflare Workers
 - Cloudflare D1
 - Cloudflare R2
-- Cloudflare Access oder vergleichbare Cloudflare-Authentifizierung
+- ein beim Deployment gesetztes Instanz-Passwort mit eigener Dovari-Session
 - optional Cloudflare Queues später
 - optional Workers AI später
 
@@ -948,13 +948,9 @@ export default {
 
 # 23. Authentication
 
-Für den MVP möglichst keine eigene Benutzerverwaltung.
-
-Bevorzugt:
-
-**Cloudflare Access**
-
-Cloudflare Access soll nur den Editor und die private API schützen, nicht pauschal jede Route der Domain.
+Für den MVP gibt es keine Benutzerverwaltung. Eine Installation wird mit genau einem
+`DOVARI_PASSWORD` als verschlüsseltem Cloudflare-Worker-Secret geschützt. Dovari stellt die
+Login-Seite bereit und verwaltet zeitlich begrenzte, opake Sessions in D1.
 
 Vorgesehene Trennung:
 
@@ -965,34 +961,13 @@ Vorgesehene Trennung:
 /api/public/*           später ausschließlich öffentliche Lesezugriffe
 ```
 
-Berechtigte Editoren werden über eine explizite Access-Allow-Policy festgelegt. Als Login kann beispielsweise E-Mail OTP oder GitHub als Identity Provider innerhalb von Cloudflare Access verwendet werden. Dovari implementiert für den MVP keinen eigenen GitHub-OAuth- oder Session-Stack.
+Das Passwort bleibt ausschließlich im Worker-Secret. D1 enthält nur SHA-256-Hashes zufälliger
+Session-Tokens. Sessions sind 30 Tage gültig, an die aktuelle Worker-Version gebunden und werden
+bei einem neuen Deployment ungültig. Fehlversuche werden pro gehashter Quell-IP begrenzt.
 
-Beispiel:
-
-```text
-wiki.example.com
-```
-
-Zugriff nur nach Login.
-
-Cloudflare Access könnte unterstützen:
-
-- E-Mail OTP
-- Google
-- GitHub
-- andere Identity Provider
-
-Damit muss Dovari nicht selbst verwalten:
-
-- Passwörter
-- Passwort-Reset
-- Sessions
-- MFA
-- OAuth
-
-Für die öffentliche Open-Source-Version muss geprüft werden, wie einfach Access automatisch bzw. beim Deployment eingerichtet werden kann.
-
-Auch bei vorgeschaltetem Access validiert der Worker das Access-JWT für private Routen selbst. Öffentliche Routen dürfen niemals Mutationen anbieten oder auf private Seiten beziehungsweise private Assets zugreifen.
+Nicht Teil von Version 1 sind Passwort-Reset, individuelle Konten, Rollen, MFA und GitHub OAuth.
+Öffentliche Routen dürfen niemals Mutationen anbieten oder auf private Seiten beziehungsweise
+private Assets zugreifen.
 
 ---
 
@@ -1143,7 +1118,7 @@ Das Backup enthält:
 - alle Asset-Metadaten einschließlich unreferenzierter oder soft-gelöschter Einträge, ihre
   Prüfsummen und die vorhandenen R2-Dateien
 
-Secrets, Cloudflare-Accountdaten, Access-Konfiguration und Resource-IDs werden nicht exportiert.
+Secrets, Cloudflare-Accountdaten, Authentifizierungskonfiguration und Resource-IDs werden nicht exportiert.
 Fehlt ein erwartetes Asset in R2, darf das Ergebnis nicht als vollständiges Backup angeboten
 werden; die betroffenen Assets werden konkret gemeldet.
 
@@ -1919,6 +1894,7 @@ Aufgaben:
 - Deploy Button
 - Initial Migration
 - Domain Setup dokumentieren
+- Instanz-Passwort im Deploy-Flow abfragen und Login-/Session-Ablauf absichern
 - frische Installation vollständig prüfen
 - Papierkorb, Versions-Restore und Backup-Roundtrip in die Release-Abnahme aufnehmen
 

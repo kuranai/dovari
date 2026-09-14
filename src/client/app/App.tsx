@@ -36,6 +36,7 @@ import { BackupRestorePage } from '../features/recovery/BackupRestorePage';
 import { CommandPalette } from '../features/search/CommandPalette';
 import { SettingsPage } from '../features/settings/SettingsPage';
 import { selectRecentPages } from '../features/pages/recentPages';
+import { LoginPage } from '../features/auth/LoginPage';
 import { ThemeControl } from './ThemeControl';
 import { ThemeProvider, useTheme } from './theme';
 
@@ -764,6 +765,7 @@ function Workspace() {
 export function AppRoutes() {
   return (
     <Routes>
+      <Route element={<LoginPage />} path="/login" />
       <Route element={<Workspace />} path="/app">
         <Route element={<WorkspaceLanding />} index />
         <Route element={<PageRoute />} path="pages/:pageId" />

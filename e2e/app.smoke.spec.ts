@@ -3,6 +3,24 @@ import { expect, test } from '@playwright/test';
 
 test.describe.configure({ mode: 'serial' });
 
+const e2ePassword = 'dovari-e2e-password-2026';
+
+test.beforeEach(async ({ page }) => {
+  await page.goto('/app');
+  await expect(page).toHaveURL(/\/login\?next=/u);
+  await page.getByLabel('Password').fill(e2ePassword);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page).toHaveURL('/app');
+});
+
+test('signs the owner out and protects the app again', async ({ page }) => {
+  await page.goto('/app/settings');
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page).toHaveURL('/login');
+  await page.goto('/app');
+  await expect(page).toHaveURL(/\/login\?next=/u);
+});
+
 test('validates and restores a lossless backup after the workspace is emptied', async ({
   page,
 }, testInfo) => {

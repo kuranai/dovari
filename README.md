@@ -5,11 +5,9 @@
 
 ## Quick Start für Dummies
 
-Du musst nicht alle Cloudflare-Begriffe kennen. Entscheide dich zuerst für einen Weg:
-
 ### Nur lokal ausprobieren
 
-Dafür brauchst du weder ein Cloudflare-Konto noch Access-Variablen:
+Dafür brauchst du kein Cloudflare-Konto:
 
 ```sh
 git clone https://github.com/kuranai/dovari.git
@@ -20,10 +18,10 @@ npm run db:migrate:local
 npm run dev
 ```
 
-Öffne danach die angezeigte Adresse, normalerweise `http://localhost:5173`. Die Datei `.dev.vars`
-enthält nur `DOVARI_ENV=local`, wird nicht mit Git versioniert und aktiviert den Login-Bypass
-ausschließlich auf deinem eigenen Rechner. Für lokal musst du `ACCESS_TEAM_DOMAIN` und
-`ACCESS_AUD` nicht ausfüllen.
+Öffne vor dem Start `.dev.vars` und ersetze den Beispielwert hinter `DOVARI_PASSWORD` durch ein
+Passwort mit mindestens 16 Zeichen und höchstens 256 UTF-8-Bytes. Leerzeichen werden weder
+entfernt noch normalisiert. Die Datei wird nicht mit Git versioniert. Danach öffnest du die von
+Vite angezeigte Adresse, normalerweise `http://localhost:5173`, und meldest dich damit an.
 
 ### Online bei Cloudflare starten – Klick für Klick
 
@@ -31,97 +29,23 @@ ausschließlich auf deinem eigenen Rechner. Für lokal musst du `ACCESS_TEAM_DOM
 
 1. Klicke oben auf **Deploy to Cloudflare**.
 2. Melde dich bei Cloudflare an und wähle dein Konto.
-3. Lass die Namen `dovari` (Worker und Datenbank) und `dovari-assets` (R2-Bucket) unverändert.
-4. Warte, bis Cloudflare „Deployment complete“ anzeigt. Notiere dir die Worker-Adresse, zum
+3. Trage bei `DOVARI_PASSWORD` ein privates Passwort mit mindestens 16 Zeichen und höchstens 256
+   UTF-8-Bytes ein. Cloudflare speichert es als verschlüsseltes Worker-Secret.
+4. Lass die Namen `dovari` (Worker und Datenbank) und `dovari-assets` (R2-Bucket) unverändert.
+5. Warte, bis Cloudflare „Deployment complete“ anzeigt. Öffne danach die Worker-Adresse, zum
    Beispiel `https://dovari.<dein-account-subdomain>.workers.dev`.
 
-Direkte Links: [Cloudflare Workers & Pages öffnen](https://dash.cloudflare.com/?to=/:account/workers-and-pages)
-und [Cloudflare Zero Trust öffnen](https://one.dash.cloudflare.com/).
+Das war es: Dovari zeigt seine eigene Login-Seite. Eine zusätzliche Zero-Trust-Anwendung, AUD-Werte
+und ein externer Identity Provider sind für die Standardinstallation nicht nötig. `DB`, `ASSETS`,
+`STATIC_ASSETS` und die Worker-Versionsinformationen werden automatisch gebunden.
 
-#### 2. Einmalig Cloudflare Zero Trust einrichten
-
-1. Öffne [Cloudflare Zero Trust](https://one.dash.cloudflare.com/), wähle dein Konto und klicke
-   links auf **Settings**.
-2. Öffne **Team name and domain**. Falls Cloudflare zuerst eine Zero-Trust-Organisation anlegen
-   möchte, wähle einen Teamnamen, zum Beispiel `meine-notizen`.
-3. Kopiere dort den Wert **Team domain**. Er sieht so aus:
-   `https://meine-notizen.cloudflareaccess.com`. Das ist später `ACCESS_TEAM_DOMAIN`.
-
-#### 3. Die Dovari-Login-Schranke anlegen
-
-1. Öffne in Zero Trust links **Access controls → Applications**.
-2. Klicke **Create new application**.
-3. Wähle **Self-hosted and private**.
-4. Klicke **Add public hostname** und trage deine Worker-Adresse ein. Wenn Cloudflare getrennte
-   Felder zeigt, gehören `dovari.<dein-account-subdomain>` in **Subdomain** und `workers.dev` in
-   **Domain**.
-5. Lege für denselben Host vier Einträge in derselben Access-Anwendung an: die exakten Pfade
-   `/app` und `/api/private` sowie die Unterpfade `/app/*` und `/api/private/*`. Cloudflare
-   schließt bei einem Pfad wie `/app/*` den Elternpfad `/app` nicht automatisch ein.
-6. Unter **Access policies** eine Regel anlegen: **Decision: Allow**, **Selector: Emails**, bei
-   **Value** deine eigene E-Mail-Adresse eintragen.
-7. Klicke **Save application** bzw. **Create application**.
-
-Access ist damit die Login-Seite vor Dovari. Der öffentliche Einstieg `/` leitet auf das geschützte
-`/app` weiter. Dovari prüft zusätzlich das von Access ausgestellte JWT. Die
-[offizielle Anleitung für Self-hosted Applications](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
-und die [Regeln für Pfade und `*`-Wildcards](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/)
-zeigen dieselben Cloudflare-Menüs.
-
-#### 4. Was genau ist `ACCESS_AUD`?
-
-`ACCESS_AUD` ist eine lange, von Cloudflare erzeugte ID für genau diese Access-Anwendung. Sie ist
-nicht:
-
-- deine E-Mail-Adresse,
-- die Worker-Adresse,
-- der Teamname oder
-- `ACCESS_TEAM_DOMAIN`.
-
-So findest du sie:
-
-1. Bleibe in [Cloudflare Zero Trust](https://one.dash.cloudflare.com/).
-2. Klicke links **Access controls → Applications**.
-3. Klicke bei deiner Dovari-Anwendung auf **Configure**.
-4. Öffne **Additional settings**.
-5. Kopiere **Application Audience (AUD) Tag** vollständig. Das ist `ACCESS_AUD`, zum Beispiel:
-   `32eafc7626e974616deaf0dc3ce63d7bcbed58a2731e84d06bc3cdf1b53c422`.
-
-Cloudflare beschreibt den AUD-Fundort auch unter [Get your AUD tag](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/#get-your-aud-tag).
-Der AUD bleibt gleich, solange du diese Access-Anwendung nicht löschst und neu erstellst.
-
-#### 5. Die drei Werte am richtigen Ort eintragen
-
-1. Öffne [Workers & Pages](https://dash.cloudflare.com/?to=/:account/workers-and-pages).
-2. Klicke auf den Worker **dovari**.
-3. Klicke oben auf **Settings**.
-4. Scrolle zu **Variables and Secrets** und klicke **Add** bzw. **Add variable**.
-5. Wähle als Typ **Text** und lege diese drei Variablen exakt an:
-
-   | Name                 | Wert                                                        |
-   | -------------------- | ----------------------------------------------------------- |
-   | `DOVARI_ENV`         | `production`                                                |
-   | `ACCESS_TEAM_DOMAIN` | der kopierte Wert aus **Team domain**, inklusive `https://` |
-   | `ACCESS_AUD`         | der kopierte Wert aus **Application Audience (AUD) Tag**    |
-
-6. Klicke im Variablen-Dialog auf **Deploy**.
-
-Diese Werte gehören in die Cloudflare-Worker-Einstellungen, nicht in `.dev.vars` und nicht in
-`wrangler.jsonc`. Eine [offizielle Anleitung für Worker-Variablen](https://developers.cloudflare.com/workers/configuration/environment-variables/#add-environment-variables-via-the-dashboard)
-zeigt denselben Weg.
-
-Wenn du anschließend `https://dovari.<dein-account-subdomain>.workers.dev/app` öffnest, solltest
-du die Access-Anmeldung sehen. Wenn Dovari `SETUP_REQUIRED` meldet, fehlt eine der drei Variablen
-oder du hast im Dashboard noch nicht auf **Deploy** geklickt.
-
-`DB`, `ASSETS` und `STATIC_ASSETS` sind keine Variablen, die du selbst eintragen musst. Das sind
-interne Bindings, die der Deploy-Vorgang automatisch mit D1, R2 und den statischen Dateien
-verknüpft. Einen `DOVARI_SMOKE_ACCESS_JWT` brauchst du nur für einen technischen Smoke-Test; ihn
-niemals ins Repository oder in die Worker-Variablen kopieren.
+Das Passwort kann später unter **Workers & Pages → dovari → Settings → Variables and Secrets**
+als Secret `DOVARI_PASSWORD` geändert werden. Nach dem Speichern erzeugt Cloudflare eine neue
+Worker-Version; dadurch werden alle bisherigen Sitzungen ungültig.
 
 Dovari is a small, browser-first personal knowledge base. The React/Vite SPA and its Cloudflare
-Worker run together, with D1 for structured data, R2 for private assets, and Cloudflare Access for
-the private workspace.
+Worker run together, with D1 for structured data and sessions, R2 for private assets, and one
+deployment-time instance password for the private workspace.
 
 The version-1 workflow is deliberately focused: create a page, write without entering an edit
 mode, paste screenshots, search later, and recover pages, revisions, assets, and links from a
@@ -147,9 +71,11 @@ npm run db:migrate:local
 npm run dev
 ```
 
-Open the URL printed by Vite, normally `http://localhost:5173`. Local D1 and R2 state is kept by
-Wrangler and is separate from production. `.dev.vars` enables the authentication bypass only for
-`localhost`, `127.0.0.1`, and `[::1]`; it is gitignored and must never be deployed.
+Before starting, replace the example `DOVARI_PASSWORD` in `.dev.vars` with 16 or more characters
+and at most 256 UTF-8 bytes. Whitespace is neither trimmed nor normalized. Open the URL printed by
+Vite, normally `http://localhost:5173`, and sign in. Local D1 and R2 state is kept by Wrangler and
+is separate from production. Local development uses the same login and session boundary as
+production; there is no bypass.
 
 To run the production-shaped local Worker:
 
@@ -183,7 +109,9 @@ the sidebar.
 
 Click the **Deploy to Cloudflare** button at the top of this file. Cloudflare clones the public
 repository into the selected account and opens the Workers setup flow. Keep the `DB` and `ASSETS`
-bindings enabled.
+bindings enabled and enter a private `DOVARI_PASSWORD` of at least 16 characters and at most 256
+UTF-8 bytes when prompted. Cloudflare stores it as an encrypted Worker secret rather than a
+plaintext variable.
 
 The checked-in Wrangler configuration asks Wrangler to automatically provision or connect:
 
@@ -204,8 +132,12 @@ For an existing checkout, authenticate Wrangler and run:
 ```sh
 npm ci
 npx wrangler login
+npx wrangler secret put DOVARI_PASSWORD
 npm run deploy
 ```
+
+Enter 16 or more characters, up to 256 UTF-8 bytes, at the secret prompt. The command stores the
+value in Cloudflare; do not add the production password to `.dev.vars` or any committed file.
 
 `npm run deploy` is the release runner. It builds the application, lets Wrangler provision or
 connect D1 and R2, applies every pending migration to the remote `DB` binding, and deploys the
@@ -218,55 +150,22 @@ To validate the production artifact without creating or changing Cloudflare reso
 npm run deploy:dry-run
 ```
 
-The first provisioning step does not configure Cloudflare Access; that is intentionally a manual
-security boundary. Before Access is configured, private paths remain fail-closed and do not expose
-the workspace.
+There is no required post-deploy identity-provider setup. Dovari redirects an unauthenticated
+browser to `/login`, creates a 30-day secure session after a successful password check, and keeps
+private APIs at `401`. Missing or invalid password configuration returns `503 SETUP_REQUIRED`
+before private D1 or R2 data is read. `/api/health` remains a content-free liveness check.
 
-### Cloudflare Access (required post-deploy step)
-
-Create a Cloudflare Access Self-hosted application for the deployed hostname and add an explicit
-Allow policy for the intended editor email addresses, groups, or GitHub identities. Protect these
-paths:
-
-```text
-/app
-/app/*
-/api/private
-/api/private/*
-```
-
-Both the exact parent paths and their wildcard children are required because an Access path ending
-in `/*` does not include its parent path. The public `/` entry point redirects to the protected
-`/app` path.
-
-GitHub is an optional identity provider inside Access. Dovari does not run a separate OAuth or
-session service.
-
-In the Worker environment variables/secrets, set:
-
-```text
-DOVARI_ENV=production
-ACCESS_TEAM_DOMAIN=https://your-team.cloudflareaccess.com
-ACCESS_AUD=<the Access application audience tag>
-```
-
-Deploy once more after setting the values:
-
-```sh
-npm run deploy
-```
-
-The Worker validates the Access JWT signature against the team JWKS, issuer, audience, expiry, and
-not-before claims. A missing production configuration returns `503 SETUP_REQUIRED` before D1 or R2
-is touched. `/api/health` remains a content-free liveness check.
+To change the password, replace the `DOVARI_PASSWORD` secret under the Worker's **Settings →
+Variables and Secrets** and deploy that configuration. Sessions are tied to the Cloudflare Worker
+version, so a password change or any other deployment signs out all devices.
 
 ### Custom domain
 
 After the Worker is deployed, open the Worker in the Cloudflare dashboard and use **Settings →
 Domains & Routes → Add Custom Domain**. Choose the hostname that should host Dovari and wait for
-Cloudflare to provision its DNS/TLS record. Update the Access application to cover that exact
-hostname and verify the two private path patterns above. No R2 public domain is needed: asset bytes
-are served only through the authenticated Worker.
+Cloudflare to provision its DNS/TLS record. No additional authentication configuration and no R2
+public domain are needed: asset
+bytes are served only through the authenticated Worker.
 
 ### Deployment smoke checks
 
@@ -277,11 +176,11 @@ npm run release:smoke -- https://dovari.example.com
 ```
 
 It checks public health and confirms that `/app` and `/api/private/pages` are not reachable without
-Access. For an authenticated API smoke, provide a short-lived Access JWT through the environment;
-never commit it:
+a Dovari session. For an authenticated API smoke, provide the instance password only through the
+process environment; never commit it:
 
 ```sh
-DOVARI_SMOKE_ACCESS_JWT='…' npm run release:smoke -- https://dovari.example.com
+DOVARI_SMOKE_PASSWORD='…' npm run release:smoke -- https://dovari.example.com
 ```
 
 The authenticated check only reads the private Pages list. Use the browser E2E suite after signing
@@ -333,7 +232,7 @@ Commands, export, and backup/restore. Worker integration tests additionally veri
 roundtrip of hierarchy, deleted pages, revisions, Wiki Links, FTS, and assets.
 
 The release-only fresh-install check copies the current checkout, installs from the lockfile,
-applies all migrations through P22 twice to an isolated local D1, checks foreign keys and FTS5, and
+applies every committed migration twice to an isolated local D1, checks foreign keys and FTS5, and
 performs a Wrangler production dry-run:
 
 ```sh
@@ -342,8 +241,16 @@ npm run release:install-smoke
 
 ## API and security notes
 
+The public authentication endpoints are:
+
+```text
+GET  /api/auth/session
+POST /api/auth/login
+POST /api/auth/logout
+```
+
 Private Page, Asset, Search, Export, Trash, Revision, Backup, and Restore routes live under
-`/api/private/*` and require Access in production. Browser mutations also require a matching
+`/api/private/*` and require a valid Dovari session. Browser mutations also require a matching
 same-origin `Origin` header. R2 remains private; the browser never receives S3 credentials or a
 public object URL.
 
@@ -374,8 +281,7 @@ kept backward-compatible with the currently deployed Worker.
 
 ## Known version-1 limits
 
-- Access application and policy creation is a required manual post-deploy step; Wrangler cannot
-  safely choose the people who should access a private workspace.
+- Version 1 has one shared owner password, no password reset, no MFA, and no individual accounts.
 - The release has no public page routes, teams, roles, comments, or foreign-system import.
 - Asset metadata deletion is soft deletion; physical garbage collection is intentionally deferred.
 - A restore target must be empty. Merging a backup into an existing workspace is not supported.

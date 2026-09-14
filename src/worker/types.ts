@@ -1,15 +1,14 @@
-import type { AccessIdentity } from './auth/access';
+import type { AuthIdentity } from './auth/password';
 
 export interface SecurityEnvironment {
-  ACCESS_AUD?: string;
-  ACCESS_TEAM_DOMAIN?: string;
-  DOVARI_ENV?: string;
+  DOVARI_PASSWORD?: string;
+  CF_VERSION_METADATA?: { id?: string };
 }
 
 export type WorkerBindings = CloudflareBindings & SecurityEnvironment;
 
 export interface WorkerVariables {
-  identity?: AccessIdentity;
+  identity?: AuthIdentity;
   requestId: string;
 }
 

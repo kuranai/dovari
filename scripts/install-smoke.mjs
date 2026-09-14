@@ -45,7 +45,11 @@ function commandForNpm(args) {
 function run(command, args, cwd, options = {}) {
   const result = spawnSync(command, args, {
     cwd,
-    env: { ...process.env, CI: process.env.CI ?? '1' },
+    env: {
+      ...process.env,
+      CI: process.env.CI ?? '1',
+      DOVARI_PASSWORD: 'dovari-install-smoke-password-2026',
+    },
     stdio: 'inherit',
     ...options,
   });

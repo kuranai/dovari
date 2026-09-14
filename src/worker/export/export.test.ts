@@ -7,10 +7,11 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { PageDetail, TiptapDocument } from '../../shared/pages';
 import { app } from '../index';
 import { createAssetFixture } from '../db/fixtures';
-import type { WorkerBindings } from '../types';
+import { authenticatedTestBindings, createTestSession } from '../test-auth';
 
 const testEnv = env as typeof env & { DOVARI_TEST_D1_MIGRATIONS: string };
-const localEnv = { ...env, DOVARI_ENV: 'local' } as unknown as WorkerBindings;
+const localEnv = authenticatedTestBindings(env);
+let authCookie = '';
 const createdPageIds = new Set<string>();
 const createdAssetIds = new Set<string>();
 const createdAssetKeys = new Set<string>();
@@ -22,6 +23,7 @@ beforeAll(async () => {
   }>;
 
   await applyD1Migrations(env.DB, migrations);
+  authCookie = await createTestSession(localEnv);
 });
 
 afterEach(async () => {
@@ -48,6 +50,7 @@ afterEach(async () => {
 
 async function request(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
+  headers.set('Cookie', authCookie);
   if (init.body !== undefined && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }

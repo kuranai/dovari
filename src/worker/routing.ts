@@ -1,4 +1,5 @@
 export type RouteClassification =
+  | { kind: 'auth'; area: 'app' | 'api' }
   | { kind: 'health' }
   | { kind: 'redirect'; location: '/app' }
   | { kind: 'private'; area: 'app' | 'api' }
@@ -41,6 +42,14 @@ export function classifyPath(pathname: string): RouteClassification {
 
   if (decodedPathname === '/') {
     return { kind: 'redirect', location: '/app' };
+  }
+
+  if (decodedPathname === '/login') {
+    return { kind: 'auth', area: 'app' };
+  }
+
+  if (isPathOrChild(decodedPathname, '/api/auth')) {
+    return { kind: 'auth', area: 'api' };
   }
 
   if (isPathOrChild(decodedPathname, '/app')) {

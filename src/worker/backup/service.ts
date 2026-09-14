@@ -28,7 +28,7 @@ import {
   tiptapDocumentSchema,
 } from '../../shared/pages';
 import { assetTypeForMimeType } from '../assets/formats';
-import type { AccessIdentity } from '../auth/access';
+import type { AuthIdentity } from '../auth/password';
 import type { AssetRecord } from '../assets/repository';
 import type { PageRecord } from '../pages/repository';
 import { BackupError } from './errors';
@@ -139,18 +139,8 @@ function pageContent(record: PageRecord) {
   return parsed.data;
 }
 
-function ownerSubject(identity: AccessIdentity | undefined) {
-  if (identity?.kind === 'local') {
-    return 'local:local-development';
-  }
-
-  const claims = identity?.claims;
-  const candidate = claims?.sub ?? claims?.email ?? claims?.user_email;
-  if (typeof candidate === 'string' && candidate.length > 0 && candidate.length <= 512) {
-    return `access:${candidate}`;
-  }
-
-  return `access:${canonicalJson(claims ?? {})}`;
+function ownerSubject(identity: AuthIdentity | undefined) {
+  return identity?.kind === 'password' ? 'password:owner' : 'unauthenticated';
 }
 
 function summaryFromSession(
@@ -359,7 +349,7 @@ export class BackupService {
     });
   }
 
-  private async getOwnedSession(id: string, identity: AccessIdentity | undefined) {
+  private async getOwnedSession(id: string, identity: AuthIdentity | undefined) {
     const session = await this.repository.findSession(id, ownerSubject(identity));
     if (!session) {
       throw restoreSessionNotFound();
@@ -367,7 +357,7 @@ export class BackupService {
     return session;
   }
 
-  private async getWritableSession(id: string, identity: AccessIdentity | undefined) {
+  private async getWritableSession(id: string, identity: AuthIdentity | undefined) {
     const session = await this.getOwnedSession(id, identity);
     if (session.status === 'finalizing') {
       throw sessionConflict();
@@ -375,7 +365,7 @@ export class BackupService {
     return session;
   }
 
-  async createSession(input: RestoreSessionCreateRequest, identity?: AccessIdentity) {
+  async createSession(input: RestoreSessionCreateRequest, identity?: AuthIdentity) {
     const parsed = restoreSessionCreateRequestSchema.parse(input);
     if (await this.repository.hasWorkspaceData()) {
       throw workspaceNotEmpty();
@@ -418,7 +408,7 @@ export class BackupService {
     return this.sessionStatus(stored);
   }
 
-  async getSession(id: string, identity?: AccessIdentity) {
+  async getSession(id: string, identity?: AuthIdentity) {
     return this.sessionStatus(await this.getOwnedSession(id, identity));
   }
 
@@ -427,7 +417,7 @@ export class BackupService {
     recordTypeValue: string,
     recordId: string,
     request: Request,
-    identity?: AccessIdentity,
+    identity?: AuthIdentity,
   ) {
     const session = await this.getWritableSession(id, identity);
     if (!isRecordType(recordTypeValue) || !/^[0-9a-f-]{36}$/iu.test(recordId)) {
@@ -590,7 +580,7 @@ export class BackupService {
     return actual === sha256;
   }
 
-  async putAsset(id: string, assetId: string, request: Request, identity?: AccessIdentity) {
+  async putAsset(id: string, assetId: string, request: Request, identity?: AuthIdentity) {
     const session = await this.getWritableSession(id, identity);
     const metadata = await this.metadataFromRequest(request, assetId);
     if (metadata.sizeBytes > MAX_ASSET_SIZE_BYTES) {
@@ -962,7 +952,7 @@ export class BackupService {
     }
   }
 
-  async finalize(id: string, identity?: AccessIdentity) {
+  async finalize(id: string, identity?: AuthIdentity) {
     const session = await this.getWritableSession(id, identity);
     const ownerIdentity = ownerSubject(identity);
     let copiedKeys: string[] = [];
@@ -1173,7 +1163,7 @@ export class BackupService {
     }
   }
 
-  async abort(id: string, identity?: AccessIdentity) {
+  async abort(id: string, identity?: AuthIdentity) {
     const session = await this.getOwnedSession(id, identity);
     if (session.status === 'finalizing') {
       throw sessionConflict();

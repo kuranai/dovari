@@ -1,7 +1,2 @@
-# Local Worker mode enables the authentication bypass only on loopback hosts.
-# Never use this value for a deployed Worker.
-DOVARI_ENV=local
-
-# Optional when testing real Cloudflare Access locally. The local bypass takes precedence.
-# ACCESS_TEAM_DOMAIN=your-team.cloudflareaccess.com
-# ACCESS_AUD=your-access-application-audience
+# Use at least 16 characters. The value is compared exactly and is never committed.
+DOVARI_PASSWORD=replace-with-a-long-private-password

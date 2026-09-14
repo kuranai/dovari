@@ -153,6 +153,34 @@ export const pageRevisions = sqliteTable(
   ],
 );
 
+export const authSessions = sqliteTable(
+  'auth_sessions',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    workerVersion: text('worker_version').notNull(),
+    createdAt: integer('created_at').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+  },
+  (table) => [
+    index('auth_sessions_expires_at').on(table.expiresAt),
+    check('auth_sessions_created_at_nonnegative', sql`${table.createdAt} >= 0`),
+    check('auth_sessions_expires_after_created', sql`${table.expiresAt} > ${table.createdAt}`),
+  ],
+);
+
+export const authLoginAttempts = sqliteTable(
+  'auth_login_attempts',
+  {
+    sourceHash: text('source_hash').primaryKey(),
+    windowStartedAt: integer('window_started_at').notNull(),
+    failureCount: integer('failure_count').notNull(),
+  },
+  (table) => [
+    check('auth_login_attempts_window_nonnegative', sql`${table.windowStartedAt} >= 0`),
+    check('auth_login_attempts_count_positive', sql`${table.failureCount} > 0`),
+  ],
+);
+
 export const restoreSessions = sqliteTable(
   'restore_sessions',
   {
@@ -238,6 +266,10 @@ export type PageLink = typeof pageLinks.$inferSelect;
 export type NewPageLink = typeof pageLinks.$inferInsert;
 export type PageRevision = typeof pageRevisions.$inferSelect;
 export type NewPageRevision = typeof pageRevisions.$inferInsert;
+export type AuthSession = typeof authSessions.$inferSelect;
+export type NewAuthSession = typeof authSessions.$inferInsert;
+export type AuthLoginAttempt = typeof authLoginAttempts.$inferSelect;
+export type NewAuthLoginAttempt = typeof authLoginAttempts.$inferInsert;
 export type RestoreSession = typeof restoreSessions.$inferSelect;
 export type NewRestoreSession = typeof restoreSessions.$inferInsert;
 export type RestoreSessionRecord = typeof restoreSessionRecords.$inferSelect;

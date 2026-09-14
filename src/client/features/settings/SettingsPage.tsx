@@ -1,15 +1,32 @@
-import { Link, useOutletContext } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 
 import type { WorkspaceOutletContext } from '../../app/App';
 import { ThemeControl } from '../../app/ThemeControl';
 import { selectRecentPages } from '../pages/recentPages';
+import { logout } from '../auth/api';
 
 export function SettingsPage() {
+  const navigate = useNavigate();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
   const { pages } = useOutletContext<WorkspaceOutletContext>();
   const versionPage = selectRecentPages(pages)[0];
   const versionHistoryUrl = versionPage
     ? `/app/pages/${encodeURIComponent(versionPage.id)}?history=1`
     : '/app';
+
+  async function signOut() {
+    setIsSigningOut(true);
+    setSignOutError(null);
+    try {
+      await logout();
+      navigate('/login', { replace: true });
+    } catch {
+      setSignOutError('Dovari could not sign you out. Please try again.');
+      setIsSigningOut(false);
+    }
+  }
 
   return (
     <section aria-labelledby="settings-title" className="settings-page settings-home-page">
@@ -30,6 +47,7 @@ export function SettingsPage() {
         <a href="#versions">Version history</a>
         <a href="#backup">Backup</a>
         <a href="#restore">Restore</a>
+        <a href="#account">Sign out</a>
       </nav>
 
       <div className="settings-card-grid">
@@ -95,6 +113,27 @@ export function SettingsPage() {
           <Link className="button button-secondary" to="/app/settings/backup">
             Restore a backup
           </Link>
+        </section>
+
+        <section className="settings-card" id="account">
+          <div>
+            <span className="state-kicker">Owner access</span>
+            <h2>Sign out</h2>
+            <p>End this browser session. Your pages and settings stay in this installation.</p>
+            {signOutError ? (
+              <p aria-live="assertive" className="inline-error" role="alert">
+                {signOutError}
+              </p>
+            ) : null}
+          </div>
+          <button
+            className="button button-secondary"
+            disabled={isSigningOut}
+            onClick={() => void signOut()}
+            type="button"
+          >
+            {isSigningOut ? 'Signing out…' : 'Sign out'}
+          </button>
         </section>
       </div>
     </section>

@@ -6,11 +6,8 @@ import { resolve } from 'node:path';
 const varsPath = resolve(process.cwd(), '.dev.vars');
 const hadVarsFile = existsSync(varsPath);
 const originalVars = hadVarsFile ? readFileSync(varsPath, 'utf8') : undefined;
-const localVars = originalVars
-  ? /^DOVARI_ENV=.*$/m.test(originalVars)
-    ? originalVars.replace(/^DOVARI_ENV=.*$/m, 'DOVARI_ENV=local')
-    : `DOVARI_ENV=local\n${originalVars}`
-  : 'DOVARI_ENV=local\n';
+const e2ePassword = 'dovari-e2e-password-2026';
+const localVars = `DOVARI_PASSWORD=${e2ePassword}\n`;
 
 writeFileSync(varsPath, localVars);
 const persistPath = mkdtempSync(resolve(tmpdir(), 'dovari-e2e-'));

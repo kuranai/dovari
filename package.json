@@ -81,5 +81,12 @@
     "@esbuild-kit/core-utils": {
       "esbuild": "^0.25.0"
     }
+  },
+  "cloudflare": {
+    "bindings": {
+      "DOVARI_PASSWORD": {
+        "description": "Choose the private owner password for this Dovari installation (at least 16 characters)."
+      }
+    }
   }
 }

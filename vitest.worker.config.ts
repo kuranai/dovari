@@ -10,7 +10,10 @@ export default defineProject({
           DOVARI_TEST_D1_MIGRATIONS: JSON.stringify(await readD1Migrations(resolve('migrations'))),
         },
       },
-      wrangler: { configPath: './wrangler.jsonc' },
+      wrangler: {
+        configPath: './wrangler.jsonc',
+        secrets: { DOVARI_PASSWORD: 'dovari-test-password-2026' },
+      },
     })),
   ],
   test: {

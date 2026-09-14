@@ -2,9 +2,9 @@
 
 **Dieses Dokument ist die kanonische Quelle für den aktuellen Implementierungsstand.**  
 **Letzte Aktualisierung:** 14. September 2026
-**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen, P06 abgeschlossen, P07 abgeschlossen, P08 abgeschlossen, P09 abgeschlossen, P10 abgeschlossen, P11 abgeschlossen, P12 abgeschlossen, P13 abgeschlossen, P14 abgeschlossen, P15 abgeschlossen, P16 abgeschlossen, P17 abgeschlossen, P18 abgeschlossen, P19 abgeschlossen, P20 abgeschlossen, P21 abgeschlossen, P22 abgeschlossen, P23 abgeschlossen, P24 blockiert
-**Aktuelle Phase:** P24 – Deploy-to-Cloudflare und Version-1-Abnahme
-**Nächste Phase:** keine (P24 ist `BLOCKED`)
+**Gesamtstatus:** P00 abgeschlossen, P01 abgeschlossen, P02 abgeschlossen, P03 abgeschlossen, P04 abgeschlossen, P05 abgeschlossen, P06 abgeschlossen, P07 abgeschlossen, P08 abgeschlossen, P09 abgeschlossen, P10 abgeschlossen, P11 abgeschlossen, P12 abgeschlossen, P13 abgeschlossen, P14 abgeschlossen, P15 abgeschlossen, P16 abgeschlossen, P17 abgeschlossen, P18 abgeschlossen, P19 abgeschlossen, P20 abgeschlossen, P21 abgeschlossen, P22 abgeschlossen, P23 abgeschlossen, P24 abgeschlossen
+**Aktuelle Phase:** keine (P24 abgeschlossen)
+**Nächste Phase:** P25 – Öffentliche Veröffentlichungen (`NEXT`)
 
 ## 1. Zweck
 
@@ -91,7 +91,7 @@ Ist die Phase nicht fertig, bleibt sie `IN PROGRESS`. Bei einem echten externen 
 |---|---|---|---|---|
 | P00 | Grundlage | Projekt-Scaffold | `DONE` | `npm ci`, Dev-Smoke-Test, Build, Typecheck, Lint und Format-Check erfolgreich |
 | P01 | Grundlage | Cloudflare-Laufzeit und Bindings | `DONE` | Vite-/Cloudflare-Worker, Hono-Routing, lokale D1-/R2-Bindings, SPA-Fallback, Health-Smoke und generierte Binding-Typen umgesetzt und verifiziert |
-| P02 | Grundlage | Authentifizierung und Security-Basis | `DONE` | Access-JWT, Fail-Closed-Routing, Origin-Schutz, Security-Header und Worker-Sicherheitstests umgesetzt und verifiziert |
+| P02 | Grundlage | Authentifizierung und Security-Basis | `DONE` | Fail-Closed-Routing, Origin-Schutz, Security-Header und Worker-Sicherheitstests umgesetzt; Auth-Verfahren in P24 durch Instanz-Passwort ersetzt |
 | P03 | Grundlage | Testsystem vervollständigen und CI-Qualitätsgates | `DONE` | Vitest-Worker-/Clienttests, lokale D1-/R2-Binding-Tests, Playwright-Smoke und CI-Gates umgesetzt und verifiziert |
 | P04 | Seiten | D1-Schema und Migrationen | `DONE` | Drizzle-Schema, D1-Migrationen, FTS5-Synchronisation und Integrity-Tests umgesetzt und verifiziert |
 | P05 | Seiten | Pages Domain und HTTP-API | `DONE` | Pages-Repository/-Service, Zod-Verträge, CRUD, Slugs, Plaintext, Konflikte, Limits und Soft Delete umgesetzt und verifiziert |
@@ -113,8 +113,8 @@ Ist die Phase nicht fertig, bleibt sie `IN PROGRESS`. Bei einem echten externen 
 | P21 | Datensicherheit | Papierkorb und Versionshistorie | `DONE` | `page_revisions`, atomare Snapshots/Retention, Trash-/Revision-APIs, Restore-/Permanent-Delete-Flows, Undo, UI und Accessibility umgesetzt und verifiziert |
 | P22 | Datensicherheit | Verlustfreies Backup und Restore | `DONE` | Versioniertes, verlustfreies Backup/Restore mit Manifest, Streaming-ZIP, resumierbaren Restore-Sessions, atomarer Finalisierung, lokaler Validierung und Settings-UI umgesetzt und verifiziert |
 | P23 | Produktreife | Settings, Slash Commands und Alltagsnavigation | `DONE` | Settings-Landing, Recent Pages, Slash-Command-Palette und Upload-/Wiki-Link-Abläufe umgesetzt und verifiziert |
-| P24 | Deployment | Deploy-to-Cloudflare und Version-1-Abnahme | `BLOCKED` | Produktiver Testdeploy und Fail-Closed-Remote-Smoke umgesetzt; vollständiger privater Smoke wartet auf Access-Anwendung, Produktionsvariablen und gültiges Access-JWT |
-| P25 | Post-V1 | Öffentliche Veröffentlichungen | `PLANNED` | – |
+| P24 | Deployment | Deploy-to-Cloudflare und Version-1-Abnahme | `DONE` | Instanz-Passwort, eigene versionsgebundene D1-Sessions, Login/Logout, Dokumentation, lokale Abnahme und produktiver authentifizierter Deploy-Smoke sind umgesetzt und verifiziert |
+| P25 | Post-V1 | Öffentliche Veröffentlichungen | `NEXT` | – |
 
 ## 6. Phasendefinitionen
 
@@ -198,7 +198,7 @@ Zusätzlich wird nur der für die Phase relevante bestehende Code gelesen. Falls
 - `vite build` erzeugt ein deploybares Worker-/Asset-Artefakt.
 - Produktion greift nicht versehentlich auf lokale oder Remote-Entwicklungsdaten zu.
 
-**Nicht Teil dieser Phase:** fachliches D1-Schema, Access-JWT-Validierung, CRUD.
+**Nicht Teil dieser Phase:** fachliches D1-Schema, Authentifizierungslogik, CRUD.
 
 ### P02 – Authentifizierung und Security-Basis
 
@@ -206,27 +206,25 @@ Zusätzlich wird nur der für die Phase relevante bestehende Code gelesen. Falls
 
 **Scope:**
 
-- Cloudflare-Access-JWT-Prüfung einschließlich Signatur, Issuer und Audience
-- Access-Schutz für `/app/*` und `/api/private/*`; keine globale Login-Pflicht für reservierte Public-Read-Routes
-- Editoren über konkrete Access-Allow-Policies; GitHub optional als Access-Identity-Provider, nicht als eigener Dovari-OAuth-Stack
-- sichere lokale Auth-Ausnahme ausschließlich für Loopback-Hosts
-- `SETUP_REQUIRED` bei fehlender Produktionskonfiguration
+- Instanz-Passwort und opake D1-Sessions für `/app/*` und `/api/private/*`
+- keine globale Login-Pflicht für reservierte Public-Read-Routes
+- `SETUP_REQUIRED` bei fehlender Passwortkonfiguration
 - Origin-Prüfung für Mutationen
 - Request-ID und einheitliches API-Fehlerformat
 - Basis-Sicherheitsheader und keine sensiblen Standardlogs
-- Dokumentation des manuellen Access-Setups
+- Dokumentation des Passwort-Setups
 - minimale Worker-Vitest-Konfiguration für die Sicherheitsfälle dieser Phase
 
 **Akzeptanzkriterien:**
 
-- fehlende, ungültige und falsch adressierte Tokens werden abgelehnt.
-- ein gültiges Token erreicht die privaten Routes.
-- ohne Access-Konfiguration werden weder private App-Shell noch Bindungsdaten ausgegeben.
+- fehlende, ungültige und abgelaufene Sessions werden abgelehnt.
+- eine gültige Session erreicht die privaten Routes.
+- ohne Passwortkonfiguration werden weder private App-Shell noch Bindungsdaten ausgegeben.
 - `/api/health` und inhaltsfreie statische Dateien bleiben erreichbar, geben aber keine privaten Daten preis.
 - unbekannte und öffentliche API-Pfade können keine Mutationsservices erreichen.
-- lokale Entwicklung bleibt ohne echten Identity Provider möglich.
+- lokale Entwicklung verwendet dieselbe Passwortgrenze wie Produktion.
 
-**Nicht Teil dieser Phase:** eigene Benutzerkonten, Rollen, Access-Provisionierung.
+**Nicht Teil dieser Phase:** eigene Benutzerkonten, Rollen, OAuth oder MFA.
 
 ### P03 – Testsystem vervollständigen und CI-Qualitätsgates
 
@@ -806,16 +804,16 @@ Repository sicher installieren und die vollständigen Kern- und Recovery-Abläuf
 - finaler Deploy-Button
 - automatische D1-/R2-Provisionierung und Migration im Deploy-Skript
 - vollständige README für lokale Entwicklung und Produktion
-- geführter Access-Post-Deploy-Schritt für `/app/*` und `/api/private/*`
+- Instanz-Passwort im Deploy-Dialog sowie integrierte Login-/Session-Schicht
 - Custom-Domain-Hinweise
-- frischer Installations-Smoke-Test einschließlich aller Migrationen bis P22
+- frischer Installations-Smoke-Test einschließlich aller committed Migrationen
 - vollständiger kritischer E2E-Durchlauf aus `PLAN.md`, erweitert um Trash, Revisionen, Settings,
   Slash Commands und Backup-Roundtrip
 
 **Akzeptanzkriterien:**
 
 - Installation aus einem frischen Cloudflare-Account ist dokumentiert und getestet.
-- ohne Access-Konfiguration bleiben alle privaten Pfade und Schreiboperationen fail-closed.
+- ohne gültige Passwortkonfiguration bleiben alle privaten Pfade und Schreiboperationen fail-closed.
 - nach Setup funktionieren Create, dokumentnahes Editieren, Autolink, Wiki Link, Screenshot Paste,
   Autosave, Search, Export, Trash, Revision-Restore, Settings und Slash Commands.
 - ein erzeugtes Dovari-Backup lässt sich in einer zweiten leeren Installation vollständig
@@ -826,7 +824,7 @@ Repository sicher installieren und die vollständigen Kern- und Recovery-Abläuf
 
 - frischer Checkout und Installation mit den dokumentierten Mindestversionen
 - Wrangler-Dry-Run sowie tatsächlicher Test-Deploy in einen frischen Cloudflare-Testaccount
-- Fail-Closed-Prüfung vor Access-Konfiguration und vollständiger privater Smoke danach
+- Fail-Closed-Prüfung ohne Session und vollständiger Passwort-Smoke danach
 - vollständiges `npm run ci`, kritisches `npm run test:e2e` und `git diff --check`
 
 **Nicht Teil dieser Phase:** Funktionen aus „Nicht Teil des MVP“ in `PLAN.md`, öffentliche Seiten
@@ -883,7 +881,7 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 |---|---|---|---|---|
 | 2026-09-12 | P00 | React-/Vite-/TypeScript-Scaffold mit minimaler Dovari-App-Shell und vorbereiteten Client-/Worker-/Shared-Grenzen umgesetzt | `npm ci --ignore-scripts --no-audit --no-fund`, Dev-Server plus HTTP-Smoke-Test, `npm run build`, `npm run typecheck`, `npm run lint` und `npm run format:check` erfolgreich | Cloudflare-Bindings, Hono-Routing und Produktfeatures bleiben P01 bzw. späteren Phasen vorbehalten; P01 ist `NEXT` |
 | 2026-09-12 | P01 | Cloudflare-Vite-Worker mit Hono, zentraler Pfadklassifikation, `STATIC_ASSETS`, lokalen D1-/R2-Bindings, `/api/health`, SPA-Fallback und Wrangler-Typgenerierung umgesetzt | `npm ci --ignore-scripts --no-audit --no-fund`, `npm run types:generate`, `npm run db:migrate:local`, `npm run build`, `npm run typecheck`, `npx tsc -p tsconfig.worker.json --noEmit`, `npm run lint`, `npm run format:check`, Dev-/Preview-HTTP-Smokes und `npx wrangler deploy --dry-run` erfolgreich | `/api/health` meldet nur `{status:"ok"}` nach nicht-sensitiver D1-/R2-Probe; Konfiguration enthält keine Remote-/Preview-IDs und setzt lokale Entwicklung explizit auf `remote: false`; P02 ist `DONE`, P03 ist `NEXT` |
-| 2026-09-12 | P02 | Cloudflare-Access-JWT-Prüfung mit JWKS-Signatur-, Issuer-, Audience-, Ablauf- und Gültigkeitsbeginnprüfung, zentrale private/public API-Grenze, Loopback-Bypass, Origin-Prüfung, Request-ID, Security-Header, standardisierte API-Fehler und bereinigte Static-Asset-Weiterleitung umgesetzt | `npm ci --ignore-scripts --no-audit --no-fund`, `npm run typecheck`, `npx tsc -p tsconfig.worker.json --noEmit`, `npm test` (8 Tests), `npm run build`, `npm run lint`, `npm run format:check`, `git diff --check`, lokaler Dev-/Preview-HTTP-Smoke für `/app`, `/api/health`, Static Assets und unbekannte API-Pfade erfolgreich | Produktion ohne Access-Konfiguration bleibt für private Pfade bei `503 SETUP_REQUIRED`; öffentliche Health-/Asset-Pfade bleiben inhaltsfrei erreichbar; P03 ist `NEXT` |
+| 2026-09-12 | P02 | Zentrale private/public API-Grenze, Authentifizierungs-Middleware, Origin-Prüfung, Request-ID, Security-Header, standardisierte API-Fehler und bereinigte Static-Asset-Weiterleitung umgesetzt | `npm ci --ignore-scripts --no-audit --no-fund`, `npm run typecheck`, `npx tsc -p tsconfig.worker.json --noEmit`, `npm test` (8 Tests), `npm run build`, `npm run lint`, `npm run format:check`, `git diff --check`, lokaler Dev-/Preview-HTTP-Smoke für `/app`, `/api/health`, Static Assets und unbekannte API-Pfade erfolgreich | Die ursprüngliche Authentifizierungsentscheidung wurde in P24 durch ADR 0001 ersetzt; P03 ist `NEXT` |
 | 2026-09-12 | P03 | Vitest-4-Workers-Integration mit lokalen D1-/R2-Bindings, React-Testing-Library-Clienttest, Playwright-Chromium-Smoke und CI-Qualitätsworkflow umgesetzt | `npm ci --ignore-scripts --no-audit --no-fund`, `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test` (11 Tests in 3 Testdateien), `npm run build`, `npm run test:e2e` (1 Browser-Smoke), `git diff --check` erfolgreich | `npm test` läuft in Workers- und JSDOM-Projekten; P04 ist `NEXT` |
 | 2026-09-12 | P04 | Drizzle-Schema für `pages`, `assets`, `page_assets` und `page_links`, reproduzierbare D1-Migrationen, externe FTS5-Tabelle mit Synchronisationstriggern, Testfixtures und Worker-Integrity-Tests umgesetzt | `npm run db:migrate:local` (3 Migrationen), erneutes `npm run db:migrate:local` ohne offene Migrationen, `npm run db:generate`, `npx drizzle-kit check --config drizzle.config.ts`, `npm run ci` (15 Tests) und `git diff --check` erfolgreich | `content_markdown` wird nicht gespeichert; P05 ist `NEXT` |
 | 2026-09-12 | P05 | Pages-Domain mit Raw-D1-Repository, Service- und Zod-Verträgen, sicherer Pages-HTTP-API, eindeutigen Slugs, serverseitigem Plaintext, optimistischen Revisionen, Größenlimit und Soft Delete umgesetzt | `npm run db:generate` (keine Schemaänderung), `npm run ci` (19 Tests), `npm run test:e2e` (1 Browser-Smoke) und `git diff --check` erfolgreich | Move-API bleibt gemäß Scope P07 vorbehalten; P06 ist `NEXT` |
@@ -905,7 +903,7 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 | 2026-09-13 | P21 | Papierkorb und Versionshistorie mit `page_revisions`, atomaren Zeitfenster-/Delete-/Restore-Snapshots, 50er-Retention, cursorbasierten APIs, konfliktgeschütztem Restore/Permanent Delete, Parent-Fallback, Referenz-/FTS-Synchronisation, Undo sowie Trash-/History-UI umgesetzt | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 98 Vitest-Tests und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (6 Browser-Tests einschließlich Delete → Undo, Trash → Restore, Revision → Restore und Axe), `npx --yes -p node@26 node /usr/bin/npm run db:migrate:local`, `npx --yes -p node@26 node /usr/bin/npm run db:fts:integrity`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts` sowie `git diff --check` erfolgreich | R2-Objekte bleiben beim permanenten Löschen erhalten; P22 ist `NEXT` |
 | 2026-09-13 | P22 | Versioniertes, vollständiges `dovari-backup-v1.zip` mit kanonischem Manifest, Seiten-/Revisions-/Asset-Roundtrip, R2-Prüfsummen, resumierbaren und idempotenten Restore-Sessions, Empty-Workspace-Commit, lokaler ZIP-Validierung, Fortschritt/Abbruch und Backup-&-Restore-UI umgesetzt | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 108 Tests in 26 Testdateien und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (7 isolierte Browser-Tests einschließlich Download, lokaler Validierung und Restore), `npx --yes -p node@26 node /usr/bin/npm run db:migrate:local` (keine offenen Migrationen), `npx --yes -p node@26 node /usr/bin/npm run db:fts:integrity`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts` sowie `git diff --check` erfolgreich | Der bestehende Markdown-Export bleibt unverändert; P23 ist `NEXT` |
 | 2026-09-14 | P23 | Vollständige Settings-Landing-Route mit Theme-, Trash-, Versions-, Backup- und Restore-Navigation, direkte Command-Palette-Navigation, nach Aktualisierung sortierte Recent Pages sowie zugängliche Slash Commands für Textblöcke, Wiki Links, Bilder und Dateien umgesetzt; bestehende Wiki-Link- und Upload-Pipelines wiederverwendet und README aktualisiert | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 119 Tests in 28 Testdateien und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (8 isolierte Browser-Tests einschließlich Settings-/Recent-/Slash-Desktop-/Mobile-Axe-Smoke), `git diff --check` erfolgreich | Slash Commands verändern das persistierte Dokumentformat nicht; P24 ist `NEXT` |
-| 2026-09-14 | P24 | Deploy-to-Cloudflare-Runner mit idempotenter D1-/R2-Provisionierung vor Migrationen, Deploy-to-Cloudflare-Button, vollständiger Produktions-/Access-/Domain-Dokumentation, Fresh-Install-Smoke und kritischer Browser-Abnahme mit Suche, Paste/Drop, Export, Trash, Revisionen, Settings, Slash Commands und Backup-Restore umgesetzt; produktiver Testdeploy nach Wrangler-Login ausgeführt | `npm run ci` mit Node 26/npm 11 (Format-Check, Lint, Typecheck, 121 Tests in 28 Testdateien und Produktionsbuild), `npm run test:e2e` (9 Browser-Tests), `npm run release:install-smoke` (frischer Checkout, npm ci, sechs Migrationen plus idempotenter Zweitlauf, FK-/FTS-Prüfung und Wrangler-Dry-Run), `npm run deploy:dry-run`, produktives `npm run deploy`, `npm run release:smoke -- https://dovari.kuranai.workers.dev`, `git diff --check` erfolgreich | Worker `dovari` läuft unter `https://dovari.kuranai.workers.dev`; D1 `dovari` und R2 `dovari-assets` wurden angelegt und sechs Remote-Migrationen angewendet. Der Fail-Closed-Smoke ist grün; Access-Anwendung, `DOVARI_ENV`/`ACCESS_TEAM_DOMAIN`/`ACCESS_AUD` und ein gültiges `DOVARI_SMOKE_ACCESS_JWT` fehlen für den vollständigen privaten Smoke |
+| 2026-09-14 | P24 | Die externe Authentifizierung wurde gemäß ADR 0001 durch ein erforderliches Instanz-Passwort ersetzt: eigene Login-/Logout-/Session-Routen und UI, 30-Tage-Cookie, gehashte versionsgebundene D1-Sessions, IP-gehashtes Login-Limit, lokale Passwortentwicklung, Settings-Logout sowie angepasste Deploy-/Smoke-Dokumentation sind umgesetzt | `npm run ci` (Format-Check, Lint, Typecheck, 126 Tests in 30 Testdateien und Produktionsbuild), `npm run test:e2e` (10 Browser-Tests), `npm run release:install-smoke` (frischer Checkout, sieben Migrationen plus idempotenter Zweitlauf, FK-/FTS-Prüfung und Wrangler-Dry-Run), `npm run db:migrate:local`, `npx drizzle-kit check --config drizzle.config.ts`, direkter Wrangler-FTS-Integrity-Check, `npm run deploy:dry-run`, produktives `npm run deploy` und authentifiziertes sowie abschließend fail-closed `npm run release:smoke -- https://dovari.kuranai.workers.dev` erfolgreich | Remote-Migration 0006 und Worker-Version `82494200-5605-46a7-8358-b5e29945eb8e` wurden ausgerollt. Das zufällige Testpasswort wurde danach entfernt; die Testinstanz bleibt bis zum Setzen eines Betreiberpassworts mit `503 SETUP_REQUIRED` geschlossen. P25 ist `NEXT` |
 
 ## 9. Regeln zur Pflege dieses Dokuments
 

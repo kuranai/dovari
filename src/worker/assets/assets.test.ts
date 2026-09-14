@@ -6,10 +6,11 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { MAX_ASSET_SIZE_BYTES } from '../../shared/assets';
 import { app } from '../index';
-import type { WorkerBindings } from '../types';
+import { authenticatedTestBindings, createTestSession } from '../test-auth';
 
 const testEnv = env as typeof env & { DOVARI_TEST_D1_MIGRATIONS: string };
-const localEnv = { ...env, DOVARI_ENV: 'local' } as unknown as WorkerBindings;
+const localEnv = authenticatedTestBindings(env);
+let authCookie = '';
 const createdAssetIds = new Set<string>();
 
 beforeAll(async () => {
@@ -19,6 +20,7 @@ beforeAll(async () => {
   }>;
 
   await applyD1Migrations(env.DB, migrations);
+  authCookie = await createTestSession(localEnv);
 });
 
 afterEach(async () => {
@@ -37,6 +39,7 @@ afterEach(async () => {
 
 function request(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
+  headers.set('Cookie', authCookie);
   if (init.method !== undefined && !['GET', 'HEAD'].includes(init.method.toUpperCase())) {
     headers.set('Origin', 'http://localhost');
   }

@@ -126,6 +126,76 @@ body {
   background: var(--color-app);
 }
 
+.login-page {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-panel {
+  width: min(100%, 420px);
+  padding: clamp(28px, 7vw, 44px);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 16px;
+  background: var(--color-surface);
+  box-shadow: 0 18px 50px var(--shadow-editor);
+}
+
+.login-brand-mark {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  margin-bottom: 24px;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--color-app);
+  background: var(--color-ink);
+  font-weight: 800;
+}
+
+.login-panel h1 {
+  margin: 8px 0;
+  letter-spacing: -0.035em;
+}
+
+.login-panel > p {
+  margin: 0 0 28px;
+  color: var(--color-muted);
+  line-height: 1.55;
+}
+
+.login-form {
+  display: grid;
+  gap: 12px;
+}
+
+.login-form label {
+  font-weight: 700;
+}
+
+.login-form input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  color: var(--color-ink);
+  background: var(--color-surface);
+}
+
+.login-form .button {
+  width: 100%;
+  margin-top: 4px;
+  justify-content: center;
+}
+
+.login-error {
+  margin: 0;
+  color: var(--color-danger);
+  line-height: 1.45;
+}
+
 button,
 input,
 select {

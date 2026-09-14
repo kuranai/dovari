@@ -31,7 +31,7 @@ Seite öffnen → schreiben → Screenshot einfügen → automatisch gespeichert
 | IDs | UUID v4 über `crypto.randomUUID()` | In Workers eingebaut, kollisionsarm und ohne zusätzliche Bibliothek. Sortierung erfolgt explizit über Zeit und Position. |
 | Primärformat einer Seite | Tiptap/ProseMirror JSON | Verlustfreie Editor-Repräsentation. Plaintext wird beim Speichern abgeleitet; Markdown erst beim Export. |
 | Suche | D1 FTS5 mit `unicode61` und Prefix-Indizes | Ausreichend für eine persönliche Knowledge Base; keine externe Suchinfrastruktur. |
-| Authentifizierung | Pfadbezogenes Cloudflare Access plus JWT-Prüfung im Worker | Access übernimmt Login/MFA/IdP für Editor und private API. Explizite Public-Read-Routes können später ohne Login arbeiten; sämtliche Schreibzugriffe bleiben fail-closed. |
+| Authentifizierung | Instanz-Passwort plus opake D1-Session | Eine Installation besitzt genau einen Besitzerzugang. Explizite Public-Read-Routes können später ohne Login arbeiten; sämtliche Schreibzugriffe bleiben fail-closed. |
 | Tests | Vitest 4 mit `@cloudflare/vitest-plugin`, React Testing Library und Playwright | Worker-Tests laufen in der produktionsnahen Laufzeit; die Kernabläufe werden zusätzlich im Browser geprüft. |
 
 Abweichungen von diesen Entscheidungen benötigen später ein Architecture Decision Record unter `docs/adr/`.
@@ -82,7 +82,7 @@ Browser
   ▼
 Cloudflare Worker (Hono)
   ├── /app/* und /api/private/*
-  │     └── Cloudflare-Access-JWT prüfen
+  │     └── Dovari-Session prüfen
   ├── /p/* und /api/public/*
   │     └── explizit öffentliche Read-only-Routes
   ├── /api/health
@@ -107,7 +107,7 @@ Die Wrangler-Konfiguration setzt für Static Assets:
 }
 ```
 
-`run_worker_first` ist absichtlich global aktiviert, damit der Worker jede Route zuerst klassifiziert. Private Pfade werden nur nach erfolgreicher Access-JWT-Prüfung verarbeitet; öffentliche Pfade sind eine kleine, explizite Allowlist. Unbekannte API-Pfade liefern `404` und fallen niemals auf die SPA zurück.
+`run_worker_first` ist absichtlich global aktiviert, damit der Worker jede Route zuerst klassifiziert. Private Pfade werden nur nach erfolgreicher Dovari-Sessionprüfung verarbeitet; öffentliche Pfade sind eine kleine, explizite Allowlist. Unbekannte API-Pfade liefern `404` und fallen niemals auf die SPA zurück.
 
 Für das MVP gilt:
 
@@ -418,7 +418,7 @@ verlustfreie Backup verwendet ein separates ZIP-Format mit `format: "dovari-back
 
 `page_assets`, `page_links`, `content_text` und der FTS-Index werden beim Restore deterministisch
 aus den validierten Dokumenten rekonstruiert. Das Backup enthält keine Worker-Variablen, Secrets,
-Access-Konfiguration, Cloudflare-Account- oder Resource-IDs. Vor dem Download prüft der Service
+Authentifizierungskonfiguration, Cloudflare-Account- oder Resource-IDs. Vor dem Download prüft der Service
 Existenz, Größe und Prüfsumme aller erwarteten R2-Objekte. Bei Abweichungen bricht das vollständige
 Backup mit einer Liste neutraler Asset-IDs ab.
 
@@ -475,7 +475,14 @@ Ein bewusster Session-Abbruch löscht ausschließlich die der Session zugeordnet
 Objekte und Datensätze. Abgelaufene Sessions dürfen später durch ein separates Wartungswerkzeug
 bereinigt werden; ein automatischer Scheduler ist nicht Teil der Version 1.
 
-### 6.7 Vorgemerktes Veröffentlichungsmodell
+### 6.7 Authentifizierungstabellen
+
+`auth_sessions` speichert ausschließlich SHA-256-Token-Hashes, Worker-Version, Erstellungs- und
+Ablaufzeit. `auth_login_attempts` speichert pro gehashter Quell-IP den Beginn des 15-Minuten-
+Fensters und die Anzahl fehlgeschlagener Versuche. Beide Tabellen enthalten weder Passwort noch
+einen wiederverwendbaren Passwort-Verifier und sind nicht Teil von Backup oder Export.
+
+### 6.8 Vorgemerktes Veröffentlichungsmodell
 
 Öffentliche Seiten sind nicht Teil des MVP und werden daher nicht durch die initiale Migration angelegt. Die spätere Implementierung verwendet bewusst keine bloße `visibility`-Spalte mit Live-Zugriff auf den aktuellen Entwurf. Stattdessen wird beim Veröffentlichen ein expliziter, bereinigter Snapshot erzeugt:
 
@@ -526,6 +533,23 @@ Fehlerformat:
 ```
 
 Interne Exceptions, SQL und Stacktraces werden nicht an den Browser gegeben.
+
+### 7.1a Authentifizierung
+
+```text
+GET  /api/auth/session
+POST /api/auth/login
+POST /api/auth/logout
+```
+
+`GET /api/auth/session` liefert `{ "authenticated": false }` oder bei einer gültigen Session
+zusätzlich deren `expiresAt`. Login akzeptiert ausschließlich ein kleines
+`application/json`-Objekt `{ "password": "..." }`; unbekannte Felder, mehr als 1 KiB,
+fremde Origins und andere Content-Types werden abgewiesen. Logout ist idempotent und löscht
+Cookie sowie serverseitige Session. Auth-Antworten verwenden immer `Cache-Control: no-store`.
+
+Unauthentifizierte `GET`-/`HEAD`-Aufrufe unter `/app/*` werden mit einem ausschließlich lokalen,
+auf `/app` begrenzten `next`-Ziel zu `/login` umgeleitet. Private APIs antworten mit `401`.
 
 ### 7.2 Seiten
 
@@ -635,7 +659,7 @@ GET /api/private/export          Phase 7
 
 ### 7.5 Papierkorb, Revisionen, Backup und Restore
 
-Alle Endpunkte dieses Abschnitts liegen hinter derselben Access- und Origin-Prüfung wie andere
+Alle Endpunkte dieses Abschnitts liegen hinter derselben Session- und Origin-Prüfung wie andere
 private Mutationen.
 
 ```text
@@ -879,31 +903,32 @@ Diese Grenzen gefährden den primären `Ctrl+K`-Workflow nicht. Erst echte Nutzu
 
 ## 11. Authentifizierung und Sicherheit
 
-### 11.1 Cloudflare Access
+### 11.1 Instanz-Passwort und Sessions
 
-Cloudflare Access schützt gezielt `/app/*` und `/api/private/*`. Berechtigte Editoren werden in der Access-Allow-Policy als konkrete E-Mail-Adressen, Gruppen oder GitHub-Identitäten eingerichtet. GitHub ist dabei ein optionaler Identity Provider innerhalb von Access und keine eigene Authentifizierungsimplementierung in Dovari. Für einfache persönliche Installationen ist E-Mail-OTP ebenfalls zulässig.
+`/app/*` und `/api/private/*` werden durch ein einziges, beim Deployment gesetztes
+`DOVARI_PASSWORD` geschützt. Das Secret muss mindestens 16 Zeichen und darf höchstens 256
+UTF-8-Bytes enthalten. Es wird exakt verglichen und weder normalisiert noch getrimmt. Fehlt eine
+gültige Konfiguration, antworten private Pfade fail-closed mit `503 SETUP_REQUIRED`, ohne private
+D1- oder R2-Daten zu lesen.
 
-Zusätzlich validiert der Worker bei jeder privaten Anfrage den Header `Cf-Access-Jwt-Assertion`:
+Nach erfolgreichem Login erzeugt der Worker einen kryptografisch zufälligen 256-Bit-Token. Nur
+sein SHA-256-Hash wird in `auth_sessions` gespeichert. Das Cookie
+`__Host-dovari_session` ist `HttpOnly`, `Secure`, `SameSite=Strict`, gilt für `/` und läuft nach
+30 Tagen fest ab. Sessions sind an die aktuelle Worker-Version gebunden; jeder neue Deploy
+invalidiert bestehende Sitzungen.
 
-- Signatur gegen das JWKS der konfigurierten Access-Team-Domain,
-- `issuer`,
-- Application Audience (`aud`),
-- Ablaufzeit und Gültigkeitsbeginn.
-
-Benötigte Produktionsvariablen:
-
-```text
-ACCESS_TEAM_DOMAIN
-ACCESS_AUD
-```
-
-Fehlt eine Variable, antworten `/app/*` und `/api/private/*` in Produktion fail-closed mit einem generischen `503 SETUP_REQUIRED`, ohne D1- oder R2-Zugriff. Öffentliche, inhaltsfreie Static Assets und `/api/health` bleiben erreichbar. Spätere Publication-Routes dürfen ausschließlich auf explizite Publication-Snapshots zugreifen. Ein bloß vorhandener Header gilt niemals als Authentifizierung.
-
-Lokale Entwicklung darf Authentifizierung nur über eine gitignorierte `.dev.vars` umgehen. Der Bypass funktioniert zusätzlich ausschließlich für `localhost`, `127.0.0.1` und `[::1]`.
+Fehlgeschlagene Anmeldungen werden pro SHA-256-gehashter `CF-Connecting-IP` auf fünf Versuche je
+15 Minuten begrenzt. Login und Logout benötigen denselben Same-Origin-Schutz wie andere
+Mutationen. Lokale Entwicklung verwendet ebenfalls ein Passwort aus `.dev.vars`; es gibt keinen
+Authentifizierungs-Bypass. GitHub OAuth, Benutzerkonten, Rollen, MFA und Passwort-Reset sind nicht
+Teil von Version 1.
 
 ### 11.2 Deploy-Einschränkung
 
-Der Deploy-to-Cloudflare-Flow kann D1 und R2 aus `wrangler.jsonc` automatisch provisionieren, aber keine Access-Anwendung und -Policy für den Nutzer anlegen. Deshalb ist Access ein dokumentierter, verpflichtender Post-Deploy-Schritt. Die Access-Anwendung wird auf die privaten Pfade begrenzt. Bis sie vollständig konfiguriert ist, gibt Dovari keine privaten Inhalte aus und erlaubt keine Schreiboperationen.
+Der Deploy-to-Cloudflare-Flow provisioniert D1 und R2 aus `wrangler.jsonc` und fragt
+`DOVARI_PASSWORD` als verschlüsseltes Secret ab. Es gibt keinen verpflichtenden Post-Deploy-Schritt.
+Bis ein gültiges Passwort konfiguriert ist, gibt Dovari keine privaten Inhalte aus und erlaubt
+keine Schreiboperationen.
 
 ### 11.3 Weitere Maßnahmen
 
@@ -926,8 +951,8 @@ Der Deploy-to-Cloudflare-Flow kann D1 und R2 aus `wrangler.jsonc` automatisch pr
   dem vorhandenen 25-MiB-Dateilimit. Summen müssen sichere nichtnegative Ganzzahlen sein;
   Dovari führt für Version 1 kein zusätzliches kleineres Gesamtlimit unterhalb der gebundenen
   Cloudflare-Ressourcen ein.
-- Eine Session gehört zur validierten Access-Identität, sofern diese verfügbar ist, und kann nicht
-  durch eine andere Identität gelesen, fortgesetzt, finalisiert oder verworfen werden.
+- Eine Restore-Session gehört zur validierten Besitzeridentität und kann ohne gültige
+  Dovari-Session nicht gelesen, fortgesetzt, finalisiert oder verworfen werden.
 - Restore-Finalisierung prüft unmittelbar vor dem Commit erneut, dass der Workspace leer ist.
 
 ## 12. Deployment
@@ -943,6 +968,7 @@ Der Deploy-to-Cloudflare-Flow kann D1 und R2 aus `wrangler.jsonc` automatisch pr
 - R2-Binding `ASSETS`,
 - Static-Assets-Konfiguration,
 - Observability-Grundkonfiguration.
+- Version-Metadata-Binding `CF_VERSION_METADATA`.
 
 Für lokal und Produktion werden dieselben Binding-Namen verwendet. IDs und Ressourcennamen dürfen durch den Deploy-Flow ersetzt werden.
 
@@ -978,9 +1004,8 @@ Die README erhält den offiziellen Button mit der öffentlichen GitHub-Repositor
 3. Build- und Deploy-Skripte erkennen.
 4. D1-Migrationen anwenden.
 5. Worker und Static Assets deployen.
-6. Nutzer richtet Access-Anwendungen für `/app/*` und `/api/private/*` sowie eine Allow-Policy für die gewünschten Editoren ein.
-7. Nutzer setzt `ACCESS_TEAM_DOMAIN` und `ACCESS_AUD` und deployt erneut.
-8. Ein Smoke-Test bestätigt geschützte App, D1 und R2.
+6. Nutzer setzt im Deploy-Dialog das erforderliche `DOVARI_PASSWORD`.
+7. Ein Smoke-Test meldet sich an und bestätigt geschützte App, D1 und R2.
 
 Das Repository bleibt deshalb ein einzelnes, öffentliches GitHub- oder GitLab-Projekt; Deploy-Buttons unterstützen keine frei verteilte Multi-Worker-Monorepo-Installation.
 
@@ -1000,7 +1025,7 @@ Wrangler hält lokale D1- und R2-Daten getrennt von Produktion. Remote-Bindings 
 Beispieldateien:
 
 ```text
-.dev.vars.example     dokumentiert lokale Variablen ohne Secrets
+.dev.vars.example     dokumentiert das lokal zu setzende Passwort
 .dev.vars             gitignoriert
 ```
 
@@ -1030,7 +1055,8 @@ Die Tests laufen mit `@cloudflare/vitest-plugin` in der Workers-Laufzeit und ech
 - D1-Migrationen und Foreign Keys
 - FTS-Insert, Update, Soft Delete und Integrity Check
 - R2-Upload, Download, ETag und Range
-- Access-Middleware: fehlend, ungültig, falsche Audience, gültig
+- Passwort- und Session-Middleware: fehlende Konfiguration, falsches/richtiges Passwort,
+  Login-Limit, Ablauf, manipuliertes Cookie und Worker-Versionswechsel
 - Routing-Matrix: private Pfade geschützt, öffentliche Allowlist ohne private Daten erreichbar, unbekannte API-Pfade geschlossen
 - Origin-Prüfung
 - einheitliches Fehlerformat
@@ -1076,7 +1102,7 @@ Die kritischen E2E-Tests laufen mindestens auf der Hauptbranch und vor Releases;
 
 - Der Worker erzeugt pro Request eine Request-ID oder übernimmt eine gültige Cloudflare-Ray-ID als Korrelation.
 - Logs sind strukturierte JSON-Ereignisse mit Route, Methode, Status, Dauer und stabiler Fehlerkennung.
-- Keine Seitentitel, Inhalte, Suchbegriffe, Dateinamen oder JWTs in Standardlogs.
+- Keine Seitentitel, Inhalte, Suchbegriffe, Dateinamen, Passwörter oder Session-Tokens in Standardlogs.
 - Erwartete Benutzerfehler sind `4xx`, unerwartete Fehler `500` mit neutraler Meldung.
 - Die UI übersetzt Fehlercodes in konkrete Aktionen: Retry, Reload, Copy oder Remove.
 - Upload- und Save-Fehler bleiben sichtbar, bis sie behoben oder bewusst verworfen wurden.
@@ -1107,10 +1133,10 @@ Diese Spezifikation ändert die Produktphasen nicht, konkretisiert aber ihre tec
 11. **Phase 10:** Papierkorb, permanentes Löschen und begrenzte Seitenrevisionen gemäß Abschnitt 6.5.
 12. **Phase 11:** verlustfreies Backup und Restore-Sessions gemäß Abschnitten 6.6 und 7.5.
 13. **Phase 12:** Settings, zuletzt bearbeitete Seiten und Slash Commands gemäß Abschnitt 8.4.
-14. **Phase 13:** Deploy-Button, pfadbasiertes Access-Setup, Dokumentation, frischer
+14. **Phase 13:** Deploy-Button, integrierte Passwort-Anmeldung, Dokumentation, frischer
     Installations-Smoke und vollständige Version-1-Abnahme.
 15. **Phase 14 nach Version 1:** explizite Publication-Snapshots und öffentliche Read-only-Routes
-    gemäß Abschnitt 6.7.
+    gemäß Abschnitt 6.8.
 
 ### Definition of Done für Phase 0
 
@@ -1119,7 +1145,7 @@ Phase 0 ist abgeschlossen, wenn:
 - `npm ci` und `npm run dev` auf einem frischen Checkout funktionieren,
 - die React-SPA durch denselben Worker erreichbar ist wie `/api/health`,
 - D1 und R2 lokal über typisierte Bindings erreichbar sind,
-- private Pfade in Produktion ohne Access-Konfiguration fail-closed sind,
+- private Pfade ohne gültige Passwortkonfiguration fail-closed sind,
 - Tests in der Workers-Laufzeit laufen,
 - `npm run lint`, `npm run typecheck`, `npm test` und `npm run build` erfolgreich sind,
 - ein manueller Wrangler-Deploy auf eine Testumgebung erfolgreich war,
@@ -1156,9 +1182,9 @@ Stand der Prüfung: 12. September 2026.
 - [SQLite: FTS5](https://www.sqlite.org/fts5.html)
 - [Cloudflare R2: Workers API](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/)
 - [Cloudflare Workers: platform limits](https://developers.cloudflare.com/workers/platform/limits/)
-- [Cloudflare Access: validating JWTs](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/)
-- [Cloudflare Access: application paths](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/)
-- [Cloudflare Access: GitHub identity provider](https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/github/)
+- [Cloudflare Deploy Buttons](https://developers.cloudflare.com/workers/platform/deploy-buttons/)
+- [Cloudflare Worker Secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
+- [Cloudflare Version Metadata](https://developers.cloudflare.com/workers/runtime-apis/bindings/version-metadata/)
 - [Cloudflare Workers: Vitest integration](https://developers.cloudflare.com/workers/testing/)
 - [Tiptap: FileHandler extension](https://tiptap.dev/docs/editor/extensions/functionality/filehandler)
 - [Tiptap: Image extension](https://tiptap.dev/docs/editor/extensions/nodes/image)

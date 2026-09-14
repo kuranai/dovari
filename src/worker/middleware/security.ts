@@ -1,10 +1,10 @@
 import type { Context, MiddlewareHandler } from 'hono';
 
-import { authorizeAccessRequest, isLocalAuthBypassRequest } from '../auth/access';
+import { authorizePasswordRequest } from '../auth/password';
 import { classifyPath } from '../routing';
 import type { WorkerApp } from '../types';
 
-export type ApiErrorStatus = 400 | 401 | 403 | 404 | 409 | 413 | 415 | 416 | 422 | 500 | 503;
+export type ApiErrorStatus = 400 | 401 | 403 | 404 | 409 | 413 | 415 | 416 | 422 | 429 | 500 | 503;
 
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
@@ -18,11 +18,6 @@ const CONTENT_SECURITY_POLICY = [
   "script-src 'self'",
   "style-src 'self'",
 ].join('; ');
-
-const LOCAL_CONTENT_SECURITY_POLICY = CONTENT_SECURITY_POLICY.replace(
-  "script-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
-).replace("style-src 'self'", "style-src 'self' 'unsafe-inline'");
 
 function createRequestId() {
   return crypto.randomUUID();
@@ -71,9 +66,7 @@ function replaceResponseHeaders(context: Context<WorkerApp>, additionalHeaders: 
 
 function securityHeadersFor(context: Context<WorkerApp>) {
   const headers: Record<string, string> = {
-    'Content-Security-Policy': isLocalAuthBypassRequest(context.req.raw, context.env)
-      ? LOCAL_CONTENT_SECURITY_POLICY
-      : CONTENT_SECURITY_POLICY,
+    'Content-Security-Policy': CONTENT_SECURITY_POLICY,
     'Permissions-Policy': 'camera=(), geolocation=(), microphone=(), payment=()',
     'Referrer-Policy': 'no-referrer',
     'X-Content-Type-Options': 'nosniff',
@@ -128,19 +121,37 @@ export const securityHeadersMiddleware: MiddlewareHandler<WorkerApp> = async (co
   replaceResponseHeaders(context, securityHeaders);
 };
 
-export const accessMiddleware: MiddlewareHandler<WorkerApp> = async (context, next) => {
+export const authMiddleware: MiddlewareHandler<WorkerApp> = async (context, next) => {
   const pathname = new URL(context.req.url).pathname;
   const classification = classifyPath(pathname);
+
+  if (
+    classification.kind === 'auth' &&
+    classification.area === 'api' &&
+    isMutationMethod(context.req.method) &&
+    !isSameOriginRequest(context.req.raw)
+  ) {
+    return apiError(context, 403, 'ORIGIN_MISMATCH', 'Request origin is not allowed.');
+  }
 
   if (classification.kind !== 'private') {
     await next();
     return;
   }
 
-  const authorization = await authorizeAccessRequest(context.req.raw, context.env);
+  const authorization = await authorizePasswordRequest(context.req.raw, context.env);
   if (!authorization.ok) {
-    if (authorization.code === 'AUTH_REQUIRED' || authorization.code === 'AUTH_INVALID') {
-      context.header('WWW-Authenticate', 'Bearer');
+    if (
+      classification.area === 'app' &&
+      (context.req.method === 'GET' || context.req.method === 'HEAD') &&
+      (authorization.code === 'AUTH_REQUIRED' || authorization.code === 'AUTH_INVALID')
+    ) {
+      const requestUrl = new URL(context.req.url);
+      context.header('Cache-Control', 'no-store');
+      return context.redirect(
+        `/login?next=${encodeURIComponent(`${requestUrl.pathname}${requestUrl.search}`)}`,
+        302,
+      );
     }
 
     return apiError(context, authorization.status, authorization.code, authorization.message);
