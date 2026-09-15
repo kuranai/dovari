@@ -10,6 +10,7 @@ import {
   type BackupPageRecord,
   type BackupPublicationRecord,
   type BackupRevisionRecord,
+  type BackupTagRecord,
   type RestoreSessionCreateRequest,
   type RestoreSessionStatus,
 } from '../../../shared/backup';
@@ -79,15 +80,15 @@ export function fetchRestoreSession(id: string, signal?: AbortSignal) {
 
 export async function uploadRestoreRecordWithChecksum(
   sessionId: string,
-  recordType: 'page' | 'revision' | 'publication',
-  record: BackupPageRecord | BackupRevisionRecord | BackupPublicationRecord,
+  recordType: 'page' | 'revision' | 'publication' | 'tag',
+  record: BackupPageRecord | BackupRevisionRecord | BackupPublicationRecord | BackupTagRecord,
   checksum: string,
   signal?: AbortSignal,
 ) {
   const payload = canonicalJson(record);
   return request<{
     accepted: true;
-    recordType: 'page' | 'revision' | 'publication';
+    recordType: 'page' | 'revision' | 'publication' | 'tag';
     recordId: string;
   }>(
     `/api/private/restore/sessions/${encodeURIComponent(sessionId)}/records/${recordType}/${encodeURIComponent(record.id)}`,
@@ -174,6 +175,7 @@ export function finalizeRestoreSession(id: string, signal?: AbortSignal) {
     pageCount: number;
     revisionCount: number;
     assetCount: number;
+    tagCount: number;
     publicationCount: number;
   }>(
     `/api/private/restore/sessions/${encodeURIComponent(id)}/finalize`,

@@ -28,6 +28,7 @@ export const pages = sqliteTable(
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
     deletedAt: text('deleted_at'),
+    isFavorite: integer('is_favorite', { mode: 'boolean' }).notNull().default(false),
   },
   (table) => [
     uniqueIndex('pages_slug_unique').on(sql`${table.slug} COLLATE NOCASE`),
@@ -37,6 +38,7 @@ export const pages = sqliteTable(
     check('pages_title_length', sql`length(${table.title}) BETWEEN 1 AND 200`),
     check('pages_position_nonnegative', sql`${table.position} >= 0`),
     check('pages_revision_positive', sql`${table.revision} > 0`),
+    check('pages_is_favorite_boolean', sql`${table.isFavorite} IN (0, 1)`),
     check(
       'pages_parent_not_self',
       sql`${table.parentId} IS NULL OR ${table.parentId} <> ${table.id}`,
@@ -46,6 +48,44 @@ export const pages = sqliteTable(
       foreignColumns: [table.id],
       name: 'pages_parent_id_fkey',
     }).onDelete('set null'),
+  ],
+);
+
+export const tags = sqliteTable(
+  'tags',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    nameNormalized: text('name_normalized').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('tags_name_normalized_unique').on(table.nameNormalized),
+    check('tags_name_length', sql`length(${table.name}) BETWEEN 1 AND 50`),
+    check('tags_name_normalized_length', sql`length(${table.nameNormalized}) BETWEEN 1 AND 50`),
+  ],
+);
+
+export const pageTags = sqliteTable(
+  'page_tags',
+  {
+    pageId: text('page_id').notNull(),
+    tagId: text('tag_id').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.pageId, table.tagId] }),
+    index('page_tags_tag').on(table.tagId),
+    foreignKey({
+      columns: [table.pageId],
+      foreignColumns: [pages.id],
+      name: 'page_tags_page_id_fkey',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.tagId],
+      foreignColumns: [tags.id],
+      name: 'page_tags_tag_id_fkey',
+    }).onDelete('cascade'),
   ],
 );
 
@@ -168,6 +208,7 @@ export const pagePublications = sqliteTable(
     publishedPosition: integer('published_position').notNull().default(0),
     publishedAt: text('published_at').notNull(),
     updatedAt: text('updated_at').notNull(),
+    publishedTagsJson: text('published_tags_json').notNull().default('[]'),
   },
   (table) => [
     index('page_publications_updated').on(desc(table.updatedAt), desc(table.publicId)),
@@ -243,6 +284,7 @@ export const restoreSessions = sqliteTable(
     expectedPages: integer('expected_pages').notNull(),
     expectedRevisions: integer('expected_revisions').notNull(),
     expectedAssets: integer('expected_assets').notNull(),
+    expectedTags: integer('expected_tags').notNull().default(0),
     expectedPublications: integer('expected_publications').notNull().default(0),
     expectedBytes: integer('expected_bytes').notNull(),
     createdAt: text('created_at').notNull(),
@@ -258,6 +300,7 @@ export const restoreSessions = sqliteTable(
     check('restore_sessions_expected_pages_nonnegative', sql`${table.expectedPages} >= 0`),
     check('restore_sessions_expected_revisions_nonnegative', sql`${table.expectedRevisions} >= 0`),
     check('restore_sessions_expected_assets_nonnegative', sql`${table.expectedAssets} >= 0`),
+    check('restore_sessions_expected_tags_nonnegative', sql`${table.expectedTags} >= 0`),
     check(
       'restore_sessions_expected_publications_nonnegative',
       sql`${table.expectedPublications} >= 0`,
@@ -283,7 +326,7 @@ export const restoreSessionRecords = sqliteTable(
     index('restore_session_records_session').on(table.sessionId, table.recordType),
     check(
       'restore_session_records_type_allowed',
-      sql`${table.recordType} IN ('page', 'revision', 'publication')`,
+      sql`${table.recordType} IN ('page', 'revision', 'publication', 'tag')`,
     ),
     foreignKey({
       columns: [table.sessionId],
@@ -318,6 +361,10 @@ export const restoreSessionAssets = sqliteTable(
 
 export type Page = typeof pages.$inferSelect;
 export type NewPage = typeof pages.$inferInsert;
+export type Tag = typeof tags.$inferSelect;
+export type NewTag = typeof tags.$inferInsert;
+export type PageTag = typeof pageTags.$inferSelect;
+export type NewPageTag = typeof pageTags.$inferInsert;
 export type Asset = typeof assets.$inferSelect;
 export type NewAsset = typeof assets.$inferInsert;
 export type PageAsset = typeof pageAssets.$inferSelect;

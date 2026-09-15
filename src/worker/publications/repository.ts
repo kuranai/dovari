@@ -8,6 +8,7 @@ export interface PublicationRecord {
   publishedContentJson: string;
   publishedContentText: string;
   publishedTitle: string;
+  publishedTagsJson: string;
   allowIndexing: boolean;
   publishedParentPublicId: string | null;
   publishedPosition: number;
@@ -23,6 +24,7 @@ interface PublicationDatabaseRow {
   published_content_json: string;
   published_content_text: string;
   published_title: string;
+  published_tags_json: string;
   allow_indexing: number;
   published_parent_public_id: string | null;
   published_position: number;
@@ -38,6 +40,7 @@ const PUBLICATION_COLUMNS = `
   page_publications.published_content_json AS published_content_json,
   page_publications.published_content_text AS published_content_text,
   page_publications.published_title AS published_title,
+  page_publications.published_tags_json AS published_tags_json,
   page_publications.allow_indexing AS allow_indexing,
   page_publications.published_parent_public_id AS published_parent_public_id,
   page_publications.published_position AS published_position,
@@ -54,6 +57,7 @@ function toPublicationRecord(row: PublicationDatabaseRow): PublicationRecord {
     publishedContentJson: row.published_content_json,
     publishedContentText: row.published_content_text,
     publishedTitle: row.published_title,
+    publishedTagsJson: row.published_tags_json,
     allowIndexing: row.allow_indexing === 1,
     publishedParentPublicId: row.published_parent_public_id,
     publishedPosition: row.published_position,
@@ -276,6 +280,7 @@ export class PublicationRepository {
     publishedContentJson: string;
     publishedContentText: string;
     publishedTitle: string;
+    publishedTagsJson: string;
     allowIndexing: boolean;
     publishedParentPublicId: string | null;
     publishedPosition: number;
@@ -297,6 +302,7 @@ export class PublicationRepository {
       input.publishedContentJson,
       input.publishedContentText,
       input.publishedTitle,
+      input.publishedTagsJson,
       input.allowIndexing ? 1 : 0,
       input.publishedParentPublicId,
       input.publishedPosition,
@@ -308,7 +314,8 @@ export class PublicationRepository {
         .prepare(
           `UPDATE page_publications
            SET public_id = ?, source_revision = ?, published_content_json = ?,
-               published_content_text = ?, published_title = ?, allow_indexing = ?,
+               published_content_text = ?, published_title = ?, published_tags_json = ?,
+               allow_indexing = ?,
                published_parent_public_id = ?, published_position = ?,
                published_at = ?, updated_at = ?
            WHERE page_id = ? AND ${pageIsCurrent}`,
@@ -319,6 +326,7 @@ export class PublicationRepository {
           input.publishedContentJson,
           input.publishedContentText,
           input.publishedTitle,
+          input.publishedTagsJson,
           input.allowIndexing ? 1 : 0,
           input.publishedParentPublicId,
           input.publishedPosition,
@@ -332,9 +340,9 @@ export class PublicationRepository {
         .prepare(
           `INSERT INTO page_publications
              (id, page_id, public_id, source_revision, published_content_json,
-              published_content_text, published_title, allow_indexing,
+              published_content_text, published_title, published_tags_json, allow_indexing,
               published_parent_public_id, published_position, published_at, updated_at)
-           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
            WHERE NOT EXISTS (SELECT 1 FROM page_publications WHERE page_id = ?)
              AND ${pageIsCurrent}`,
         )

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { pageIdSchema, pageSlugSchema, pageTitleSchema } from './pages';
+import { tagSummarySchema, type TagSummary } from './tags';
 
 export const SEARCH_QUERY_MAX_LENGTH = 200;
 export const SEARCH_MAX_TOKENS = 12;
@@ -11,6 +12,9 @@ export const SEARCH_SNIPPET_MAX_TOKENS = 18;
 export interface SearchRequest {
   query: string;
   limit: number;
+  favorite?: boolean;
+  tagId?: string;
+  tagName?: string;
 }
 
 export const searchBreadcrumbSchema = z
@@ -29,7 +33,9 @@ export const searchResultSchema = z
     slug: pageSlugSchema,
     url: z.string().startsWith('/app/pages/'),
     breadcrumb: z.array(searchBreadcrumbSchema).max(100),
+    isFavorite: z.boolean().default(false),
     snippet: z.string().max(20_000),
+    tags: z.array(tagSummarySchema).max(50).default([]),
   })
   .strict();
 
@@ -40,6 +46,8 @@ export const searchResponseSchema = z
 export type SearchBreadcrumb = z.infer<typeof searchBreadcrumbSchema>;
 export type SearchResult = z.infer<typeof searchResultSchema>;
 export type SearchResponse = z.infer<typeof searchResponseSchema>;
+
+export type SearchTag = TagSummary;
 
 function normalizeWhitespace(value: string) {
   const withoutControls = [...value]

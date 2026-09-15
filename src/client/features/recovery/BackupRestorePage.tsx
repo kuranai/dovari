@@ -7,6 +7,7 @@ import {
   type BackupPageRecord,
   type BackupPublicationRecord,
   type BackupRevisionRecord,
+  type BackupTagRecord,
   type RestoreSessionStatus,
 } from '../../../shared/backup';
 import type { WorkspaceOutletContext } from '../../app/App';
@@ -90,19 +91,22 @@ function clearStoredSession() {
 function recordWorkBytes(archive: ValidatedBackupArchive) {
   const encoder = new TextEncoder();
   const publications = archive.manifest.version === 2 ? archive.manifest.publications : [];
-  return [...archive.manifest.pages, ...archive.manifest.revisions, ...publications].reduce(
-    (sum, record) => sum + encoder.encode(canonicalJson(record)).byteLength,
-    0,
-  );
+  return [
+    ...archive.manifest.tags,
+    ...archive.manifest.pages,
+    ...archive.manifest.revisions,
+    ...publications,
+  ].reduce((sum, record) => sum + encoder.encode(canonicalJson(record)).byteLength, 0);
 }
 
 function recordIdSet(
   status: RestoreSessionStatus | null,
-  type: 'page' | 'revision' | 'publication',
+  type: 'page' | 'revision' | 'publication' | 'tag',
 ) {
   if (type === 'page') return new Set(status?.pageIds ?? []);
   if (type === 'revision') return new Set(status?.revisionIds ?? []);
-  return new Set(status?.publicationIds ?? []);
+  if (type === 'publication') return new Set(status?.publicationIds ?? []);
+  return new Set(status?.tagIds ?? []);
 }
 
 function formatBytes(value: number) {
@@ -197,6 +201,7 @@ export function BackupRestorePage() {
           expectedBytes: archive.totalAssetBytes,
           expectedPages: archive.manifest.pages.length,
           expectedRevisions: archive.manifest.revisions.length,
+          expectedTags: archive.manifest.tags.length,
           expectedPublications:
             archive.manifest.version === 2 ? archive.manifest.publications.length : 0,
         });
@@ -210,12 +215,13 @@ export function BackupRestorePage() {
       const uploadedPages = recordIdSet(currentSession, 'page');
       const uploadedRevisions = recordIdSet(currentSession, 'revision');
       const uploadedPublications = recordIdSet(currentSession, 'publication');
+      const uploadedTags = recordIdSet(currentSession, 'tag');
       const uploadedAssets = new Set(currentSession.assetIds);
       const encoder = new TextEncoder();
 
       const uploadRecord = async (
-        type: 'page' | 'revision' | 'publication',
-        record: BackupPageRecord | BackupRevisionRecord | BackupPublicationRecord,
+        type: 'page' | 'revision' | 'publication' | 'tag',
+        record: BackupPageRecord | BackupRevisionRecord | BackupPublicationRecord | BackupTagRecord,
       ) => {
         const payload = canonicalJson(record);
         const bytes = encoder.encode(payload).byteLength;
@@ -224,7 +230,9 @@ export function BackupRestorePage() {
             ? uploadedPages
             : type === 'revision'
               ? uploadedRevisions
-              : uploadedPublications;
+              : type === 'publication'
+                ? uploadedPublications
+                : uploadedTags;
         if (ids.has(record.id)) {
           completed += bytes;
           setProgressBytes(completed);
@@ -243,6 +251,9 @@ export function BackupRestorePage() {
         setProgressBytes(completed);
       };
 
+      for (const tag of archive.manifest.tags) {
+        await uploadRecord('tag', tag);
+      }
       for (const page of archive.manifest.pages) {
         await uploadRecord('page', page);
       }
@@ -284,7 +295,7 @@ export function BackupRestorePage() {
       setSessionId(null);
       setProgressBytes(total);
       setSuccess(
-        `Restored ${result.pageCount} pages, ${result.revisionCount} versions, ${result.assetCount} assets, and ${result.publicationCount} publications.`,
+        `Restored ${result.pageCount} pages, ${result.revisionCount} versions, ${result.assetCount} assets, ${result.tagCount} tags, and ${result.publicationCount} publications.`,
       );
       setPhase('success');
       await refreshPages();

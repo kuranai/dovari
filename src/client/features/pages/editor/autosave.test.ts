@@ -36,11 +36,13 @@ function createPage(
     createdAt: '2026-09-12T09:00:00.000Z',
     deletedAt: null,
     id: '00000000-0000-4000-8000-000000000001',
+    isFavorite: false,
     parentId: null,
     position: 0,
     revision,
     slug: 'autosave-test',
     title: 'Autosave test',
+    tags: [],
     updatedAt,
   };
 }

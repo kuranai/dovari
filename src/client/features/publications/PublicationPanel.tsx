@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type { PageDetail } from '../../../shared/pages';
+import { normalizeTagNameForComparison } from '../../../shared/tags';
 import {
   fetchPrivatePublication,
   publicationErrorMessage,
@@ -18,9 +19,19 @@ function publicationStatus(
   page: PageDetail,
   publication: PrivatePublication | null,
   allowIndexing: boolean,
+  selectedTagIds: ReadonlySet<string>,
 ) {
   if (publication === null) return 'Not published';
-  if (publication.sourceRevision !== page.revision || publication.allowIndexing !== allowIndexing) {
+  const selectedTagNames = page.tags
+    .filter((tag) => selectedTagIds.has(tag.id))
+    .map((tag) => normalizeTagNameForComparison(tag.name));
+  const publicationTagNames = publication.tags.map(normalizeTagNameForComparison);
+  if (
+    publication.sourceRevision !== page.revision ||
+    publication.allowIndexing !== allowIndexing ||
+    selectedTagNames.length !== publicationTagNames.length ||
+    selectedTagNames.some((name, index) => name !== publicationTagNames[index])
+  ) {
     return 'Changes not published';
   }
   return 'Published';
@@ -32,6 +43,7 @@ export function PublicationPanel({ page }: { page: PageDetail }) {
   const [allowIndexing, setAllowIndexing] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isUnpublishing, setIsUnpublishing] = useState(false);
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(() => new Set());
   const [actionError, setActionError] = useState<string | null>(null);
   const [copyNotice, setCopyNotice] = useState<string | null>(null);
 
@@ -43,6 +55,16 @@ export function PublicationPanel({ page }: { page: PageDetail }) {
       .then((response) => {
         if (!controller.signal.aborted) {
           setAllowIndexing(response.publication?.allowIndexing ?? false);
+          const publishedNames = new Set(
+            response.publication?.tags.map(normalizeTagNameForComparison) ?? [],
+          );
+          setSelectedTagIds(
+            new Set(
+              page.tags
+                .filter((tag) => publishedNames.has(normalizeTagNameForComparison(tag.name)))
+                .map((tag) => tag.id),
+            ),
+          );
           setState({ status: 'ready', publication: response.publication });
         }
       })
@@ -57,6 +79,13 @@ export function PublicationPanel({ page }: { page: PageDetail }) {
     return () => controller.abort();
   }, [page.id, reloadKey]);
 
+  useEffect(() => {
+    const pageTagIds = new Set(page.tags.map((tag) => tag.id));
+    setSelectedTagIds((current) => new Set([...current].filter((tagId) => pageTagIds.has(tagId))));
+  }, [page.tags]);
+
+  const selectedTagIdList = useMemo(() => [...selectedTagIds], [selectedTagIds]);
+
   async function handlePublish() {
     if (state.status !== 'ready' || isPublishing || isUnpublishing) return;
     setIsPublishing(true);
@@ -66,6 +95,7 @@ export function PublicationPanel({ page }: { page: PageDetail }) {
       const response = await publishPrivatePublication(page.id, {
         allowIndexing,
         baseRevision: page.revision,
+        tagIds: selectedTagIdList,
       });
       setAllowIndexing(response.publication.allowIndexing);
       setState({ status: 'ready', publication: response.publication });
@@ -90,6 +120,7 @@ export function PublicationPanel({ page }: { page: PageDetail }) {
         publicId: state.publication.publicId,
       });
       setAllowIndexing(false);
+      setSelectedTagIds(new Set());
       setState({ status: 'ready', publication: null });
     } catch (error: unknown) {
       setActionError(publicationErrorMessage(error, 'The page could not be unpublished.'));
@@ -120,7 +151,7 @@ export function PublicationPanel({ page }: { page: PageDetail }) {
         </div>
         {state.status === 'ready' ? (
           <span aria-live="polite" className="publication-status">
-            {publicationStatus(page, state.publication, allowIndexing)}
+            {publicationStatus(page, state.publication, allowIndexing, selectedTagIds)}
           </span>
         ) : null}
       </div>
@@ -156,6 +187,30 @@ export function PublicationPanel({ page }: { page: PageDetail }) {
             />
             <span>Allow search engine indexing</span>
           </label>
+          <fieldset className="publication-tags">
+            <legend>Include tags in the public snapshot</legend>
+            {page.tags.length > 0 ? (
+              page.tags.map((tag) => (
+                <label className="publication-tag-option" key={tag.id}>
+                  <input
+                    checked={selectedTagIds.has(tag.id)}
+                    onChange={() =>
+                      setSelectedTagIds((current) => {
+                        const next = new Set(current);
+                        if (next.has(tag.id)) next.delete(tag.id);
+                        else next.add(tag.id);
+                        return next;
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  <span>{tag.name}</span>
+                </label>
+              ))
+            ) : (
+              <p className="publication-state">Assign private tags above to include them here.</p>
+            )}
+          </fieldset>
           <div className="publication-actions">
             <button
               className="button button-primary"

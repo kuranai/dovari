@@ -123,11 +123,13 @@ describe('Pages HTTP API', () => {
     expect(list.pages).toHaveLength(1);
     expect(list.pages[0]).toEqual({
       id: created.id,
+      isFavorite: false,
       parentId: null,
       position: 0,
       revision: 1,
       slug: 'getting-started',
       title: 'Getting Started',
+      tags: [],
       updatedAt: created.updatedAt,
     });
     expect(list.pages[0]).not.toHaveProperty('content');

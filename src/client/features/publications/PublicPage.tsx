@@ -191,6 +191,15 @@ export function PublicPage() {
               <time dateTime={publication.updatedAt}>
                 Updated {new Date(publication.updatedAt).toLocaleDateString()}
               </time>
+              {publication.tags.length > 0 ? (
+                <div aria-label="Published tags" className="public-tag-list">
+                  {publication.tags.map((tag) => (
+                    <span className="tag-chip" key={tag}>
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </header>
             <PublicDocument document={publication.content} publicationId={publication.publicId} />
           </article>

@@ -11,11 +11,13 @@ const targetId = '77777777-7777-4777-8777-777777777777';
 function pageSummary(overrides: Partial<PageSummary> = {}): PageSummary {
   return {
     id: sourceId,
+    isFavorite: false,
     parentId: null,
     position: 0,
     revision: 1,
     slug: 'source',
     title: 'Source',
+    tags: [],
     updatedAt: '2026-09-12T00:00:00.000Z',
     ...overrides,
   };

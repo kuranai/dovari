@@ -10,6 +10,13 @@ import {
   type TiptapDocument,
 } from './pages';
 import { publicIdSchema, publicTiptapDocumentSchema } from './publications';
+import {
+  TAG_MAX_LIMIT,
+  tagIdSchema,
+  tagNameSchema,
+  pageTagIdsSchema,
+  type TagSummary,
+} from './tags';
 
 export const BACKUP_FORMAT = 'dovari-backup' as const;
 export const BACKUP_V1_VERSION = 1 as const;
@@ -52,6 +59,8 @@ export const backupPageRecordSchema = z
     createdAt: timestampSchema,
     updatedAt: timestampSchema,
     deletedAt: timestampSchema.nullable(),
+    isFavorite: z.boolean().default(false),
+    tagIds: pageTagIdsSchema.default([]),
   })
   .strict();
 
@@ -70,6 +79,18 @@ export const backupRevisionRecordSchema = z
   .strict();
 
 export type BackupRevisionRecord = z.infer<typeof backupRevisionRecordSchema>;
+
+export const backupTagRecordSchema = z
+  .object({
+    id: tagIdSchema,
+    name: tagNameSchema,
+    nameNormalized: tagNameSchema,
+    createdAt: timestampSchema,
+    updatedAt: timestampSchema,
+  })
+  .strict();
+
+export type BackupTagRecord = z.infer<typeof backupTagRecordSchema>;
 
 const backupPathSchema = z
   .string()
@@ -125,6 +146,7 @@ export const backupPublicationRecordSchema = z
     publishedAt: timestampSchema,
     updatedAt: timestampSchema,
     assetIds: assetIdListSchema,
+    tags: z.array(tagNameSchema).max(TAG_MAX_LIMIT).default([]),
   })
   .strict();
 
@@ -138,6 +160,7 @@ export const backupManifestV1Schema = z
     pages: z.array(backupPageRecordSchema),
     revisions: z.array(backupRevisionRecordSchema),
     assets: z.array(backupAssetRecordSchema),
+    tags: z.array(backupTagRecordSchema).max(TAG_MAX_LIMIT).default([]),
   })
   .strict();
 
@@ -152,6 +175,7 @@ export const backupManifestV2Schema = z
     revisions: z.array(backupRevisionRecordSchema),
     assets: z.array(backupAssetRecordSchema),
     publications: z.array(backupPublicationRecordSchema),
+    tags: z.array(backupTagRecordSchema).max(TAG_MAX_LIMIT).default([]),
   })
   .strict();
 
@@ -170,6 +194,7 @@ export const restoreSessionCreateRequestSchema = z
     expectedPages: nonnegativeIntegerSchema,
     expectedRevisions: nonnegativeIntegerSchema,
     expectedAssets: nonnegativeIntegerSchema,
+    expectedTags: nonnegativeIntegerSchema.default(0),
     expectedPublications: nonnegativeIntegerSchema.default(0),
     expectedBytes: nonnegativeIntegerSchema,
   })
@@ -185,15 +210,18 @@ export const restoreSessionStatusSchema = z
     expectedPages: nonnegativeIntegerSchema,
     expectedRevisions: nonnegativeIntegerSchema,
     expectedAssets: nonnegativeIntegerSchema,
+    expectedTags: nonnegativeIntegerSchema.default(0),
     expectedPublications: nonnegativeIntegerSchema.default(0),
     expectedBytes: nonnegativeIntegerSchema,
     receivedPages: nonnegativeIntegerSchema,
     receivedRevisions: nonnegativeIntegerSchema,
     receivedAssets: nonnegativeIntegerSchema,
+    receivedTags: nonnegativeIntegerSchema.default(0),
     receivedBytes: nonnegativeIntegerSchema,
     pageIds: z.array(pageIdSchema),
     revisionIds: z.array(pageIdSchema),
     assetIds: z.array(assetIdSchema),
+    tagIds: z.array(tagIdSchema).default([]),
     publicationIds: z.array(pageIdSchema).default([]),
     createdAt: timestampSchema,
     updatedAt: timestampSchema,
@@ -211,7 +239,7 @@ export type RestoreSessionResponse = z.infer<typeof restoreSessionResponseSchema
 export const restoreRecordResponseSchema = z
   .object({
     accepted: z.literal(true),
-    recordType: z.enum(['page', 'revision', 'publication']),
+    recordType: z.enum(['page', 'revision', 'publication', 'tag']),
     recordId: pageIdSchema,
   })
   .strict();
@@ -230,6 +258,7 @@ export const restoreFinalizeResponseSchema = z
     pageCount: nonnegativeIntegerSchema,
     revisionCount: nonnegativeIntegerSchema,
     assetCount: nonnegativeIntegerSchema,
+    tagCount: nonnegativeIntegerSchema.default(0),
     publicationCount: nonnegativeIntegerSchema.default(0),
   })
   .strict();
@@ -275,4 +304,8 @@ export async function sha256Hex(value: string | Uint8Array | ArrayBuffer) {
 
 export function isTiptapDocument(value: unknown): value is TiptapDocument {
   return tiptapDocumentSchema.safeParse(value).success;
+}
+
+export function tagSummaryFromBackup(record: BackupTagRecord): TagSummary {
+  return { id: record.id, name: record.name };
 }

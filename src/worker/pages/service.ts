@@ -17,6 +17,8 @@ import {
   type UpdatePageContentRequest,
   type UpdatePageRequest,
 } from '../../shared/pages';
+import { TagRepository } from '../tags/repository';
+import { normalizeTagNameForComparison } from '../../shared/tags';
 import type {
   PageRevisionDetail,
   PageRevisionSummary,
@@ -105,6 +107,8 @@ function toSummary(page: PageRecord): PageSummary {
     parentId: page.parentId,
     position: page.position,
     revision: page.revision,
+    isFavorite: page.isFavorite,
+    tags: page.tags,
     updatedAt: page.updatedAt,
   };
 }
@@ -213,7 +217,10 @@ function parseRevisionContent(revision: PageRevisionRecord): TiptapDocument {
 }
 
 export class PageService {
-  constructor(private readonly repository: PageRepository) {}
+  constructor(
+    private readonly repository: PageRepository,
+    private readonly tags = new TagRepository(repository.db),
+  ) {}
 
   private snapshot(
     page: PageRecord,
@@ -265,8 +272,14 @@ export class PageService {
     }
   }
 
-  async list(): Promise<PageSummary[]> {
-    const pages = await this.repository.listActive();
+  async list(filters: { favorite?: boolean; tagId?: string; tagName?: string } = {}) {
+    let tagId = filters.tagId;
+    if (tagId === undefined && filters.tagName !== undefined) {
+      tagId =
+        (await this.tags.findByNameNormalized(normalizeTagNameForComparison(filters.tagName)))
+          ?.id ?? '__missing_tag__';
+    }
+    const pages = await this.repository.listActive({ favorite: filters.favorite, tagId });
     return pages.map(toSummary);
   }
 
@@ -453,6 +466,66 @@ export class PageService {
         throw new PageError(409, 'SLUG_CONFLICT', 'A page with this slug already exists.');
       }
       throw error;
+    }
+
+    const page = await this.repository.findById(id);
+    if (!page) {
+      throw new PageError(500, 'INTERNAL_ERROR', 'Internal server error.');
+    }
+    return toDetail(page);
+  }
+
+  async updateTags(id: string, tagIds: string[]): Promise<PageDetail> {
+    const current = await this.repository.findById(id);
+    if (!current) {
+      throw pageNotFound();
+    }
+
+    const tags = await this.tags.findByIds(tagIds);
+    if (tags.length !== tagIds.length) {
+      const found = new Set(tags.map((tag) => tag.id));
+      throw new PageError(422, 'TAG_NOT_FOUND', 'One or more selected tags do not exist.', {
+        tagIds: tagIds.filter((tagId) => !found.has(tagId)),
+      });
+    }
+
+    const currentIds = current.tags.map((tag) => tag.id).sort();
+    const requestedIds = [...tagIds].sort();
+    if (
+      currentIds.length === requestedIds.length &&
+      currentIds.every((tagId, index) => tagId === requestedIds[index])
+    ) {
+      return toDetail(current);
+    }
+
+    await this.tags.replacePageTags(id, tagIds);
+    const page = await this.repository.findById(id);
+    if (!page) {
+      throw new PageError(500, 'INTERNAL_ERROR', 'Internal server error.');
+    }
+    return toDetail(page);
+  }
+
+  async updateFavorite(id: string, isFavorite: boolean): Promise<PageDetail> {
+    const current = await this.repository.findById(id);
+    if (!current) {
+      throw pageNotFound();
+    }
+    if (current.isFavorite === isFavorite) {
+      return toDetail(current);
+    }
+
+    const changes = await this.repository.updateFavorite(
+      id,
+      isFavorite,
+      timestamp(current.updatedAt),
+    );
+    if (changes < 1) {
+      const latest = await this.repository.findById(id);
+      if (!latest) {
+        throw pageNotFound();
+      }
+      return toDetail(latest);
     }
 
     const page = await this.repository.findById(id);

@@ -18,8 +18,10 @@ function searchResult(id: string, title: string, query: string): SearchResult {
   return {
     breadcrumb: [],
     id,
+    isFavorite: false,
     slug: title.toLowerCase().replaceAll(' ', '-'),
     snippet: `Before <mark>${query}</mark> after`,
+    tags: [],
     title,
     url: `/app/pages/${id}`,
   };

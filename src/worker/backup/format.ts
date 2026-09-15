@@ -4,15 +4,18 @@ import {
   backupPageRecordSchema,
   backupPublicationRecordSchema,
   backupRevisionRecordSchema,
+  backupTagRecordSchema,
   canonicalJson,
   type BackupAssetRecord,
   type BackupPageRecord,
   type BackupRevisionRecord,
+  type BackupTagRecord,
 } from '../../shared/backup';
 import { assetTypeForMimeType } from '../assets/formats';
 import type { AssetRecord } from '../assets/repository';
 import type { PageRecord, PageRevisionRecord } from '../pages/repository';
 import type { PublicationRecord } from '../publications/repository';
+import type { TagRecord } from '../tags/repository';
 import type { PublicTiptapDocument } from '../../shared/publications';
 import { BackupError } from './errors';
 
@@ -97,6 +100,18 @@ export function pageBackupRecord(page: PageRecord, content: BackupPageRecord['co
     createdAt: page.createdAt,
     updatedAt: page.updatedAt,
     deletedAt: page.deletedAt,
+    isFavorite: page.isFavorite,
+    tagIds: page.tags.map((tag) => tag.id),
+  });
+}
+
+export function tagBackupRecord(tag: TagRecord): BackupTagRecord {
+  return backupTagRecordSchema.parse({
+    id: tag.id,
+    name: tag.name,
+    nameNormalized: tag.nameNormalized,
+    createdAt: tag.createdAt,
+    updatedAt: tag.updatedAt,
   });
 }
 
@@ -120,6 +135,12 @@ export function publicationBackupRecord(
   content: PublicTiptapDocument,
   assetIds: string[],
 ) {
+  let tags: unknown;
+  try {
+    tags = JSON.parse(publication.publishedTagsJson) as unknown;
+  } catch {
+    throw new BackupError(500, 'BACKUP_FAILED', 'A stored publication contains invalid tags.');
+  }
   return backupPublicationRecordSchema.parse({
     id: publication.id,
     pageId: publication.pageId,
@@ -133,6 +154,7 @@ export function publicationBackupRecord(
     publishedAt: publication.publishedAt,
     updatedAt: publication.updatedAt,
     assetIds,
+    tags,
   });
 }
 

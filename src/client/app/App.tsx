@@ -21,6 +21,7 @@ import {
 } from 'react-router-dom';
 
 import type { PageDetail, PageSummary } from '../../shared/pages';
+import type { TagSummary } from '../../shared/tags';
 import {
   createPage as createPageRequest,
   deletePage as deletePageRequest,
@@ -48,6 +49,30 @@ import { ThemeControl } from './ThemeControl';
 import { ThemeProvider, useTheme } from './theme';
 
 type PageListState = 'loading' | 'error' | 'ready';
+type PageFilter = { favorite?: boolean; tagId?: string };
+
+function pagesForFilter(pages: PageSummary[], filter: PageFilter) {
+  if (filter.favorite === undefined && filter.tagId === undefined) return pages;
+
+  const pageById = new Map(pages.map((page) => [page.id, page]));
+  const included = new Set(
+    pages
+      .filter(
+        (page) =>
+          (filter.favorite === undefined || page.isFavorite === filter.favorite) &&
+          (filter.tagId === undefined || page.tags.some((tag) => tag.id === filter.tagId)),
+      )
+      .map((page) => page.id),
+  );
+  for (const pageId of [...included]) {
+    let parentId = pageById.get(pageId)?.parentId ?? null;
+    while (parentId !== null && pageById.has(parentId)) {
+      included.add(parentId);
+      parentId = pageById.get(parentId)?.parentId ?? null;
+    }
+  }
+  return pages.filter((page) => included.has(page.id));
+}
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(() => {
@@ -289,7 +314,12 @@ function Sidebar({
   onExport,
   onPageUpdated,
   onPagesChanged,
+  onFilterChange,
   pages,
+  favoriteCount,
+  allPagesCount,
+  availableTags,
+  filter,
   recentPages,
   state,
   error,
@@ -307,8 +337,13 @@ function Sidebar({
   onExport: () => void;
   onPageUpdated: (page: PageSummary) => void;
   onPagesChanged: () => Promise<void>;
+  onFilterChange: (filter: PageFilter) => void;
   onRetry: () => void;
   pages: PageSummary[];
+  favoriteCount: number;
+  allPagesCount: number;
+  availableTags: TagSummary[];
+  filter: PageFilter;
   recentPages: PageSummary[];
   state: PageListState;
   isOpen: boolean;
@@ -374,6 +409,36 @@ function Sidebar({
             <span aria-hidden="true">×</span>
           </button>
         </div>
+      </div>
+
+      <div aria-label="Page filters" className="sidebar-filters" role="group">
+        <button
+          aria-pressed={filter.favorite === undefined && filter.tagId === undefined}
+          className="sidebar-filter-button"
+          onClick={() => onFilterChange({})}
+          type="button"
+        >
+          All <span>{allPagesCount}</span>
+        </button>
+        <button
+          aria-pressed={filter.favorite === true}
+          className="sidebar-filter-button"
+          onClick={() => onFilterChange({ favorite: true })}
+          type="button"
+        >
+          Favorites <span>{favoriteCount}</span>
+        </button>
+        {availableTags.map((tag) => (
+          <button
+            aria-pressed={filter.tagId === tag.id}
+            className="sidebar-filter-button sidebar-filter-tag"
+            key={tag.id}
+            onClick={() => onFilterChange(filter.tagId === tag.id ? {} : { tagId: tag.id })}
+            type="button"
+          >
+            <span aria-hidden="true">#</span> {tag.name}
+          </button>
+        ))}
       </div>
 
       {state === 'loading' ? (
@@ -472,6 +537,7 @@ function Workspace() {
   const [undoError, setUndoError] = useState<string | null>(null);
   const [isUndoing, setIsUndoing] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [pageFilter, setPageFilter] = useState<PageFilter>({});
   const paletteReturnFocusRef = useRef<HTMLElement | null>(null);
   const paletteTriggerRef = useRef<HTMLButtonElement>(null);
   const sidebarTriggerRef = useRef<HTMLButtonElement>(null);
@@ -485,13 +551,20 @@ function Workspace() {
     () => selectRecentPages(pages, pageIdFromWorkspacePath(location.pathname)),
     [location.pathname, pages],
   );
+  const availableTags = useMemo(() => {
+    const tags = new Map<string, TagSummary>();
+    pages.forEach((page) => page.tags.forEach((tag) => tags.set(tag.id, tag)));
+    return [...tags.values()].sort((left, right) => left.name.localeCompare(right.name));
+  }, [pages]);
+  const visiblePages = useMemo(() => pagesForFilter(pages, pageFilter), [pageFilter, pages]);
+  const favoriteCount = useMemo(() => pages.filter((page) => page.isFavorite).length, [pages]);
 
   const loadPages = useCallback(async (signal?: AbortSignal) => {
     setListState('loading');
     setListError(null);
 
     try {
-      const response = await fetchPages(signal);
+      const response = await fetchPages({}, signal);
       if (!signal?.aborted) {
         setPages(response.pages);
         setListState('ready');
@@ -808,8 +881,13 @@ function Workspace() {
           onExport={() => void exportPages()}
           onPageUpdated={onPageUpdated}
           onPagesChanged={refreshPages}
+          onFilterChange={setPageFilter}
           onRetry={retryPages}
-          pages={pages}
+          pages={visiblePages}
+          favoriteCount={favoriteCount}
+          allPagesCount={pages.length}
+          availableTags={availableTags}
+          filter={pageFilter}
           recentPages={recentPages}
           state={listState}
           isMobile={isMobile}
@@ -829,8 +907,11 @@ function Workspace() {
           isCreating={isCreating}
           onClose={closePalette}
           onCreatePage={() => void createPage()}
+          onFilterChange={setPageFilter}
           onOpenPage={(url) => navigate(url)}
           onThemeToggle={toggleTheme}
+          availableTags={availableTags}
+          searchFilters={pageFilter}
         />
       ) : null}
     </div>

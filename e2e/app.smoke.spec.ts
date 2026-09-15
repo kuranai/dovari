@@ -76,6 +76,67 @@ test('validates and restores a lossless backup after the workspace is emptied', 
   await expect(restoredTrashItem).toHaveCount(0);
 });
 
+test('keeps tags and favorites through filters and Trash restore', async ({ page }) => {
+  const title = `Organization E2E page ${Date.now()}`;
+  const tagName = `e2e-${Date.now()}`;
+
+  await page.goto('/app');
+  await page.getByRole('button', { name: /New page/ }).click();
+  await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible();
+  const pageUrl = page.url();
+  await page.getByLabel('Edit title').fill(title);
+  await page.getByLabel('Edit title').press('Enter');
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Manage tags' }).click();
+  await page.getByLabel('Create a tag').fill(tagName);
+  await page.getByRole('button', { name: 'Add tag' }).click();
+  await expect(page.getByRole('checkbox', { name: tagName })).toBeChecked();
+  await page.getByRole('button', { name: 'Save page tags' }).click();
+  await expect(page.locator('.page-tag-list .tag-chip')).toHaveText(tagName);
+
+  await page.getByRole('button', { name: 'Add to favorites' }).click();
+  await expect(page.getByRole('button', { name: 'Favorited' })).toBeVisible();
+  await page.getByRole('button', { name: /^Favorites/ }).click();
+  await expect(page.getByRole('link', { exact: true, name: title })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Open command palette' }).click();
+  const palette = page.getByRole('dialog', { name: 'Search or run a command' });
+  await palette
+    .getByRole('searchbox', { name: 'Search pages or commands' })
+    .fill(`Show #${tagName}`);
+  const tagCommand = palette.getByRole('option').filter({ hasText: `Show #${tagName}` });
+  await expect(tagCommand).toBeVisible();
+  await tagCommand.click();
+  await expect(palette).toHaveCount(0);
+  await expect(page.locator('.sidebar-filter-tag').filter({ hasText: tagName })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+
+  await page.getByRole('button', { name: 'Delete page' }).click();
+  await expect(page).toHaveURL('/app');
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await page.getByRole('link', { name: 'Open Trash' }).click();
+  await expect(page).toHaveURL('/app/settings/trash');
+  const trashItem = page.locator('.trash-item').filter({ hasText: title });
+  await trashItem.getByRole('button', { name: 'Restore' }).click();
+  await expect(page).toHaveURL(pageUrl);
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Favorited' })).toBeVisible();
+  await expect(page.locator('.page-tag-list .tag-chip')).toHaveText(tagName);
+
+  await page.getByRole('button', { name: 'Delete page' }).click();
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await page.getByRole('link', { name: 'Open Trash' }).click();
+  const finalTrashItem = page.locator('.trash-item').filter({ hasText: title });
+  await finalTrashItem.getByRole('button', { name: 'Delete permanently' }).click();
+  const confirmation = page.getByRole('form', { name: `Permanently delete ${title}` });
+  await confirmation.getByLabel(/Type .* to confirm/).fill(title);
+  await confirmation.getByRole('button', { name: 'Confirm permanent delete' }).click();
+  await expect(finalTrashItem).toHaveCount(0);
+});
+
 test('publishes a page for anonymous readers and returns to private editing for unpublish', async ({
   page,
 }) => {

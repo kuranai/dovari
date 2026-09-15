@@ -10,6 +10,7 @@ import {
   type TiptapDocument,
   type TiptapNode,
 } from './pages';
+import { MAX_PAGE_TAGS, pageTagIdsSchema, tagNameSchema } from './tags';
 
 export const PUBLICATION_DEFAULT_LIMIT = 100;
 export const PUBLICATION_MAX_LIMIT = 100;
@@ -154,6 +155,7 @@ export const publicPublicationSummarySchema = z
     allowIndexing: z.boolean(),
     parentPublicId: publicIdSchema.nullable().default(null),
     position: z.number().int().nonnegative().default(0),
+    tags: z.array(tagNameSchema).max(MAX_PAGE_TAGS).default([]),
   })
   .strict();
 
@@ -187,6 +189,7 @@ export const privatePublicationSchema = z
     allowIndexing: z.boolean(),
     publishedAt: timestampSchema,
     updatedAt: timestampSchema,
+    tags: z.array(tagNameSchema).max(MAX_PAGE_TAGS).default([]),
   })
   .strict();
 
@@ -200,6 +203,7 @@ export const publishPublicationRequestSchema = z
   .object({
     baseRevision: baseRevisionSchema,
     allowIndexing: z.boolean().default(false),
+    tagIds: pageTagIdsSchema.default([]),
   })
   .strict();
 

@@ -26,11 +26,13 @@ function page(): PageDetail {
     createdAt: '2026-09-14T00:00:00.000Z',
     deletedAt: null,
     id: pageId,
+    isFavorite: false,
     parentId: null,
     position: 0,
     revision: 3,
     slug: 'public-page',
     title: 'Public page',
+    tags: [],
     updatedAt: '2026-09-14T00:00:03.000Z',
   };
 }
@@ -148,7 +150,11 @@ describe('public publication UI', () => {
         return response({ publication: null });
       }
       if (url === `/api/private/pages/${pageId}/publication` && init?.method === 'PUT') {
-        expect(JSON.parse(String(init.body))).toEqual({ allowIndexing: true, baseRevision: 3 });
+        expect(JSON.parse(String(init.body))).toEqual({
+          allowIndexing: true,
+          baseRevision: 3,
+          tagIds: [],
+        });
         return response({
           publication: {
             allowIndexing: true,
@@ -157,6 +163,7 @@ describe('public publication UI', () => {
             publishedAt: '2026-09-14T00:00:03.000Z',
             publishedTitle: currentPage.title,
             sourceRevision: 3,
+            tags: [],
             updatedAt: '2026-09-14T00:00:03.000Z',
           },
         });

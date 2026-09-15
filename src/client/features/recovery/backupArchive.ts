@@ -7,6 +7,7 @@ import {
 } from '../../../shared/backup';
 import { collectAssetIds } from '../../../shared/pages';
 import { collectPublicAssetIds } from '../../../shared/publications';
+import { normalizeTagName, normalizeTagNameForComparison } from '../../../shared/tags';
 
 const ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
 const ZIP_CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
@@ -146,11 +147,28 @@ function validateManifestSemantics(manifest: BackupManifest) {
   const pageIds = new Set<string>();
   const assetIds = new Set<string>();
   const assetPaths = new Set<string>();
+  const tagIds = new Set<string>();
+  const tagNames = new Set<string>();
+  for (const tag of manifest.tags) {
+    if (
+      tagIds.has(tag.id) ||
+      tagNames.has(tag.nameNormalized) ||
+      tag.name !== normalizeTagName(tag.name) ||
+      tag.nameNormalized !== normalizeTagNameForComparison(tag.name)
+    ) {
+      throw new BackupArchiveError('The backup contains duplicate or invalid tag metadata.');
+    }
+    tagIds.add(tag.id);
+    tagNames.add(tag.nameNormalized);
+  }
   for (const page of manifest.pages) {
     if (pageIds.has(page.id)) {
       throw new BackupArchiveError('The backup contains duplicate pages.');
     }
     pageIds.add(page.id);
+    if (page.tagIds.some((tagId) => !tagIds.has(tagId))) {
+      throw new BackupArchiveError('A page references a tag missing from the backup.');
+    }
   }
   for (const page of manifest.pages) {
     if (page.parentId !== null && !pageIds.has(page.parentId)) {

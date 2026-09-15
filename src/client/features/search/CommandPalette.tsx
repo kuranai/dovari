@@ -12,6 +12,7 @@ import {
   parseSearchSnippet,
   type SearchResult,
 } from '../../../shared/search';
+import type { TagSummary } from '../../../shared/tags';
 import { pageErrorMessage } from '../pages/api';
 import { searchPages } from './api';
 
@@ -40,6 +41,9 @@ export interface CommandPaletteProps {
   onCreatePage: () => void;
   onOpenPage: (url: string) => void;
   onThemeToggle?: () => void;
+  onFilterChange?: (filter: { favorite?: boolean; tagId?: string }) => void;
+  availableTags?: TagSummary[];
+  searchFilters?: { favorite?: boolean; tagId?: string };
 }
 
 function entryId(entry: PaletteEntry) {
@@ -159,6 +163,9 @@ export function CommandPalette({
   onCreatePage,
   onOpenPage,
   onThemeToggle,
+  onFilterChange,
+  availableTags = [],
+  searchFilters = {},
 }: CommandPaletteProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -195,7 +202,7 @@ export function CommandPalette({
       controller = requestController;
       setSearchState({ error: null, results: [], status: 'loading' });
 
-      void searchPages(normalizedQuery, requestController.signal)
+      void searchPages(normalizedQuery, requestController.signal, searchFilters)
         .then((response) => {
           if (requestVersion !== requestVersionRef.current || requestController.signal.aborted) {
             return;
@@ -224,7 +231,7 @@ export function CommandPalette({
       window.clearTimeout(timeoutId);
       controller?.abort();
     };
-  }, [query, retryNonce]);
+  }, [query, retryNonce, searchFilters.favorite, searchFilters.tagId]);
 
   const commands = useMemo<PaletteCommand[]>(
     () => [
@@ -242,6 +249,36 @@ export function CommandPalette({
         },
         shortcut: '⌘N',
       },
+      {
+        description: 'Show every page in the workspace.',
+        id: 'all-pages',
+        keywords: ['all', 'pages', 'reset', 'filter'],
+        label: 'Show all pages',
+        onSelect: () => {
+          onFilterChange?.({});
+          onClose();
+        },
+      },
+      {
+        description: 'Limit the sidebar and search to favorite pages.',
+        id: 'favorite-pages',
+        keywords: ['favorite', 'starred', 'important'],
+        label: 'Show favorite pages',
+        onSelect: () => {
+          onFilterChange?.({ favorite: true });
+          onClose();
+        },
+      },
+      ...availableTags.map((tag) => ({
+        description: `Show pages tagged ${tag.name}.`,
+        id: `tag-${tag.id}`,
+        keywords: ['tag', tag.name],
+        label: `Show #${tag.name}`,
+        onSelect: () => {
+          onFilterChange?.({ tagId: tag.id });
+          onClose();
+        },
+      })),
       {
         description: 'Switch between light and dark themes.',
         id: 'theme',
@@ -263,7 +300,16 @@ export function CommandPalette({
         },
       },
     ],
-    [canCreatePage, isCreating, onClose, onCreatePage, onOpenPage, onThemeToggle],
+    [
+      availableTags,
+      canCreatePage,
+      isCreating,
+      onClose,
+      onCreatePage,
+      onFilterChange,
+      onOpenPage,
+      onThemeToggle,
+    ],
   );
 
   const normalizedQuery = normalizeSearchQuery(query).toLocaleLowerCase();

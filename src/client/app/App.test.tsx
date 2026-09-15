@@ -14,11 +14,13 @@ function createPage(overrides: Partial<PageDetail> = {}): PageDetail {
     createdAt: '2026-09-12T00:00:00.000Z',
     deletedAt: null,
     id: pageId,
+    isFavorite: false,
     parentId: null,
     position: 0,
     revision: 1,
     slug: 'untitled',
     title: 'Untitled',
+    tags: [],
     updatedAt: '2026-09-12T00:00:00.000Z',
     ...overrides,
   };
@@ -32,6 +34,8 @@ function pageSummary(page: PageDetail): PageSummary {
     revision: page.revision,
     slug: page.slug,
     title: page.title,
+    isFavorite: page.isFavorite,
+    tags: page.tags,
     updatedAt: page.updatedAt,
   };
 }

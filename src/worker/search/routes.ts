@@ -7,6 +7,7 @@ import {
   normalizeSearchQuery,
   type SearchRequest,
 } from '../../shared/search';
+import { tagIdSchema, tagNameInputSchema } from '../../shared/tags';
 import { apiError } from '../middleware/security';
 import type { WorkerApp } from '../types';
 import { SearchError } from './errors';
@@ -31,9 +32,38 @@ function parseLimit(value: string | undefined) {
 }
 
 function parseSearchRequest(context: Context<WorkerApp>): SearchRequest {
+  const rawFavorite = context.req.query('favorite');
+  let favorite: boolean | undefined;
+  if (rawFavorite !== undefined) {
+    if (rawFavorite === 'true' || rawFavorite === '1') favorite = true;
+    else if (rawFavorite === 'false' || rawFavorite === '0') favorite = false;
+    else throw new SearchError(400, 'INVALID_REQUEST', 'The favorite filter is invalid.');
+  }
+
+  const tagId = context.req.query('tagId');
+  const tagName = context.req.query('tag');
+  if (tagId !== undefined && tagName !== undefined) {
+    throw new SearchError(400, 'INVALID_REQUEST', 'Use either tagId or tag, not both.');
+  }
+  if (tagId !== undefined && !tagIdSchema.safeParse(tagId).success) {
+    throw new SearchError(400, 'INVALID_REQUEST', 'The tag filter is invalid.');
+  }
+
+  let normalizedTagName: string | undefined;
+  if (tagName !== undefined) {
+    const parsedTagName = tagNameInputSchema.safeParse(tagName);
+    if (!parsedTagName.success) {
+      throw new SearchError(400, 'INVALID_REQUEST', 'The tag filter is invalid.');
+    }
+    normalizedTagName = parsedTagName.data;
+  }
+
   return {
+    favorite,
     query: normalizeSearchQuery(context.req.query('q') ?? ''),
     limit: parseLimit(context.req.query('limit')),
+    tagId,
+    tagName: normalizedTagName,
   };
 }
 

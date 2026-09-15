@@ -1,4 +1,5 @@
 import type { WikiLinkReference } from '../../shared/pages';
+import type { TagSummary } from '../../shared/tags';
 
 export interface PageRecord {
   searchId: number;
@@ -13,6 +14,8 @@ export interface PageRecord {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  isFavorite: boolean;
+  tags: TagSummary[];
 }
 
 interface PageDatabaseRow {
@@ -28,22 +31,54 @@ interface PageDatabaseRow {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  is_favorite: number;
+  tags_json: string;
 }
 
 const PAGE_COLUMNS = `
-  search_id,
-  id,
-  title,
-  slug,
-  content_json,
-  content_text,
-  parent_id,
-  position,
-  revision,
-  created_at,
-  updated_at,
-  deleted_at
+  pages.search_id AS search_id,
+  pages.id AS id,
+  pages.title AS title,
+  pages.slug AS slug,
+  pages.content_json AS content_json,
+  pages.content_text AS content_text,
+  pages.parent_id AS parent_id,
+  pages.position AS position,
+  pages.revision AS revision,
+  pages.created_at AS created_at,
+  pages.updated_at AS updated_at,
+  pages.deleted_at AS deleted_at,
+  pages.is_favorite AS is_favorite,
+  (
+    SELECT COALESCE(json_group_array(json_object('id', ordered_tags.id, 'name', ordered_tags.name)), '[]')
+    FROM (
+      SELECT tags.id, tags.name
+      FROM page_tags
+      INNER JOIN tags ON tags.id = page_tags.tag_id
+      WHERE page_tags.page_id = pages.id
+      ORDER BY tags.name_normalized, tags.id
+    ) AS ordered_tags
+  ) AS tags_json
 `;
+
+function parseTags(value: string) {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter(
+      (tag): tag is TagSummary =>
+        typeof tag === 'object' &&
+        tag !== null &&
+        !Array.isArray(tag) &&
+        typeof (tag as { id?: unknown }).id === 'string' &&
+        typeof (tag as { name?: unknown }).name === 'string',
+    );
+  } catch {
+    return [];
+  }
+}
 
 function toPageRecord(row: PageDatabaseRow): PageRecord {
   return {
@@ -59,6 +94,8 @@ function toPageRecord(row: PageDatabaseRow): PageRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
+    isFavorite: row.is_favorite === 1,
+    tags: parseTags(row.tags_json),
   };
 }
 
@@ -135,7 +172,7 @@ function toPageRevisionRecord(row: PageRevisionDatabaseRow): PageRevisionRecord 
 }
 
 export class PageRepository {
-  constructor(private readonly db: D1Database) {}
+  constructor(readonly db: D1Database) {}
 
   private snapshotStatement(
     snapshot: RevisionSnapshot,
@@ -228,12 +265,25 @@ export class PageRepository {
       .bind(update.parentId, update.position, update.updatedAt, update.id, update.revision);
   }
 
-  async listActive() {
+  async listActive(filters: { favorite?: boolean; tagId?: string } = {}) {
+    const clauses = ['pages.deleted_at IS NULL'];
+    const bindings: unknown[] = [];
+    if (filters.favorite !== undefined) {
+      clauses.push('pages.is_favorite = ?');
+      bindings.push(filters.favorite ? 1 : 0);
+    }
+    if (filters.tagId !== undefined) {
+      clauses.push(
+        'EXISTS (SELECT 1 FROM page_tags AS filtered_page_tags WHERE filtered_page_tags.page_id = pages.id AND filtered_page_tags.tag_id = ?)',
+      );
+      bindings.push(filters.tagId);
+    }
+
     const result = await this.db
       .prepare(
         `SELECT ${PAGE_COLUMNS}
          FROM pages
-         WHERE deleted_at IS NULL
+         WHERE ${clauses.join(' AND ')}
          ORDER BY
            CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END,
            parent_id COLLATE NOCASE,
@@ -242,6 +292,7 @@ export class PageRepository {
            id
          LIMIT 100`,
       )
+      .bind(...bindings)
       .all<PageDatabaseRow>();
 
     return result.results.map(toPageRecord);
@@ -421,19 +472,7 @@ export class PageRepository {
   async listBacklinks(targetPageId: string) {
     const result = await this.db
       .prepare(
-        `SELECT DISTINCT
-           pages.search_id,
-           pages.id,
-           pages.title,
-           pages.slug,
-           pages.content_json,
-           pages.content_text,
-           pages.parent_id,
-           pages.position,
-           pages.revision,
-           pages.created_at,
-           pages.updated_at,
-           pages.deleted_at
+        `SELECT DISTINCT ${PAGE_COLUMNS}
          FROM page_links
          INNER JOIN pages ON pages.id = page_links.source_page_id
          WHERE page_links.target_page_id = ?
@@ -544,6 +583,18 @@ export class PageRepository {
 
     const results = await this.db.batch(statements);
     return results[updateIndex]?.meta.changes ?? 0;
+  }
+
+  async updateFavorite(id: string, isFavorite: boolean, updatedAt: string) {
+    const result = await this.db
+      .prepare(
+        `UPDATE pages
+         SET is_favorite = ?, updated_at = ?
+         WHERE id = ? AND deleted_at IS NULL`,
+      )
+      .bind(isFavorite ? 1 : 0, updatedAt, id)
+      .run();
+    return result.meta.changes;
   }
 
   async updateContent(

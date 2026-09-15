@@ -1,6 +1,7 @@
 import type { AssetRecord } from '../assets/repository';
 import type { PageRecord, PageRevisionRecord } from '../pages/repository';
 import type { PublicationRecord } from '../publications/repository';
+import type { TagRecord } from '../tags/repository';
 
 interface PageDatabaseRow {
   search_id: number;
@@ -15,6 +16,8 @@ interface PageDatabaseRow {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  is_favorite: number;
+  tags_json: string;
 }
 
 interface RevisionDatabaseRow {
@@ -49,6 +52,7 @@ interface PublicationDatabaseRow {
   published_content_json: string;
   published_content_text: string;
   published_title: string;
+  published_tags_json: string;
   allow_indexing: number;
   published_parent_public_id: string | null;
   published_position: number;
@@ -58,7 +62,7 @@ interface PublicationDatabaseRow {
 
 export interface RestoreSessionRecordRow {
   session_id: string;
-  record_type: 'page' | 'revision' | 'publication';
+  record_type: 'page' | 'revision' | 'publication' | 'tag';
   record_id: string;
   payload_json: string;
   sha256: string;
@@ -83,6 +87,7 @@ export interface RestoreSessionRow {
   expected_pages: number;
   expected_revisions: number;
   expected_assets: number;
+  expected_tags: number;
   expected_publications: number;
   expected_bytes: number;
   created_at: string;
@@ -91,6 +96,22 @@ export interface RestoreSessionRow {
 }
 
 function toPageRecord(row: PageDatabaseRow): PageRecord {
+  let tags: PageRecord['tags'] = [];
+  try {
+    const value = JSON.parse(row.tags_json) as unknown;
+    if (Array.isArray(value)) {
+      tags = value.filter(
+        (tag): tag is PageRecord['tags'][number] =>
+          typeof tag === 'object' &&
+          tag !== null &&
+          !Array.isArray(tag) &&
+          typeof (tag as { id?: unknown }).id === 'string' &&
+          typeof (tag as { name?: unknown }).name === 'string',
+      );
+    }
+  } catch {
+    tags = [];
+  }
   return {
     searchId: row.search_id,
     id: row.id,
@@ -104,6 +125,8 @@ function toPageRecord(row: PageDatabaseRow): PageRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
+    isFavorite: row.is_favorite === 1,
+    tags,
   };
 }
 
@@ -144,10 +167,27 @@ function toPublicationRecord(row: PublicationDatabaseRow): PublicationRecord {
     publishedContentJson: row.published_content_json,
     publishedContentText: row.published_content_text,
     publishedTitle: row.published_title,
+    publishedTagsJson: row.published_tags_json,
     allowIndexing: row.allow_indexing === 1,
     publishedParentPublicId: row.published_parent_public_id,
     publishedPosition: row.published_position,
     publishedAt: row.published_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function toTagRecord(row: {
+  id: string;
+  name: string;
+  name_normalized: string;
+  created_at: string;
+  updated_at: string;
+}): TagRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    nameNormalized: row.name_normalized,
+    createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
@@ -164,7 +204,18 @@ const pageColumns = `
   revision,
   created_at,
   updated_at,
-  deleted_at
+  deleted_at,
+  is_favorite,
+  (
+    SELECT COALESCE(json_group_array(json_object('id', ordered_tags.id, 'name', ordered_tags.name)), '[]')
+    FROM (
+      SELECT tags.id, tags.name
+      FROM page_tags
+      INNER JOIN tags ON tags.id = page_tags.tag_id
+      WHERE page_tags.page_id = pages.id
+      ORDER BY tags.name_normalized, tags.id
+    ) AS ordered_tags
+  ) AS tags_json
 `;
 
 const assetColumns = `
@@ -189,6 +240,7 @@ const publicationColumns = `
   published_content_json,
   published_content_text,
   published_title,
+  published_tags_json,
   allow_indexing,
   published_parent_public_id,
   published_position,
@@ -231,6 +283,23 @@ export class BackupRepository {
     return result.results.map(toPublicationRecord);
   }
 
+  async listTags(): Promise<TagRecord[]> {
+    const result = await this.db
+      .prepare(
+        `SELECT id, name, name_normalized, created_at, updated_at
+         FROM tags
+         ORDER BY name_normalized, id`,
+      )
+      .all<{
+        id: string;
+        name: string;
+        name_normalized: string;
+        created_at: string;
+        updated_at: string;
+      }>();
+    return result.results.map(toTagRecord);
+  }
+
   async listPublicationAssetIds(publicationId: string) {
     const result = await this.db
       .prepare(`SELECT asset_id FROM publication_assets WHERE publication_id = ? ORDER BY asset_id`)
@@ -243,17 +312,19 @@ export class BackupRepository {
     const row = await this.db
       .prepare(
         `SELECT EXISTS(SELECT 1 FROM pages LIMIT 1) AS has_pages,
-                EXISTS(SELECT 1 FROM assets LIMIT 1) AS has_assets`,
+                EXISTS(SELECT 1 FROM assets LIMIT 1) AS has_assets,
+                EXISTS(SELECT 1 FROM tags LIMIT 1) AS has_tags`,
       )
-      .first<{ has_pages: number; has_assets: number }>();
-    return row !== null && (row.has_pages === 1 || row.has_assets === 1);
+      .first<{ has_pages: number; has_assets: number; has_tags: number }>();
+    return row !== null && (row.has_pages === 1 || row.has_assets === 1 || row.has_tags === 1);
   }
 
   async findActiveSession() {
     return this.db
       .prepare(
         `SELECT id, owner_identity, status, backup_version, expected_pages, expected_revisions,
-                expected_assets, expected_publications, expected_bytes, created_at, updated_at, expires_at
+                expected_assets, expected_tags, expected_publications, expected_bytes,
+                created_at, updated_at, expires_at
          FROM restore_sessions
          WHERE status IN ('uploading', 'finalizing', 'failed')
          ORDER BY created_at
@@ -266,7 +337,8 @@ export class BackupRepository {
     return this.db
       .prepare(
         `SELECT id, owner_identity, status, backup_version, expected_pages, expected_revisions,
-                expected_assets, expected_publications, expected_bytes, created_at, updated_at, expires_at
+                expected_assets, expected_tags, expected_publications, expected_bytes,
+                created_at, updated_at, expires_at
          FROM restore_sessions
          WHERE id = ? AND owner_identity = ?`,
       )
@@ -281,6 +353,7 @@ export class BackupRepository {
     expectedPages: number;
     expectedRevisions: number;
     expectedAssets: number;
+    expectedTags: number;
     expectedPublications: number;
     expectedBytes: number;
     createdAt: string;
@@ -291,8 +364,9 @@ export class BackupRepository {
       .prepare(
         `INSERT INTO restore_sessions
           (id, owner_identity, status, backup_version, expected_pages, expected_revisions,
-           expected_assets, expected_publications, expected_bytes, created_at, updated_at, expires_at)
-         SELECT ?, ?, 'uploading', ?, ?, ?, ?, ?, ?, ?, ?, ?
+           expected_assets, expected_tags, expected_publications, expected_bytes,
+           created_at, updated_at, expires_at)
+         SELECT ?, ?, 'uploading', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
          WHERE NOT EXISTS (
            SELECT 1 FROM restore_sessions
            WHERE status IN ('uploading', 'finalizing', 'failed')
@@ -305,6 +379,7 @@ export class BackupRepository {
         session.expectedPages,
         session.expectedRevisions,
         session.expectedAssets,
+        session.expectedTags,
         session.expectedPublications,
         session.expectedBytes,
         session.createdAt,
@@ -329,7 +404,7 @@ export class BackupRepository {
 
   async findRecord(
     sessionId: string,
-    recordType: 'page' | 'revision' | 'publication',
+    recordType: 'page' | 'revision' | 'publication' | 'tag',
     recordId: string,
   ) {
     return this.db
@@ -344,7 +419,7 @@ export class BackupRepository {
 
   async insertRecord(record: {
     sessionId: string;
-    recordType: 'page' | 'revision' | 'publication';
+    recordType: 'page' | 'revision' | 'publication' | 'tag';
     recordId: string;
     payloadJson: string;
     sha256: string;

@@ -23,6 +23,7 @@ function publication(
     publicId,
     publishedAt: '2026-09-14T00:00:00.000Z',
     publishedTitle,
+    tags: [],
     updatedAt: '2026-09-14T00:00:00.000Z',
   };
 }

@@ -21,6 +21,7 @@ import {
   permanentDeleteRequestSchema,
   restorePageRequestSchema,
 } from '../../shared/recovery';
+import { tagIdSchema, tagNameInputSchema } from '../../shared/tags';
 import { apiError } from '../middleware/security';
 import type { WorkerApp } from '../types';
 import { PageError } from './errors';
@@ -173,6 +174,36 @@ function parseWikiLinkSearchRequest(context: Context<WorkerApp>) {
   };
 }
 
+function parsePageListRequest(context: Context<WorkerApp>) {
+  const rawFavorite = context.req.query('favorite');
+  let favorite: boolean | undefined;
+  if (rawFavorite !== undefined) {
+    if (rawFavorite === 'true' || rawFavorite === '1') favorite = true;
+    else if (rawFavorite === 'false' || rawFavorite === '0') favorite = false;
+    else throw new PageError(400, 'INVALID_REQUEST', 'The favorite filter is invalid.');
+  }
+
+  const tagId = context.req.query('tagId');
+  const tagName = context.req.query('tag');
+  if (tagId !== undefined && tagName !== undefined) {
+    throw new PageError(400, 'INVALID_REQUEST', 'Use either tagId or tag, not both.');
+  }
+  if (tagId !== undefined && !tagIdSchema.safeParse(tagId).success) {
+    throw new PageError(400, 'INVALID_REQUEST', 'The tag filter is invalid.');
+  }
+
+  let normalizedTagName: string | undefined;
+  if (tagName !== undefined) {
+    const parsedTagName = tagNameInputSchema.safeParse(tagName);
+    if (!parsedTagName.success) {
+      throw new PageError(400, 'INVALID_REQUEST', 'The tag filter is invalid.');
+    }
+    normalizedTagName = parsedTagName.data;
+  }
+
+  return { favorite, tagId, tagName: normalizedTagName };
+}
+
 async function withPageErrors(
   context: Context<WorkerApp>,
   operation: (service: PageService) => Promise<Response>,
@@ -247,7 +278,9 @@ export function registerPageRoutes(app: Hono<WorkerApp>) {
   );
 
   app.get('/api/private/pages', (context) =>
-    withPageErrors(context, async (service) => context.json({ pages: await service.list() })),
+    withPageErrors(context, async (service) =>
+      context.json({ pages: await service.list(parsePageListRequest(context)) }),
+    ),
   );
 
   app.post('/api/private/pages', (context) =>

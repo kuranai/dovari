@@ -21,6 +21,7 @@ const localEnv = authenticatedTestBindings(env);
 let authCookie = '';
 const createdPageIds = new Set<string>();
 const createdAssetIds = new Set<string>();
+const createdTagIds = new Set<string>();
 const createdSessionIds = new Set<string>();
 
 beforeAll(async () => {
@@ -44,6 +45,9 @@ afterEach(async () => {
   }
   for (const pageId of createdPageIds) {
     await env.DB.prepare('DELETE FROM pages WHERE id = ?').bind(pageId).run();
+  }
+  for (const tagId of createdTagIds) {
+    await env.DB.prepare('DELETE FROM tags WHERE id = ?').bind(tagId).run();
   }
   for (const assetId of createdAssetIds) {
     const asset = await env.DB.prepare('SELECT object_key FROM assets WHERE id = ?')
@@ -139,9 +143,23 @@ async function uploadAsset(pageId: string, bytes: Uint8Array) {
   return assetId;
 }
 
+async function createTag(name: string) {
+  const response = await request('/api/private/tags', {
+    body: JSON.stringify({ name }),
+    method: 'POST',
+  });
+  expect(response.status).toBe(201);
+  const tag = ((await response.json()) as { tag: { id: string; name: string } }).tag;
+  createdTagIds.add(tag.id);
+  return tag;
+}
+
 async function deleteWorkspace() {
   for (const pageId of createdPageIds) {
     await env.DB.prepare('DELETE FROM pages WHERE id = ?').bind(pageId).run();
+  }
+  for (const tagId of createdTagIds) {
+    await env.DB.prepare('DELETE FROM tags WHERE id = ?').bind(tagId).run();
   }
   for (const assetId of createdAssetIds) {
     const asset = await env.DB.prepare('SELECT object_key FROM assets WHERE id = ?')
@@ -159,6 +177,17 @@ describe('Dovari backup and restore', () => {
     const root = await createPage('Backup root');
     const child = await createPage('Backup child', root.id);
     const deleted = await createPage('Backup deleted');
+    const tag = await createTag('Backup tag');
+    const assignTags = await request(`/api/private/pages/${root.id}/tags`, {
+      body: JSON.stringify({ tagIds: [tag.id] }),
+      method: 'PUT',
+    });
+    expect(assignTags.status).toBe(200);
+    const favorite = await request(`/api/private/pages/${root.id}/favorite`, {
+      body: JSON.stringify({ isFavorite: true }),
+      method: 'PUT',
+    });
+    expect(favorite.status).toBe(200);
     const assetBytes = new Uint8Array([4, 8, 15, 16, 23, 42]);
     const assetId = await uploadAsset(root.id, assetBytes);
     const content: TiptapDocument = {
@@ -199,6 +228,12 @@ describe('Dovari backup and restore', () => {
     expect(manifest.revisions.length).toBeGreaterThanOrEqual(2);
     expect(manifest.assets).toHaveLength(1);
     expect(manifest.assets[0]?.id).toBe(assetId);
+    expect(manifest.tags).toEqual([expect.objectContaining({ id: tag.id, name: tag.name })]);
+    expect(manifest.pages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: root.id, isFavorite: true, tagIds: [tag.id] }),
+      ]),
+    );
 
     await deleteWorkspace();
 
@@ -209,6 +244,7 @@ describe('Dovari backup and restore', () => {
         expectedBytes: manifest.assets.reduce((sum, asset) => sum + asset.sizeBytes, 0),
         expectedPages: manifest.pages.length,
         expectedRevisions: manifest.revisions.length,
+        expectedTags: manifest.tags.length,
       }),
       method: 'POST',
     });
@@ -216,6 +252,18 @@ describe('Dovari backup and restore', () => {
     const session = ((await sessionResponse.json()) as { session: { id: string } }).session;
     createdSessionIds.add(session.id);
 
+    for (const tagRecord of manifest.tags) {
+      const payload = canonicalJson(tagRecord);
+      const response = await request(
+        `/api/private/restore/sessions/${session.id}/records/tag/${tagRecord.id}`,
+        {
+          body: payload,
+          headers: { 'X-Dovari-SHA-256': await sha256Hex(payload) },
+          method: 'PUT',
+        },
+      );
+      expect(response.status).toBe(200);
+    }
     for (const page of manifest.pages) {
       const payload = canonicalJson(page);
       const response = await request(
@@ -281,12 +329,19 @@ describe('Dovari backup and restore', () => {
       assetCount: 1,
       pageCount: 3,
       revisionCount: manifest.revisions.length,
+      tagCount: manifest.tags.length,
     });
 
     const restoredRoot = await request(`/api/private/pages/${root.id}`);
     expect(restoredRoot.status).toBe(200);
     await expect(restoredRoot.json()).resolves.toMatchObject({
-      page: { content, id: root.id, title: root.title },
+      page: {
+        content,
+        id: root.id,
+        isFavorite: true,
+        tags: [{ id: tag.id, name: tag.name }],
+        title: root.title,
+      },
     });
     const restoredTrash = await request('/api/private/trash');
     await expect(restoredTrash.json()).resolves.toMatchObject({

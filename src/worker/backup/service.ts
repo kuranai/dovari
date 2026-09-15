@@ -8,6 +8,7 @@ import {
   backupPageRecordSchema,
   backupPublicationRecordSchema,
   backupRevisionRecordSchema,
+  backupTagRecordSchema,
   canonicalJson,
   restoreSessionCreateRequestSchema,
   sha256Hex,
@@ -16,6 +17,7 @@ import {
   type BackupPageRecord,
   type BackupPublicationRecord,
   type BackupRevisionRecord,
+  type BackupTagRecord,
   type RestoreSessionCreateRequest,
   type RestoreSessionStatus,
 } from '../../shared/backup';
@@ -34,6 +36,7 @@ import {
   derivePublicPlainText,
   publicTiptapDocumentSchema,
 } from '../../shared/publications';
+import { normalizeTagName, normalizeTagNameForComparison } from '../../shared/tags';
 import { assetTypeForMimeType } from '../assets/formats';
 import type { AuthIdentity } from '../auth/password';
 import type { AssetRecord } from '../assets/repository';
@@ -53,6 +56,7 @@ import {
   parseStoredBackupContent,
   restoreTemporaryObjectKey,
   revisionBackupRecord,
+  tagBackupRecord,
 } from './format';
 import {
   BackupRepository,
@@ -62,7 +66,7 @@ import {
 } from './repository';
 import { createZipStream, textZipEntry, type ZipEntrySource } from '../export/zip';
 
-const RECORD_TYPE_VALUES = ['page', 'revision', 'publication'] as const;
+const RECORD_TYPE_VALUES = ['page', 'revision', 'publication', 'tag'] as const;
 type RestoreRecordType = (typeof RECORD_TYPE_VALUES)[number];
 
 function isRecordType(value: string): value is RestoreRecordType {
@@ -161,6 +165,7 @@ function summaryFromSession(
     pages: string[];
     revisions: string[];
     publications: string[];
+    tags: string[];
     assets: string[];
     bytes: number;
   },
@@ -172,16 +177,19 @@ function summaryFromSession(
     expectedPages: session.expected_pages,
     expectedRevisions: session.expected_revisions,
     expectedAssets: session.expected_assets,
+    expectedTags: session.expected_tags,
     expectedPublications: session.expected_publications,
     expectedBytes: session.expected_bytes,
     receivedPages: received.pages.length,
     receivedRevisions: received.revisions.length,
     receivedAssets: received.assets.length,
+    receivedTags: received.tags.length,
     receivedBytes: received.bytes,
     pageIds: received.pages,
     revisionIds: received.revisions,
     publicationIds: received.publications,
     assetIds: received.assets,
+    tagIds: received.tags,
     createdAt: session.created_at,
     updatedAt: session.updated_at,
     expiresAt: session.expires_at,
@@ -234,16 +242,18 @@ export class BackupService {
   }
 
   async prepareBackup(): Promise<PreparedBackup> {
-    const [pages, revisions, assets, publications] = await Promise.all([
+    const [pages, revisions, assets, publications, tags] = await Promise.all([
       this.repository.listPages(),
       this.repository.listRevisions(),
       this.repository.listAssets(),
       this.repository.listPublications(),
+      this.repository.listTags(),
     ]);
 
     let pageRecords: BackupPageRecord[];
     let revisionRecords: BackupRevisionRecord[];
     let publicationRecords: BackupPublicationRecord[];
+    let tagRecords: BackupTagRecord[];
     try {
       pageRecords = pages
         .map((page) => pageBackupRecord(page, pageContent(page)))
@@ -294,6 +304,7 @@ export class BackupService {
         );
       }
       publicationRecords.sort((left, right) => compareText(left.id, right.id));
+      tagRecords = tags.map(tagBackupRecord).sort((left, right) => compareText(left.id, right.id));
     } catch (error) {
       if (error instanceof BackupError) {
         throw error;
@@ -337,6 +348,7 @@ export class BackupService {
       revisions: revisionRecords,
       assets: assetRecords.sort((left, right) => compareText(left.id, right.id)),
       publications: publicationRecords,
+      tags: tagRecords,
     });
     const manifestJson = `${canonicalJson(manifest)}\n`;
 
@@ -381,6 +393,10 @@ export class BackupService {
       .filter((record) => record.record_type === 'publication')
       .map((record) => record.record_id)
       .sort(compareText);
+    const tagIds = records
+      .filter((record) => record.record_type === 'tag')
+      .map((record) => record.record_id)
+      .sort(compareText);
     const receivedAssetIds: string[] = [];
     let receivedBytes = 0;
     for (const asset of assets) {
@@ -401,6 +417,7 @@ export class BackupService {
       pages: pageIds,
       publications: publicationIds,
       revisions: revisionIds,
+      tags: tagIds,
     });
   }
 
@@ -441,6 +458,7 @@ export class BackupService {
       expectedPages: parsed.expectedPages,
       expectedRevisions: parsed.expectedRevisions,
       expectedAssets: parsed.expectedAssets,
+      expectedTags: parsed.expectedTags,
       expectedPublications: parsed.expectedPublications,
       expectedBytes: parsed.expectedBytes,
       createdAt,
@@ -515,7 +533,9 @@ export class BackupService {
         ? backupPageRecordSchema.safeParse(value)
         : recordTypeValue === 'revision'
           ? backupRevisionRecordSchema.safeParse(value)
-          : backupPublicationRecordSchema.safeParse(value);
+          : recordTypeValue === 'publication'
+            ? backupPublicationRecordSchema.safeParse(value)
+            : backupTagRecordSchema.safeParse(value);
     if (!parsed.success || parsed.data.id !== recordId) {
       throw new BackupError(
         422,
@@ -524,10 +544,12 @@ export class BackupService {
       );
     }
 
+    const rawPayloadJson = canonicalRecordJson(value);
     const payloadJson = canonicalRecordJson(parsed.data);
     const sha256 = await sha256Hex(payloadJson);
+    const rawSha256 = await sha256Hex(rawPayloadJson);
     const declaredSha = request.headers.get('X-Dovari-SHA-256');
-    if (declaredSha !== null && declaredSha !== sha256) {
+    if (declaredSha !== null && declaredSha !== sha256 && declaredSha !== rawSha256) {
       throw new BackupError(
         422,
         'RESTORE_RECORD_MISMATCH',
@@ -553,7 +575,9 @@ export class BackupService {
         ? session.expected_pages
         : recordTypeValue === 'revision'
           ? session.expected_revisions
-          : session.expected_publications;
+          : recordTypeValue === 'publication'
+            ? session.expected_publications
+            : session.expected_tags;
     if (
       currentRecords.filter((record) => record.record_type === recordTypeValue).length >=
       expectedCount
@@ -739,13 +763,44 @@ export class BackupService {
     const pageRows = recordRows.filter((row) => row.record_type === 'page');
     const revisionRows = recordRows.filter((row) => row.record_type === 'revision');
     const publicationRows = recordRows.filter((row) => row.record_type === 'publication');
+    const tagRows = recordRows.filter((row) => row.record_type === 'tag');
     if (
       pageRows.length !== session.expected_pages ||
       revisionRows.length !== session.expected_revisions ||
       publicationRows.length !== session.expected_publications ||
+      tagRows.length !== session.expected_tags ||
       assetRows.length !== session.expected_assets
     ) {
       throw incompleteRestore();
+    }
+
+    const tags: BackupTagRecord[] = [];
+    const tagIds = new Set<string>();
+    const tagNames = new Set<string>();
+    for (const row of tagRows) {
+      let value: unknown;
+      try {
+        value = JSON.parse(row.payload_json) as unknown;
+      } catch {
+        throw new BackupError(422, 'RESTORE_RECORD_MISMATCH', 'A staged tag record is invalid.');
+      }
+      const parsed = backupTagRecordSchema.safeParse(value);
+      if (!parsed.success || parsed.data.id !== row.record_id) {
+        throw new BackupError(422, 'RESTORE_RECORD_MISMATCH', 'A staged tag record is invalid.');
+      }
+      if (
+        canonicalJson(parsed.data) !== row.payload_json ||
+        (await sha256Hex(row.payload_json)) !== row.sha256 ||
+        tagIds.has(parsed.data.id) ||
+        tagNames.has(parsed.data.nameNormalized) ||
+        parsed.data.name !== normalizeTagName(parsed.data.name) ||
+        parsed.data.nameNormalized !== normalizeTagNameForComparison(parsed.data.name)
+      ) {
+        throw new BackupError(422, 'RESTORE_RECORD_MISMATCH', 'The staged tag metadata changed.');
+      }
+      tagIds.add(parsed.data.id);
+      tagNames.add(parsed.data.nameNormalized);
+      tags.push(parsed.data);
     }
 
     const pages: BackupPageRecord[] = [];
@@ -775,6 +830,9 @@ export class BackupService {
         );
       }
       pageIds.add(parsed.data.id);
+      if (parsed.data.tagIds.some((tagId) => !tagIds.has(tagId))) {
+        throw new BackupError(422, 'RESTORE_RECORD_MISMATCH', 'A page references a missing tag.');
+      }
       pages.push(parsed.data);
     }
 
@@ -1091,7 +1149,7 @@ export class BackupService {
     };
     pages.forEach((page) => visit(page.id));
 
-    return { assets, pages, publications, revisions };
+    return { assets, pages, publications, revisions, tags };
   }
 
   private async copyAssets(sessionId: string, assets: BackupAssetRecord[]) {
@@ -1183,6 +1241,19 @@ export class BackupService {
         return depth(left) - depth(right) || compareText(left.id, right.id);
       });
 
+      for (const tag of validated.tags) {
+        statements.push(
+          this.repository.db
+            .prepare(
+              `INSERT INTO tags (id, name, name_normalized, created_at, updated_at)
+               SELECT ?, ?, ?, ?, ? WHERE ${ready}`,
+            )
+            .bind(
+              ...bindReady([tag.id, tag.name, tag.nameNormalized, tag.createdAt, tag.updatedAt]),
+            ),
+        );
+      }
+
       for (const page of pageInsertOrder) {
         const contentJson = canonicalJson(page.content);
         const contentText = derivePlainText(page.content);
@@ -1191,8 +1262,8 @@ export class BackupService {
             .prepare(
               `INSERT INTO pages
                 (id, title, slug, content_json, content_text, parent_id, position, revision,
-                 created_at, updated_at, deleted_at)
-               SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                 created_at, updated_at, deleted_at, is_favorite)
+               SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                WHERE ${ready}`,
             )
             .bind(
@@ -1208,6 +1279,7 @@ export class BackupService {
                 page.createdAt,
                 page.updatedAt,
                 page.deletedAt,
+                page.isFavorite ? 1 : 0,
               ]),
             ),
         );
@@ -1247,9 +1319,9 @@ export class BackupService {
             .prepare(
               `INSERT INTO page_publications
                 (id, page_id, public_id, source_revision, published_content_json,
-                 published_content_text, published_title, allow_indexing,
+                 published_content_text, published_title, published_tags_json, allow_indexing,
                  published_parent_public_id, published_position, published_at, updated_at)
-               SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${ready}`,
+               SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${ready}`,
             )
             .bind(
               ...bindReady([
@@ -1260,6 +1332,7 @@ export class BackupService {
                 canonicalJson(publication.content),
                 derivePublicPlainText(publication.content),
                 publication.publishedTitle,
+                canonicalJson(publication.tags),
                 publication.allowIndexing ? 1 : 0,
                 publication.publishedParentPublicId ?? null,
                 publication.publishedPosition ?? 0,
@@ -1284,6 +1357,17 @@ export class BackupService {
       }
 
       for (const page of validated.pages) {
+        for (const tagId of page.tagIds) {
+          statements.push(
+            this.repository.db
+              .prepare(
+                `INSERT INTO page_tags (page_id, tag_id)
+                 SELECT ?, ? WHERE ${ready}`,
+              )
+              .bind(...bindReady([page.id, tagId])),
+          );
+        }
+
         for (const assetId of collectAssetIds(page.content)) {
           statements.push(
             this.repository.db
@@ -1361,6 +1445,7 @@ export class BackupService {
         pageCount: validated.pages.length,
         revisionCount: validated.revisions.length,
         assetCount: validated.assets.length,
+        tagCount: validated.tags.length,
         publicationCount: validated.publications.length,
       };
     } catch (error) {

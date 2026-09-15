@@ -106,8 +106,19 @@ export async function request<T>(
   return parsed.data;
 }
 
-export function fetchPages(signal?: AbortSignal) {
-  return request<PagesListResponse>('/api/private/pages', pagesListResponseSchema, { signal });
+export function fetchPages(
+  filters: { favorite?: boolean; tagId?: string } = {},
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams();
+  if (filters.favorite !== undefined) params.set('favorite', String(filters.favorite));
+  if (filters.tagId !== undefined) params.set('tagId', filters.tagId);
+  const query = params.toString();
+  return request<PagesListResponse>(
+    `/api/private/pages${query.length > 0 ? `?${query}` : ''}`,
+    pagesListResponseSchema,
+    { signal },
+  );
 }
 
 export function searchWikiLinkPages(query: string, signal?: AbortSignal) {
@@ -244,6 +255,10 @@ export function pageErrorMessage(error: unknown, fallback: string) {
     case 'MOVE_TARGET_NOT_FOUND':
     case 'MOVE_TARGET_INVALID':
       return 'That move target is no longer available. Refresh the page tree and try again.';
+    case 'TAG_NOT_FOUND':
+      return 'One or more selected tags no longer exist.';
+    case 'TAG_NAME_CONFLICT':
+      return 'A tag with that name already exists.';
     default:
       return error.message || fallback;
   }

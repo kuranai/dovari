@@ -34,11 +34,13 @@ function restoredPage(): PageDetail {
     createdAt: '2026-09-13T11:00:00.000Z',
     deletedAt: null,
     id: pageId,
+    isFavorite: false,
     parentId: null,
     position: 0,
     revision: 5,
     slug: 'deleted-notes',
     title: 'Deleted notes',
+    tags: [],
     updatedAt: '2026-09-13T12:01:00.000Z',
   };
 }

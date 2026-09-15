@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 import { canonicalJson } from '../../shared/backup';
 import {
   collectAssetIds,
@@ -19,6 +21,7 @@ import {
   type PublishPublicationRequest,
   type UnpublishPublicationRequest,
 } from '../../shared/publications';
+import { MAX_PAGE_TAGS, tagNameSchema } from '../../shared/tags';
 import { AssetRepository } from '../assets/repository';
 import { PageRepository, type PageRecord } from '../pages/repository';
 import { PublicationError } from './errors';
@@ -52,6 +55,17 @@ function publicationConflict() {
 
 function internalError() {
   return new PublicationError(500, 'INTERNAL_ERROR', 'Internal server error.');
+}
+
+function tagsNotFound(tagIds: string[]) {
+  return new PublicationError(
+    422,
+    'TAG_NOT_FOUND',
+    'One or more selected tags are not assigned to the page.',
+    {
+      tagIds,
+    },
+  );
 }
 
 function nowIso(after?: string) {
@@ -129,6 +143,18 @@ function parsePrivateContent(page: PageRecord): TiptapDocument {
   return parsed.data;
 }
 
+function parsePublishedTags(record: PublicationRecord) {
+  let value: unknown;
+  try {
+    value = JSON.parse(record.publishedTagsJson) as unknown;
+  } catch {
+    throw internalError();
+  }
+  const parsed = z.array(tagNameSchema).max(MAX_PAGE_TAGS).safeParse(value);
+  if (!parsed.success) throw internalError();
+  return parsed.data;
+}
+
 function assetFallback(node: TiptapNode) {
   const value = node.type === 'assetImage' ? node.attrs?.alt : node.attrs?.filename;
   return typeof value === 'string' ? value : '';
@@ -192,6 +218,7 @@ function privatePublication(record: PublicationRecord): PrivatePublication {
     publicUrl: `/p/${encodeURIComponent(record.publicId)}`,
     publishedAt: record.publishedAt,
     publishedTitle: record.publishedTitle,
+    tags: parsePublishedTags(record),
     sourceRevision: record.sourceRevision,
     updatedAt: record.updatedAt,
   };
@@ -205,6 +232,7 @@ function publicSummary(record: PublicationRecord): PublicPublicationSummary {
     publicId: record.publicId,
     publishedAt: record.publishedAt,
     publishedTitle: record.publishedTitle,
+    tags: parsePublishedTags(record),
     updatedAt: record.updatedAt,
   };
 }
@@ -249,6 +277,13 @@ export class PublicationService {
     if (!page) throw pageNotFound();
     if (page.revision !== input.baseRevision) throw pageConflict(page.revision);
 
+    const pageTagIds = new Set(page.tags.map((tag) => tag.id));
+    const missingTagIds = input.tagIds.filter((tagId) => !pageTagIds.has(tagId));
+    if (missingTagIds.length > 0) throw tagsNotFound(missingTagIds);
+    const publishedTags = page.tags
+      .filter((tag) => input.tagIds.includes(tag.id))
+      .map((tag) => tag.name);
+
     const document = parsePrivateContent(page);
     const [assetRecords, targetPublications, existing, parentPublicId] = await Promise.all([
       this.assets.findActiveByIds(collectAssetIds(document)),
@@ -280,6 +315,7 @@ export class PublicationService {
       publishedContentJson,
       publishedContentText,
       publishedTitle: page.title,
+      publishedTagsJson: canonicalJson(publishedTags),
       publishedParentPublicId: parentPublicId,
       publishedPosition: page.position,
       sourceRevision: page.revision,

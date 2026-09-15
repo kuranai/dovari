@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { tagSummarySchema, type TagSummary } from './tags';
+
 export const PAGE_TITLE_MAX_LENGTH = 200;
 export const PAGE_SLUG_MAX_LENGTH = 200;
 export const MAX_PAGE_ROW_BYTES = 1_800_000;
@@ -41,6 +43,8 @@ export interface PageSummary {
   position: number;
   revision: number;
   updatedAt: string;
+  isFavorite: boolean;
+  tags: TagSummary[];
 }
 
 export interface PageDetail extends PageSummary {
@@ -655,6 +659,8 @@ export const pageSummarySchema = z
     position: z.number().int().nonnegative(),
     revision: baseRevisionSchema,
     updatedAt: z.string().datetime({ offset: true }),
+    isFavorite: z.boolean(),
+    tags: z.array(tagSummarySchema).max(50),
   })
   .strict();
 

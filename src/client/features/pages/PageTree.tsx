@@ -428,7 +428,7 @@ function PageTreeBranch({
                 to={`/app/pages/${page.id}`}
               >
                 <span className="page-tree-icon" aria-hidden="true">
-                  ◇
+                  {page.isFavorite ? '★' : '◇'}
                 </span>
                 <span className="page-tree-title">{page.title}</span>
               </NavLink>

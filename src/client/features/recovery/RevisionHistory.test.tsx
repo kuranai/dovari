@@ -22,11 +22,13 @@ function currentPage(): PageDetail {
     createdAt: '2026-09-13T11:00:00.000Z',
     deletedAt: null,
     id: pageId,
+    isFavorite: false,
     parentId: null,
     position: 0,
     revision: 3,
     slug: 'history-page',
     title: 'History page',
+    tags: [],
     updatedAt: timestamp,
   };
 }

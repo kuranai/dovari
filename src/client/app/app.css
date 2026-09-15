@@ -420,6 +420,48 @@ summary:focus-visible,
   letter-spacing: -0.02em;
 }
 
+.sidebar-filters {
+  display: flex;
+  gap: 5px;
+  margin: -10px 4px 18px;
+  overflow-x: auto;
+  padding: 2px 0 4px;
+  scrollbar-width: thin;
+}
+
+.sidebar-filter-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  min-height: 29px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--color-muted);
+  background: transparent;
+  font-size: 0.73rem;
+  white-space: nowrap;
+}
+
+.sidebar-filter-button span {
+  color: var(--color-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-filter-button:hover,
+.sidebar-filter-button[aria-pressed='true'] {
+  border-color: var(--color-accent-border-soft);
+  color: var(--color-ink);
+  background: var(--color-accent-surface);
+}
+
+.sidebar-filter-tag {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .state-kicker {
   display: block;
   color: var(--color-subtle);
@@ -984,6 +1026,194 @@ kbd {
   margin: 10px 0 0;
   color: var(--color-danger);
   font-size: 0.82rem;
+}
+
+.page-organization {
+  margin-top: 28px;
+  padding: 18px 20px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: var(--color-surface-muted);
+}
+
+.page-organization-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.page-organization-heading h2 {
+  margin: 5px 0 0;
+  font-size: 1rem;
+  letter-spacing: -0.025em;
+}
+
+.favorite-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 7px;
+  color: var(--color-muted);
+  background: var(--color-surface);
+  font-size: 0.78rem;
+}
+
+.favorite-button:hover:not(:disabled),
+.favorite-button.is-active {
+  border-color: var(--color-accent-border);
+  color: var(--color-accent-deep);
+  background: var(--color-accent-surface);
+}
+
+.favorite-button > span {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.page-tag-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.tag-chip {
+  padding: 4px 8px;
+  border: 1px solid var(--color-accent-border-soft);
+  border-radius: 999px;
+  color: var(--color-accent-deep);
+  background: var(--color-accent-surface);
+  font-size: 0.75rem;
+}
+
+.public-tag-list {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.page-organization-empty,
+.page-organization-state {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+}
+
+.page-tag-manager-toggle {
+  margin-top: 12px;
+}
+
+.page-tag-manager {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-divider);
+}
+
+.page-tag-create label,
+.page-tag-options legend {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--color-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.page-tag-create-row {
+  display: flex;
+  gap: 7px;
+}
+
+.page-tag-create-row input,
+.page-tag-option input[type='text'],
+.page-tag-option form input {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.page-tag-create-row input {
+  flex: 1;
+}
+
+.page-tag-options {
+  display: grid;
+  gap: 6px;
+  margin: 16px 0;
+  padding: 0;
+  border: 0;
+}
+
+.page-tag-option {
+  display: flex;
+  min-height: 33px;
+  align-items: center;
+  gap: 6px;
+}
+
+.page-tag-option > label {
+  display: inline-flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 7px;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+}
+
+.page-tag-option > label span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-tag-option > form {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 5px;
+}
+
+.page-tag-option > form input {
+  flex: 1;
+}
+
+.tag-delete-button {
+  color: var(--color-danger);
+}
+
+.publication-tags {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 16px;
+  padding: 0;
+  border: 0;
+}
+
+.publication-tags legend {
+  margin-bottom: 3px;
+  color: var(--color-text-secondary);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.publication-tag-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-secondary);
+  font-size: 0.86rem;
 }
 
 .page-editor-section {

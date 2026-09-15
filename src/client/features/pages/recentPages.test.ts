@@ -6,11 +6,13 @@ import { RECENT_PAGE_LIMIT, selectRecentPages } from './recentPages';
 function page(id: string, updatedAt: string, title = id): PageSummary {
   return {
     id,
+    isFavorite: false,
     parentId: null,
     position: 0,
     revision: 1,
     slug: title.toLowerCase().replaceAll(' ', '-'),
     title,
+    tags: [],
     updatedAt,
   };
 }

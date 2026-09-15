@@ -13,6 +13,7 @@ import { Link } from 'react-router-dom';
 import type { PageDetail, PageSummary } from '../../../shared/pages';
 import { PublicationPanel } from '../publications/PublicationPanel';
 import { RevisionHistory } from '../recovery/RevisionHistory';
+import { PageOrganization } from '../tags/PageOrganization';
 import { fetchBacklinks, fetchPage, pageErrorMessage, updatePageTitle } from './api';
 import { usePageAutosave, type AutosaveSnapshot } from './editor/autosave';
 
@@ -544,6 +545,7 @@ function PageDetailContent({
         onPageUpdated={onPageUpdated}
         page={page}
       />
+      <PageOrganization onPageUpdated={onPageUpdated} page={page} />
       <PublicationPanel page={page} />
       <Backlinks pageId={page.id} />
       {isHistoryOpen ? (
@@ -668,7 +670,13 @@ export function PageView({
       state.page.parentId === pageSummary.parentId &&
       state.page.position === pageSummary.position &&
       state.page.revision === pageSummary.revision &&
-      state.page.updatedAt === pageSummary.updatedAt
+      state.page.updatedAt === pageSummary.updatedAt &&
+      state.page.isFavorite === pageSummary.isFavorite &&
+      state.page.tags.length === pageSummary.tags.length &&
+      state.page.tags.every((tag, index) => {
+        const nextTag = pageSummary.tags[index];
+        return nextTag?.id === tag.id && nextTag.name === tag.name;
+      })
     ) {
       return;
     }

@@ -547,11 +547,13 @@ describe('PageEditor', () => {
   it('uses the existing wiki-link picker after choosing Wiki Link', async () => {
     const target: PageSummary = {
       id: '66666666-6666-4666-8666-666666666666',
+      isFavorite: false,
       parentId: null,
       position: 0,
       revision: 1,
       slug: 'cloudflare-workers',
       title: 'Cloudflare Workers',
+      tags: [],
       updatedAt: '2026-09-13T00:00:00.000Z',
     };
     const searchWikiLinks = vi.fn().mockResolvedValue({ pages: [target] });
@@ -680,11 +682,13 @@ describe('PageEditor', () => {
     const onChange = vi.fn();
     const target: PageSummary = {
       id: '66666666-6666-4666-8666-666666666666',
+      isFavorite: false,
       parentId: null,
       position: 0,
       revision: 1,
       slug: 'cloudflare-workers',
       title: 'Cloudflare Workers',
+      tags: [],
       updatedAt: '2026-09-13T00:00:00.000Z',
     };
     const searchWikiLinks = vi.fn().mockResolvedValue({ pages: [target] });
@@ -729,11 +733,13 @@ describe('PageEditor', () => {
   it('offers the same wiki-link picker from the labeled toolbar entry', async () => {
     const target: PageSummary = {
       id: '99999999-9999-4999-8999-999999999999',
+      isFavorite: false,
       parentId: null,
       position: 0,
       revision: 1,
       slug: 'cloudflare-workers',
       title: 'Cloudflare Workers',
+      tags: [],
       updatedAt: '2026-09-13T00:00:00.000Z',
     };
     const searchWikiLinks = vi.fn().mockResolvedValue({ pages: [target] });
@@ -791,11 +797,13 @@ describe('PageEditor', () => {
       createdAt: '2026-09-13T00:00:00.000Z',
       deletedAt: null,
       id: '77777777-7777-4777-8777-777777777777',
+      isFavorite: false,
       parentId: null,
       position: 0,
       revision: 1,
       slug: 'new-page',
       title: 'New Page',
+      tags: [],
       updatedAt: '2026-09-13T00:00:00.000Z',
     };
     const createWikiLinkPage = vi.fn().mockResolvedValue({ page: createdPage });

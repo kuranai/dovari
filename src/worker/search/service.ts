@@ -7,6 +7,8 @@ import {
   type SearchResponse,
   type SearchResult,
 } from '../../shared/search';
+import { normalizeTagNameForComparison } from '../../shared/tags';
+import { TagRepository } from '../tags/repository';
 import { SearchRepository, type SearchPageMatch, type SearchTreePage } from './repository';
 
 function toBreadcrumb(page: SearchPageMatch, pages: Map<string, SearchTreePage>) {
@@ -44,15 +46,31 @@ function toSearchResult(page: SearchPageMatch, pages: Map<string, SearchTreePage
     slug: page.slug,
     url: pageSearchUrl(page.id),
     breadcrumb: toBreadcrumb(page, pages),
+    isFavorite: page.isFavorite,
     snippet: page.snippet,
+    tags: page.tags,
   };
 }
 
 export class SearchService {
-  constructor(private readonly repository: SearchRepository) {}
+  constructor(
+    private readonly repository: SearchRepository,
+    private readonly tags = new TagRepository(repository.db),
+  ) {}
 
   async search(request: SearchRequest): Promise<SearchResponse> {
-    const normalizedRequest = { ...request, query: normalizeSearchQuery(request.query) };
+    const normalizedRequest = {
+      ...request,
+      query: normalizeSearchQuery(request.query),
+    };
+    if (normalizedRequest.tagId === undefined && normalizedRequest.tagName !== undefined) {
+      normalizedRequest.tagId =
+        (
+          await this.tags.findByNameNormalized(
+            normalizeTagNameForComparison(normalizedRequest.tagName),
+          )
+        )?.id ?? '__missing_tag__';
+    }
     const matchQuery = buildFtsMatchQuery(normalizedRequest.query);
     if (matchQuery.length === 0) {
       return { results: [] };
