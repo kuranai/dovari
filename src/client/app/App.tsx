@@ -43,6 +43,8 @@ import { TrashPage } from '../features/recovery/TrashPage';
 import { BackupRestorePage } from '../features/recovery/BackupRestorePage';
 import { CommandPalette } from '../features/search/CommandPalette';
 import { SettingsPage } from '../features/settings/SettingsPage';
+import { TemplatesPage } from '../features/templates/TemplatesPage';
+import { openDailyNote as openDailyNoteRequest } from '../features/templates/api';
 import { selectRecentPages } from '../features/pages/recentPages';
 import { LoginPage } from '../features/auth/LoginPage';
 import { ThemeControl } from './ThemeControl';
@@ -120,6 +122,7 @@ export interface WorkspaceOutletContext {
   actionError: string | null;
   createPage: (parentId?: string | null) => Promise<void>;
   deletePage: (page: PageDetail) => Promise<void>;
+  openDailyNote: () => Promise<void>;
   isCreating: boolean;
   listError: string | null;
   listState: PageListState;
@@ -214,7 +217,7 @@ function WorkspaceLanding() {
 
 function PageRoute() {
   const { pageId } = useParams();
-  const { deletePage, onPageUpdated, pages, refreshPages } =
+  const { deletePage, onPageUpdated, openDailyNote, pages, refreshPages } =
     useOutletContext<WorkspaceOutletContext>();
   const location = useLocation();
   const navigate = useNavigate();
@@ -227,6 +230,8 @@ function PageRoute() {
     <PageView
       key={pageId}
       onNavigateToPage={(targetPageId) => navigate(workspacePath(targetPageId))}
+      onOpenTemplateSettings={() => navigate('/app/settings/templates')}
+      onOpenDailyNote={() => void openDailyNote()}
       onPageCreated={() => void refreshPages()}
       onPageDeleted={deletePage}
       onPageUpdated={onPageUpdated}
@@ -615,6 +620,20 @@ function Workspace() {
     [isCreating, navigate],
   );
 
+  const openDailyNote = useCallback(async () => {
+    setActionError(null);
+    try {
+      const response = await openDailyNoteRequest();
+      setPages((currentPages) => [
+        ...currentPages.filter((page) => page.id !== response.page.id),
+        response.page,
+      ]);
+      navigate(workspacePath(response.page.id));
+    } catch (error: unknown) {
+      setActionError(pageErrorMessage(error, 'The daily note could not be opened.'));
+    }
+  }, [navigate]);
+
   const openPalette = useCallback(() => {
     if (isPaletteOpen) {
       return;
@@ -796,6 +815,7 @@ function Workspace() {
     listError,
     listState,
     onPageUpdated,
+    openDailyNote,
     pages,
     refreshPages,
     retryPages,
@@ -908,6 +928,7 @@ function Workspace() {
           onClose={closePalette}
           onCreatePage={() => void createPage()}
           onFilterChange={setPageFilter}
+          onOpenDailyNote={() => void openDailyNote()}
           onOpenPage={(url) => navigate(url)}
           onThemeToggle={toggleTheme}
           availableTags={availableTags}
@@ -927,6 +948,7 @@ export function AppRoutes() {
         <Route element={<PageRoute />} path="pages/:pageId" />
         <Route element={<PublicationEditorRoute />} path="publications/:publicId/edit" />
         <Route element={<SettingsPage />} path="settings" />
+        <Route element={<TemplatesPage />} path="settings/templates" />
         <Route element={<TrashPage />} path="settings/trash" />
         <Route element={<BackupRestorePage />} path="settings/backup" />
       </Route>

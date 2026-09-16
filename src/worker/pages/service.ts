@@ -36,6 +36,8 @@ import {
   type PageRevisionRecord,
   type RecoveryCursor,
   type PageTreeUpdate,
+  type NewDailyNoteRecord,
+  type NewPageRecord,
 } from './repository';
 
 const MAX_SLUG_ATTEMPTS = 1_000;
@@ -367,7 +369,12 @@ export class PageService {
     throw new PageError(409, 'SLUG_CONFLICT', 'A unique page slug could not be generated.');
   }
 
-  async create(input: CreatePageRequest): Promise<PageDetail> {
+  private async createPageWithContent(
+    input: CreatePageRequest,
+    content: TiptapDocument,
+    insertPage: (page: NewPageRecord) => Promise<number> = (page) => this.repository.insert(page),
+    pageId: string = crypto.randomUUID(),
+  ): Promise<PageDetail> {
     if (input.parentId !== null && !(await this.repository.hasActiveParent(input.parentId))) {
       throw new PageError(422, 'PARENT_NOT_FOUND', 'The selected parent page does not exist.');
     }
@@ -375,22 +382,60 @@ export class PageService {
     await this.normalizeSiblings(input.parentId);
 
     const now = timestamp();
-    const id = crypto.randomUUID();
+    const id = pageId;
     const baseSlug = slugifyPageTitle(input.title);
+    const contentJson = JSON.stringify(content);
+    const contentText = derivePlainText(content);
+    const estimatedBytes = estimatePageRowBytes({
+      id,
+      title: input.title,
+      slug: baseSlug,
+      contentJson,
+      contentText,
+      parentId: input.parentId,
+      position: 0,
+      revision: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (estimatedBytes > MAX_PAGE_ROW_BYTES) {
+      throw new PageError(
+        413,
+        'PAGE_TOO_LARGE',
+        'This page is too large. Split it into smaller pages.',
+        { maxBytes: MAX_PAGE_ROW_BYTES },
+      );
+    }
+
+    const linkReferences = collectWikiLinkReferences(content);
+    const activeTargetIds = await this.repository.findActiveIds(
+      linkReferences.flatMap((link) => (link.targetPageId === null ? [] : [link.targetPageId])),
+    );
+    const wikiLinks: PageLinkRecord[] = linkReferences.map((link) => ({
+      ...link,
+      id: crypto.randomUUID(),
+      targetPageId:
+        link.targetPageId !== null && activeTargetIds.has(link.targetPageId)
+          ? link.targetPageId
+          : null,
+      createdAt: now,
+    }));
 
     for (let attempt = 1; attempt <= MAX_SLUG_ATTEMPTS; attempt += 1) {
       const slug = await this.uniqueSlug(baseSlug);
 
       try {
-        const changes = await this.repository.insert({
+        const changes = await insertPage({
           id,
           title: input.title,
           slug,
-          contentJson: emptyDocument,
-          contentText: '',
+          contentJson,
+          contentText,
           parentId: input.parentId,
           createdAt: now,
           updatedAt: now,
+          assetIds: collectAssetIds(content),
+          wikiLinks,
         });
 
         if (changes < 1) {
@@ -411,6 +456,28 @@ export class PageService {
     }
 
     throw new PageError(409, 'SLUG_CONFLICT', 'A unique page slug could not be generated.');
+  }
+
+  async create(input: CreatePageRequest): Promise<PageDetail> {
+    return this.createPageWithContent(input, JSON.parse(emptyDocument) as TiptapDocument);
+  }
+
+  async createWithContent(input: CreatePageRequest, content: TiptapDocument) {
+    return this.createPageWithContent(input, content);
+  }
+
+  async createDailyNote(
+    input: CreatePageRequest,
+    content: TiptapDocument,
+    dailyNote: NewDailyNoteRecord,
+  ) {
+    return this.createPageWithContent(
+      input,
+      content,
+      (page) =>
+        this.repository.insertWithDailyNote(page, dailyNote).then((result) => result.pageChanges),
+      dailyNote.pageId,
+    );
   }
 
   async updateMetadata(id: string, input: UpdatePageRequest): Promise<PageDetail> {

@@ -128,4 +128,18 @@ describe('CommandPalette', () => {
     expect(screen.queryByRole('option', { name: /First page/ })).toBeNull();
     expect(screen.getByRole('option', { name: /Second page/ })).toBeTruthy();
   });
+
+  it('exposes template and daily-note actions from the keyboard palette', () => {
+    const onClose = vi.fn();
+    const onOpenPage = vi.fn();
+    const onOpenDailyNote = vi.fn();
+    renderPalette({ onClose, onOpenDailyNote, onOpenPage });
+
+    fireEvent.click(screen.getByRole('option', { name: /Create from template/ }));
+    expect(onOpenPage).toHaveBeenCalledWith('/app/settings/templates');
+
+    fireEvent.click(screen.getByRole('option', { name: /Open today’s note/ }));
+    expect(onOpenDailyNote).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
 });

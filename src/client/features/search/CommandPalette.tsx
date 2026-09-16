@@ -40,6 +40,7 @@ export interface CommandPaletteProps {
   onClose: () => void;
   onCreatePage: () => void;
   onOpenPage: (url: string) => void;
+  onOpenDailyNote?: () => void;
   onThemeToggle?: () => void;
   onFilterChange?: (filter: { favorite?: boolean; tagId?: string }) => void;
   availableTags?: TagSummary[];
@@ -161,6 +162,7 @@ export function CommandPalette({
   isCreating,
   onClose,
   onCreatePage,
+  onOpenDailyNote,
   onOpenPage,
   onThemeToggle,
   onFilterChange,
@@ -290,6 +292,26 @@ export function CommandPalette({
         },
       },
       {
+        description: 'Create a page from a reusable template.',
+        id: 'templates',
+        keywords: ['template', 'templates', 'reusable', 'page'],
+        label: 'Create from template',
+        onSelect: () => {
+          onOpenPage('/app/settings/templates');
+          onClose();
+        },
+      },
+      {
+        description: 'Open or create today’s note in your local time zone.',
+        id: 'daily-note',
+        keywords: ['daily', 'today', 'journal', 'note'],
+        label: 'Open today’s note',
+        onSelect: () => {
+          onOpenDailyNote?.();
+          onClose();
+        },
+      },
+      {
         description: 'Review deleted pages and recovery options.',
         id: 'settings',
         keywords: ['preferences', 'settings', 'configuration'],
@@ -308,6 +330,7 @@ export function CommandPalette({
       onCreatePage,
       onFilterChange,
       onOpenPage,
+      onOpenDailyNote,
       onThemeToggle,
     ],
   );

@@ -12,6 +12,7 @@ import {
 } from '../../shared/backup';
 import type { BackupManifest } from '../../shared/backup';
 import type { PageDetail, TiptapDocument } from '../../shared/pages';
+import { localDateForTimeZone, type TemplateDetail } from '../../shared/templates';
 import { app } from '../index';
 import { BackupService } from './service';
 import { authenticatedTestBindings, createTestSession } from '../test-auth';
@@ -22,6 +23,7 @@ let authCookie = '';
 const createdPageIds = new Set<string>();
 const createdAssetIds = new Set<string>();
 const createdTagIds = new Set<string>();
+const createdTemplateIds = new Set<string>();
 const createdSessionIds = new Set<string>();
 
 beforeAll(async () => {
@@ -49,6 +51,9 @@ afterEach(async () => {
   for (const tagId of createdTagIds) {
     await env.DB.prepare('DELETE FROM tags WHERE id = ?').bind(tagId).run();
   }
+  for (const templateId of createdTemplateIds) {
+    await env.DB.prepare('DELETE FROM templates WHERE id = ?').bind(templateId).run();
+  }
   for (const assetId of createdAssetIds) {
     const asset = await env.DB.prepare('SELECT object_key FROM assets WHERE id = ?')
       .bind(assetId)
@@ -60,6 +65,7 @@ afterEach(async () => {
   }
   createdPageIds.clear();
   createdAssetIds.clear();
+  createdTemplateIds.clear();
   createdSessionIds.clear();
 });
 
@@ -154,6 +160,25 @@ async function createTag(name: string) {
   return tag;
 }
 
+async function createTemplate(isDailyNote = false) {
+  const content: TiptapDocument = {
+    type: 'doc',
+    content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Backup template content' }] }],
+  };
+  const response = await request('/api/private/templates', {
+    body: JSON.stringify({
+      content,
+      isDailyNote,
+      title: `${isDailyNote ? 'Daily' : 'Page'} backup template ${crypto.randomUUID()}`,
+    }),
+    method: 'POST',
+  });
+  expect(response.status).toBe(201);
+  const template = ((await response.json()) as { template: TemplateDetail }).template;
+  createdTemplateIds.add(template.id);
+  return template;
+}
+
 async function deleteWorkspace() {
   for (const pageId of createdPageIds) {
     await env.DB.prepare('DELETE FROM pages WHERE id = ?').bind(pageId).run();
@@ -169,6 +194,9 @@ async function deleteWorkspace() {
     if (asset) {
       await env.ASSETS.delete(asset.object_key);
     }
+  }
+  for (const templateId of createdTemplateIds) {
+    await env.DB.prepare('DELETE FROM templates WHERE id = ?').bind(templateId).run();
   }
 }
 
@@ -505,6 +533,114 @@ describe('Dovari backup and restore', () => {
     );
     expect(publicAssetResponse.status).toBe(200);
     await expect(publicAssetResponse.arrayBuffer()).resolves.toEqual(assetBytes.buffer);
+  });
+
+  it('round-trips templates and daily-note metadata in a v2 backup', async () => {
+    const pageTemplate = await createTemplate();
+    const dailyTemplate = await createTemplate(true);
+    const localDate = localDateForTimeZone(new Date(), 'UTC');
+    const dailyNoteResponse = await request(`/api/private/daily-notes/${localDate}`, {
+      body: JSON.stringify({ timeZone: 'UTC' }),
+      method: 'PUT',
+    });
+    expect(dailyNoteResponse.status).toBe(200);
+    const dailyNote = (await dailyNoteResponse.json()) as {
+      dailyNote: { id: string; pageId: string; templateId: string };
+      page: PageDetail;
+    };
+    createdPageIds.add(dailyNote.page.id);
+
+    const backupResponse = await request('/api/private/backup');
+    expect(backupResponse.status).toBe(200);
+    const entries = readZipEntries(new Uint8Array(await backupResponse.arrayBuffer()));
+    const manifest = backupManifestSchema.parse(
+      JSON.parse(new TextDecoder().decode(entries.get(BACKUP_MANIFEST_FILENAME)!)) as unknown,
+    );
+    if (manifest.version !== 2) {
+      throw new Error('The template roundtrip requires a v2 backup manifest.');
+    }
+    expect(manifest.templates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: pageTemplate.id, isDailyNote: false }),
+        expect.objectContaining({ id: dailyTemplate.id, isDailyNote: true }),
+      ]),
+    );
+    expect(manifest.dailyNotes).toEqual([
+      expect.objectContaining({
+        localDate,
+        pageId: dailyNote.page.id,
+        templateId: dailyTemplate.id,
+      }),
+    ]);
+
+    await deleteWorkspace();
+
+    const sessionResponse = await request('/api/private/restore/sessions', {
+      body: JSON.stringify({
+        backupVersion: 2,
+        expectedAssets: manifest.assets.length,
+        expectedBytes: 0,
+        expectedDailyNotes: manifest.dailyNotes.length,
+        expectedPages: manifest.pages.length,
+        expectedPublications: manifest.publications.length,
+        expectedRevisions: manifest.revisions.length,
+        expectedTags: manifest.tags.length,
+        expectedTemplates: manifest.templates.length,
+      }),
+      method: 'POST',
+    });
+    expect(sessionResponse.status).toBe(201);
+    const session = ((await sessionResponse.json()) as { session: { id: string } }).session;
+    createdSessionIds.add(session.id);
+
+    async function uploadRecord(
+      type: 'page' | 'revision' | 'publication' | 'tag' | 'template' | 'dailyNote',
+      record: Record<string, unknown>,
+    ) {
+      const payload = canonicalJson(record);
+      const response = await request(
+        `/api/private/restore/sessions/${session.id}/records/${type}/${record.id}`,
+        {
+          body: payload,
+          headers: { 'X-Dovari-SHA-256': await sha256Hex(payload) },
+          method: 'PUT',
+        },
+      );
+      expect(response.status).toBe(200);
+    }
+
+    for (const page of manifest.pages) await uploadRecord('page', page);
+    for (const revision of manifest.revisions) await uploadRecord('revision', revision);
+    for (const tag of manifest.tags) await uploadRecord('tag', tag);
+    for (const publication of manifest.publications) await uploadRecord('publication', publication);
+    for (const template of manifest.templates) await uploadRecord('template', template);
+    for (const note of manifest.dailyNotes) await uploadRecord('dailyNote', note);
+
+    const finalize = await request(`/api/private/restore/sessions/${session.id}/finalize`, {
+      method: 'POST',
+    });
+    expect(finalize.status).toBe(200);
+    await expect(finalize.json()).resolves.toMatchObject({
+      dailyNoteCount: 1,
+      pageCount: 1,
+      templateCount: 2,
+      restored: true,
+    });
+
+    const restoredTemplate = await request(`/api/private/templates/${pageTemplate.id}`);
+    expect(restoredTemplate.status).toBe(200);
+    await expect(restoredTemplate.json()).resolves.toMatchObject({
+      template: { id: pageTemplate.id, title: pageTemplate.title },
+    });
+    const restoredDailyNote = await request(`/api/private/daily-notes/${localDate}`, {
+      body: JSON.stringify({ timeZone: 'UTC' }),
+      method: 'PUT',
+    });
+    expect(restoredDailyNote.status).toBe(200);
+    await expect(restoredDailyNote.json()).resolves.toMatchObject({
+      dailyNote: { id: dailyNote.dailyNote.id, templateId: dailyTemplate.id },
+      page: { id: dailyNote.page.id },
+    });
   });
 
   it('rejects incomplete backups before offering a download', async () => {

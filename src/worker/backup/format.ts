@@ -5,17 +5,22 @@ import {
   backupPublicationRecordSchema,
   backupRevisionRecordSchema,
   backupTagRecordSchema,
+  backupTemplateRecordSchema,
+  backupDailyNoteRecordSchema,
   canonicalJson,
   type BackupAssetRecord,
   type BackupPageRecord,
   type BackupRevisionRecord,
   type BackupTagRecord,
+  type BackupTemplateRecord,
+  type BackupDailyNoteRecord,
 } from '../../shared/backup';
 import { assetTypeForMimeType } from '../assets/formats';
 import type { AssetRecord } from '../assets/repository';
 import type { PageRecord, PageRevisionRecord } from '../pages/repository';
 import type { PublicationRecord } from '../publications/repository';
 import type { TagRecord } from '../tags/repository';
+import type { DailyNoteRecord, TemplateRecord } from '../templates/repository';
 import type { PublicTiptapDocument } from '../../shared/publications';
 import { BackupError } from './errors';
 
@@ -127,6 +132,33 @@ export function revisionBackupRecord(
     content,
     trigger: revision.trigger,
     createdAt: revision.createdAt,
+  });
+}
+
+export function templateBackupRecord(
+  template: TemplateRecord,
+  content: BackupTemplateRecord['content'],
+) {
+  return backupTemplateRecordSchema.parse({
+    id: template.id,
+    title: template.title,
+    content,
+    revision: template.revision,
+    isDailyNote: template.isDailyNote,
+    createdAt: template.createdAt,
+    updatedAt: template.updatedAt,
+  });
+}
+
+export function dailyNoteBackupRecord(note: DailyNoteRecord): BackupDailyNoteRecord {
+  return backupDailyNoteRecordSchema.parse({
+    id: note.id,
+    localDate: note.localDate,
+    timeZone: note.timeZone,
+    pageId: note.pageId,
+    templateId: note.templateId,
+    createdAt: note.createdAt,
+    updatedAt: note.updatedAt,
   });
 }
 

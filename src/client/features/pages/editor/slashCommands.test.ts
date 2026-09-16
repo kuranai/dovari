@@ -24,6 +24,8 @@ describe('slash commands', () => {
       'heading-3',
     ]);
     expect(filterSlashCommands('attach').map((command) => command.id)).toEqual(['file']);
+    expect(filterSlashCommands('template').map((command) => command.id)).toEqual(['template']);
+    expect(filterSlashCommands('daily').map((command) => command.id)).toEqual(['daily-note']);
     expect(filterSlashCommands('unknown')).toEqual([]);
   });
 

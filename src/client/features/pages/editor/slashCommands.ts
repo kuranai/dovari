@@ -14,7 +14,9 @@ export type SlashCommandId =
   | 'divider'
   | 'wiki-link'
   | 'image'
-  | 'file';
+  | 'file'
+  | 'template'
+  | 'daily-note';
 
 export interface SlashCommandDefinition {
   description: string;
@@ -113,6 +115,18 @@ export const slashCommandDefinitions: SlashCommandDefinition[] = [
     id: 'file',
     keywords: ['attachment', 'document', 'upload', 'asset'],
     label: 'File',
+  },
+  {
+    description: 'Open the reusable page template settings.',
+    id: 'template',
+    keywords: ['templates', 'settings', 'reusable', 'page'],
+    label: 'Template',
+  },
+  {
+    description: 'Open or create today’s daily note.',
+    id: 'daily-note',
+    keywords: ['daily', 'today', 'journal', 'note'],
+    label: 'Daily Note',
   },
 ];
 

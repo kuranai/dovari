@@ -8,6 +8,8 @@ import {
   type BackupPublicationRecord,
   type BackupRevisionRecord,
   type BackupTagRecord,
+  type BackupTemplateRecord,
+  type BackupDailyNoteRecord,
   type RestoreSessionStatus,
 } from '../../../shared/backup';
 import type { WorkspaceOutletContext } from '../../app/App';
@@ -96,17 +98,21 @@ function recordWorkBytes(archive: ValidatedBackupArchive) {
     ...archive.manifest.pages,
     ...archive.manifest.revisions,
     ...publications,
+    ...(archive.manifest.version === 2 ? archive.manifest.templates : []),
+    ...(archive.manifest.version === 2 ? archive.manifest.dailyNotes : []),
   ].reduce((sum, record) => sum + encoder.encode(canonicalJson(record)).byteLength, 0);
 }
 
 function recordIdSet(
   status: RestoreSessionStatus | null,
-  type: 'page' | 'revision' | 'publication' | 'tag',
+  type: 'page' | 'revision' | 'publication' | 'tag' | 'template' | 'dailyNote',
 ) {
   if (type === 'page') return new Set(status?.pageIds ?? []);
   if (type === 'revision') return new Set(status?.revisionIds ?? []);
   if (type === 'publication') return new Set(status?.publicationIds ?? []);
-  return new Set(status?.tagIds ?? []);
+  if (type === 'tag') return new Set(status?.tagIds ?? []);
+  if (type === 'template') return new Set(status?.templateIds ?? []);
+  return new Set(status?.dailyNoteIds ?? []);
 }
 
 function formatBytes(value: number) {
@@ -204,6 +210,9 @@ export function BackupRestorePage() {
           expectedTags: archive.manifest.tags.length,
           expectedPublications:
             archive.manifest.version === 2 ? archive.manifest.publications.length : 0,
+          expectedTemplates: archive.manifest.version === 2 ? archive.manifest.templates.length : 0,
+          expectedDailyNotes:
+            archive.manifest.version === 2 ? archive.manifest.dailyNotes.length : 0,
         });
         currentSession = response.session;
         currentSessionId = response.session.id;
@@ -216,12 +225,20 @@ export function BackupRestorePage() {
       const uploadedRevisions = recordIdSet(currentSession, 'revision');
       const uploadedPublications = recordIdSet(currentSession, 'publication');
       const uploadedTags = recordIdSet(currentSession, 'tag');
+      const uploadedTemplates = recordIdSet(currentSession, 'template');
+      const uploadedDailyNotes = recordIdSet(currentSession, 'dailyNote');
       const uploadedAssets = new Set(currentSession.assetIds);
       const encoder = new TextEncoder();
 
       const uploadRecord = async (
-        type: 'page' | 'revision' | 'publication' | 'tag',
-        record: BackupPageRecord | BackupRevisionRecord | BackupPublicationRecord | BackupTagRecord,
+        type: 'page' | 'revision' | 'publication' | 'tag' | 'template' | 'dailyNote',
+        record:
+          | BackupPageRecord
+          | BackupRevisionRecord
+          | BackupPublicationRecord
+          | BackupTagRecord
+          | BackupTemplateRecord
+          | BackupDailyNoteRecord,
       ) => {
         const payload = canonicalJson(record);
         const bytes = encoder.encode(payload).byteLength;
@@ -232,7 +249,11 @@ export function BackupRestorePage() {
               ? uploadedRevisions
               : type === 'publication'
                 ? uploadedPublications
-                : uploadedTags;
+                : type === 'tag'
+                  ? uploadedTags
+                  : type === 'template'
+                    ? uploadedTemplates
+                    : uploadedDailyNotes;
         if (ids.has(record.id)) {
           completed += bytes;
           setProgressBytes(completed);
@@ -263,6 +284,12 @@ export function BackupRestorePage() {
       if (archive.manifest.version === 2) {
         for (const publication of archive.manifest.publications) {
           await uploadRecord('publication', publication);
+        }
+        for (const template of archive.manifest.templates) {
+          await uploadRecord('template', template);
+        }
+        for (const dailyNote of archive.manifest.dailyNotes) {
+          await uploadRecord('dailyNote', dailyNote);
         }
       }
 
@@ -295,7 +322,7 @@ export function BackupRestorePage() {
       setSessionId(null);
       setProgressBytes(total);
       setSuccess(
-        `Restored ${result.pageCount} pages, ${result.revisionCount} versions, ${result.assetCount} assets, ${result.tagCount} tags, and ${result.publicationCount} publications.`,
+        `Restored ${result.pageCount} pages, ${result.revisionCount} versions, ${result.assetCount} assets, ${result.tagCount} tags, ${result.templateCount} templates, ${result.dailyNoteCount} daily notes, and ${result.publicationCount} publications.`,
       );
       setPhase('success');
       await refreshPages();
@@ -420,6 +447,14 @@ export function BackupRestorePage() {
             <div>
               <dt>Publications</dt>
               <dd>{archive.manifest.version === 2 ? archive.manifest.publications.length : 0}</dd>
+            </div>
+            <div>
+              <dt>Templates</dt>
+              <dd>{archive.manifest.version === 2 ? archive.manifest.templates.length : 0}</dd>
+            </div>
+            <div>
+              <dt>Daily notes</dt>
+              <dd>{archive.manifest.version === 2 ? archive.manifest.dailyNotes.length : 0}</dd>
             </div>
             <div>
               <dt>Asset data</dt>

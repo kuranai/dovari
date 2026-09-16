@@ -2,6 +2,7 @@ import type { AssetRecord } from '../assets/repository';
 import type { PageRecord, PageRevisionRecord } from '../pages/repository';
 import type { PublicationRecord } from '../publications/repository';
 import type { TagRecord } from '../tags/repository';
+import type { DailyNoteRecord, TemplateRecord } from '../templates/repository';
 
 interface PageDatabaseRow {
   search_id: number;
@@ -60,9 +61,29 @@ interface PublicationDatabaseRow {
   updated_at: string;
 }
 
+interface TemplateDatabaseRow {
+  id: string;
+  title: string;
+  content_json: string;
+  revision: number;
+  is_daily_note: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface DailyNoteDatabaseRow {
+  id: string;
+  local_date: string;
+  time_zone: string;
+  page_id: string;
+  template_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface RestoreSessionRecordRow {
   session_id: string;
-  record_type: 'page' | 'revision' | 'publication' | 'tag';
+  record_type: 'page' | 'revision' | 'publication' | 'tag' | 'template' | 'dailyNote';
   record_id: string;
   payload_json: string;
   sha256: string;
@@ -89,6 +110,8 @@ export interface RestoreSessionRow {
   expected_assets: number;
   expected_tags: number;
   expected_publications: number;
+  expected_templates: number;
+  expected_daily_notes: number;
   expected_bytes: number;
   created_at: string;
   updated_at: string;
@@ -187,6 +210,30 @@ function toTagRecord(row: {
     id: row.id,
     name: row.name,
     nameNormalized: row.name_normalized,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function toTemplateRecord(row: TemplateDatabaseRow): TemplateRecord {
+  return {
+    id: row.id,
+    title: row.title,
+    contentJson: row.content_json,
+    revision: row.revision,
+    isDailyNote: row.is_daily_note === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function toDailyNoteRecord(row: DailyNoteDatabaseRow): DailyNoteRecord {
+  return {
+    id: row.id,
+    localDate: row.local_date,
+    timeZone: row.time_zone,
+    pageId: row.page_id,
+    templateId: row.template_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -300,6 +347,28 @@ export class BackupRepository {
     return result.results.map(toTagRecord);
   }
 
+  async listTemplates(): Promise<TemplateRecord[]> {
+    const result = await this.db
+      .prepare(
+        `SELECT id, title, content_json, revision, is_daily_note, created_at, updated_at
+         FROM templates
+         ORDER BY id`,
+      )
+      .all<TemplateDatabaseRow>();
+    return result.results.map(toTemplateRecord);
+  }
+
+  async listDailyNotes(): Promise<DailyNoteRecord[]> {
+    const result = await this.db
+      .prepare(
+        `SELECT id, local_date, time_zone, page_id, template_id, created_at, updated_at
+         FROM daily_notes
+         ORDER BY id`,
+      )
+      .all<DailyNoteDatabaseRow>();
+    return result.results.map(toDailyNoteRecord);
+  }
+
   async listPublicationAssetIds(publicationId: string) {
     const result = await this.db
       .prepare(`SELECT asset_id FROM publication_assets WHERE publication_id = ? ORDER BY asset_id`)
@@ -313,17 +382,33 @@ export class BackupRepository {
       .prepare(
         `SELECT EXISTS(SELECT 1 FROM pages LIMIT 1) AS has_pages,
                 EXISTS(SELECT 1 FROM assets LIMIT 1) AS has_assets,
-                EXISTS(SELECT 1 FROM tags LIMIT 1) AS has_tags`,
+                EXISTS(SELECT 1 FROM tags LIMIT 1) AS has_tags,
+                EXISTS(SELECT 1 FROM templates LIMIT 1) AS has_templates,
+                EXISTS(SELECT 1 FROM daily_notes LIMIT 1) AS has_daily_notes`,
       )
-      .first<{ has_pages: number; has_assets: number; has_tags: number }>();
-    return row !== null && (row.has_pages === 1 || row.has_assets === 1 || row.has_tags === 1);
+      .first<{
+        has_pages: number;
+        has_assets: number;
+        has_tags: number;
+        has_templates: number;
+        has_daily_notes: number;
+      }>();
+    return (
+      row !== null &&
+      (row.has_pages === 1 ||
+        row.has_assets === 1 ||
+        row.has_tags === 1 ||
+        row.has_templates === 1 ||
+        row.has_daily_notes === 1)
+    );
   }
 
   async findActiveSession() {
     return this.db
       .prepare(
         `SELECT id, owner_identity, status, backup_version, expected_pages, expected_revisions,
-                expected_assets, expected_tags, expected_publications, expected_bytes,
+                expected_assets, expected_tags, expected_publications, expected_templates,
+                expected_daily_notes, expected_bytes,
                 created_at, updated_at, expires_at
          FROM restore_sessions
          WHERE status IN ('uploading', 'finalizing', 'failed')
@@ -337,7 +422,8 @@ export class BackupRepository {
     return this.db
       .prepare(
         `SELECT id, owner_identity, status, backup_version, expected_pages, expected_revisions,
-                expected_assets, expected_tags, expected_publications, expected_bytes,
+                expected_assets, expected_tags, expected_publications, expected_templates,
+                expected_daily_notes, expected_bytes,
                 created_at, updated_at, expires_at
          FROM restore_sessions
          WHERE id = ? AND owner_identity = ?`,
@@ -355,6 +441,8 @@ export class BackupRepository {
     expectedAssets: number;
     expectedTags: number;
     expectedPublications: number;
+    expectedTemplates: number;
+    expectedDailyNotes: number;
     expectedBytes: number;
     createdAt: string;
     updatedAt: string;
@@ -364,9 +452,10 @@ export class BackupRepository {
       .prepare(
         `INSERT INTO restore_sessions
           (id, owner_identity, status, backup_version, expected_pages, expected_revisions,
-           expected_assets, expected_tags, expected_publications, expected_bytes,
+           expected_assets, expected_tags, expected_publications, expected_templates,
+           expected_daily_notes, expected_bytes,
            created_at, updated_at, expires_at)
-         SELECT ?, ?, 'uploading', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         SELECT ?, ?, 'uploading', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
          WHERE NOT EXISTS (
            SELECT 1 FROM restore_sessions
            WHERE status IN ('uploading', 'finalizing', 'failed')
@@ -381,6 +470,8 @@ export class BackupRepository {
         session.expectedAssets,
         session.expectedTags,
         session.expectedPublications,
+        session.expectedTemplates,
+        session.expectedDailyNotes,
         session.expectedBytes,
         session.createdAt,
         session.updatedAt,
@@ -404,7 +495,7 @@ export class BackupRepository {
 
   async findRecord(
     sessionId: string,
-    recordType: 'page' | 'revision' | 'publication' | 'tag',
+    recordType: 'page' | 'revision' | 'publication' | 'tag' | 'template' | 'dailyNote',
     recordId: string,
   ) {
     return this.db
@@ -419,7 +510,7 @@ export class BackupRepository {
 
   async insertRecord(record: {
     sessionId: string;
-    recordType: 'page' | 'revision' | 'publication' | 'tag';
+    recordType: 'page' | 'revision' | 'publication' | 'tag' | 'template' | 'dailyNote';
     recordId: string;
     payloadJson: string;
     sha256: string;

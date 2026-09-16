@@ -31,6 +31,8 @@ export interface PageViewProps {
   pageId: string;
   onPageDeleted: (page: PageDetail) => Promise<void>;
   onPageCreated?: (page: PageSummary) => void;
+  onOpenTemplateSettings?: () => void;
+  onOpenDailyNote?: () => void;
   onHistoryClosed?: () => void;
   onNavigateToPage?: (pageId: string) => void;
   onPageUpdated: (page: PageSummary) => void;
@@ -269,11 +271,15 @@ function autosaveStatusLabel(snapshot: AutosaveSnapshot) {
 
 function PageContentEditor({
   onNavigateToPage,
+  onOpenTemplateSettings,
+  onOpenDailyNote,
   onPageCreated,
   onPageUpdated,
   page,
 }: {
   onNavigateToPage?: (pageId: string) => void;
+  onOpenTemplateSettings?: () => void;
+  onOpenDailyNote?: () => void;
   onPageCreated?: (page: PageSummary) => void;
   onPageUpdated: (page: PageDetail) => void;
   page: PageDetail;
@@ -432,6 +438,8 @@ function PageContentEditor({
           content={content}
           onChange={handleContentChange}
           onNavigateToPage={onNavigateToPage}
+          onOpenTemplateSettings={onOpenTemplateSettings}
+          onOpenDailyNote={onOpenDailyNote}
           onPageCreated={onPageCreated}
           pageId={page.id}
           toolbarAccessory={
@@ -447,6 +455,8 @@ function PageContentEditor({
 
 function PageDetailContent({
   onNavigateToPage,
+  onOpenTemplateSettings,
+  onOpenDailyNote,
   onPageCreated,
   page,
   onPageDeleted,
@@ -455,6 +465,8 @@ function PageDetailContent({
   openHistory = false,
 }: {
   onNavigateToPage?: (pageId: string) => void;
+  onOpenTemplateSettings?: () => void;
+  onOpenDailyNote?: () => void;
   onPageCreated?: (page: PageSummary) => void;
   page: PageDetail;
   onPageDeleted: (page: PageDetail) => Promise<void>;
@@ -541,6 +553,8 @@ function PageDetailContent({
       <PageContentEditor
         key={`${page.id}-${editorResetKey}`}
         onNavigateToPage={onNavigateToPage}
+        onOpenTemplateSettings={onOpenTemplateSettings}
+        onOpenDailyNote={onOpenDailyNote}
         onPageCreated={onPageCreated}
         onPageUpdated={onPageUpdated}
         page={page}
@@ -622,6 +636,8 @@ function Backlinks({ pageId }: { pageId: string }) {
 export function PageView({
   pageId,
   onPageCreated,
+  onOpenTemplateSettings,
+  onOpenDailyNote,
   onHistoryClosed,
   onNavigateToPage,
   onPageDeleted,
@@ -702,6 +718,8 @@ export function PageView({
     <PageDetailContent
       key={state.page.id}
       onNavigateToPage={onNavigateToPage}
+      onOpenTemplateSettings={onOpenTemplateSettings}
+      onOpenDailyNote={onOpenDailyNote}
       onPageCreated={onPageCreated}
       onHistoryClosed={onHistoryClosed}
       onPageDeleted={onPageDeleted}

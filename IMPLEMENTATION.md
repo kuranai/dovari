@@ -1,10 +1,10 @@
 # Dovari – Implementierungsstatus und Phasenplan
 
 **Dieses Dokument ist die kanonische Quelle für den aktuellen Implementierungsstand.**  
-**Letzte Aktualisierung:** 14. September 2026
-**Gesamtstatus:** P00–P27 abgeschlossen, P28–P29 geplant
-**Aktuelle Phase:** keine (P27 abgeschlossen)
-**Nächste Phase:** P28 – Templates und Daily Notes (`NEXT`)
+**Letzte Aktualisierung:** 15. September 2026
+**Gesamtstatus:** P00–P28 abgeschlossen, P29 geplant
+**Aktuelle Phase:** P28 – Templates und Daily Notes (`DONE`)
+**Nächste Phase:** P29 – Markdown- und Obsidian-Import (`NEXT`)
 
 ## 1. Zweck
 
@@ -119,8 +119,8 @@ nicht automatisch begonnen.
 | P25 | Public | Öffentliche Knowledge Base und Veröffentlichungen | `DONE` | Publication-Migration, Snapshot-/Asset-Allowlist, private/public API, Read-only-UI, Backup-v2/v1-Restore-Kompatibilität, Soft-Delete-Rückzug und vollständige Verifikation umgesetzt |
 | P26 | Public | Öffentliche Suche, Navigation und Auffindbarkeit | `DONE` | Öffentlicher Snapshot-FTS5-Index, Public Search, snapshotbasierte Hierarchie-Navigation, sichere Metadaten, Robots/Sitemap und revalidierbare Public-Caches umgesetzt und verifiziert |
 | P27 | Organisation | Tags und Favoriten | `DONE` | Normalisierte Tags, atomare Zuordnung, Favoriten, private Filter-/Suche, optionale Snapshot-Tags, Backup-/Restore und UI umgesetzt und verifiziert |
-| P28 | Workflows | Templates und Daily Notes | `NEXT` | – |
-| P29 | Datenportabilität | Markdown- und Obsidian-Import | `PLANNED` | – |
+| P28 | Workflows | Templates und Daily Notes | `DONE` | Private Templates, Create-from-Template, konfigurierbare Daily Notes, Slash-/Command-Palette, Backup-v2 und responsive Accessibility umgesetzt und verifiziert |
+| P29 | Datenportabilität | Markdown- und Obsidian-Import | `NEXT` | – |
 
 ## 6. Phasendefinitionen
 
@@ -1053,6 +1053,7 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 | 2026-09-14 | P25 | Öffentliche Knowledge Base und Veröffentlichungen mit isolierten Snapshots, Public-API, Read-only-UI, Publish-Workflow und v2-Backup/Restore umgesetzt | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 136 Tests in 32 Testdateien und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (11 Browser-Tests einschließlich anonymem Public-Landing-/Read-only-/Edit-/Unpublish-Flow mit Desktop-/Mobile-Axe), `npx --yes -p node@26 node /usr/bin/npm run db:migrate:local` (0006 und 0007 angewendet), `npx --yes -p node@26 node /usr/bin/npm run db:fts:integrity`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts` sowie `git diff --check` erfolgreich | Public-Search, Sitemap, Robots und gezieltes Caching bleiben gemäß Scope P26 vorbehalten; P26 ist `NEXT` |
 | 2026-09-14 | P26 | Öffentlicher Snapshot-FTS5-Index mit Titelgewichtung und Snippets, debounced/zugängliche Public Search, snapshotbasierte Navigation mit übersprungenen unveröffentlichten Zwischeneltern, sichere serverseitige Title-/Description-/Open-Graph-Metadaten, Robots/Sitemap und sofort revalidierbare Public-Caches umgesetzt | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 142 Tests in 34 Testdateien und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (11 Browser-Tests einschließlich Public-Search-/Metadata-/Robots-/Sitemap-Flow mit Desktop-/Mobile-Axe), `npx --yes -p node@26 node /usr/bin/npm run db:migrate:local` (0008 angewendet), `npx --yes -p node@26 node /usr/bin/npm run db:fts:public-integrity`, `npx --yes -p node@26 node /usr/bin/npm run db:fts:public-rebuild`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts` sowie `git diff --check` erfolgreich | Standardmäßig bleiben öffentliche Seiten `noindex`; P27 ist `NEXT` |
 | 2026-09-14 | P27 | Tags und Favoriten mit normalisierten eindeutigen Tag-Namen, atomarer Page-Tag-Zuordnung, Favoritenstatus, Sidebar-/Command-Palette-Filtern, privater Tag-Suche, expliziten Snapshot-Tags, Backup-/Restore-Erweiterung, Migration 0009 sowie Client-/Accessibility-/E2E-Abdeckung umgesetzt | `npx --yes -p node@26 node /usr/bin/npm test -- --run` (143 Tests in 35 Testdateien), `npx --yes -p node@26 node /usr/bin/npm run typecheck`, `npx --yes -p node@26 node /usr/bin/npm run lint`, `npx --yes -p node@26 node /usr/bin/npm run build`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts`, `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (12 Playwright-Tests einschließlich Tag-/Favorit-/Trash-Restore-Flow mit Desktop-/Mobile-Axe), `git diff --check` sowie gezielter Backup-Roundtrip-Test erfolgreich | `npm run format:check` meldet ausschließlich die bereits vorhandene, bewusst unveränderte Formatierung in `wrangler.jsonc`; alle P27-Dateien sind formatiert. P28 ist `NEXT` |
+| 2026-09-15 | P28 | Private Templates mit validiertem Tiptap-Inhalt, atomisches Create-from-Template, konfigurierbares und idempotentes Daily-Note-Öffnen mit lokaler Zeitzone/DST-Prüfung, Slash-/Command-Palette-Integration, responsive Templates-UI sowie Backup-v2 für Templates und Daily Notes umgesetzt | `npx --yes -p node@26 node /usr/bin/npm test` (150 Tests in 37 Testdateien), `npx --yes -p node@26 node /usr/bin/npm run typecheck`, `npx --yes -p node@26 node /usr/bin/npm run lint`, `npx --yes -p node@26 node /usr/bin/npm run build`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts`, `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (13 Playwright-Tests einschließlich Template-/Daily-Note-Flow sowie Desktop-/Mobile-Axe), `git diff --check` und erfolgreiche Anwendung der Migration 0010 im E2E-Lauf | `npm run format:check` meldet ausschließlich die bereits vorhandene, bewusst unveränderte Formatierung in `wrangler.jsonc`; alle P28-Dateien sind formatiert. P29 ist `NEXT` |
 
 ## 9. Regeln zur Pflege dieses Dokuments
 

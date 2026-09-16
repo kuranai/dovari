@@ -224,6 +224,59 @@ export const pagePublications = sqliteTable(
   ],
 );
 
+export const templates = sqliteTable(
+  'templates',
+  {
+    id: text('id').primaryKey(),
+    title: text('title').notNull(),
+    contentJson: text('content_json').notNull(),
+    revision: integer('revision').notNull().default(1),
+    isDailyNote: integer('is_daily_note', { mode: 'boolean' }).notNull().default(false),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('templates_title_unique').on(sql`${table.title} COLLATE NOCASE`),
+    uniqueIndex('templates_daily_note_unique')
+      .on(table.isDailyNote)
+      .where(sql`${table.isDailyNote} = 1`),
+    check('templates_title_length', sql`length(${table.title}) BETWEEN 1 AND 200`),
+    check('templates_revision_positive', sql`${table.revision} > 0`),
+    check('templates_is_daily_note_boolean', sql`${table.isDailyNote} IN (0, 1)`),
+  ],
+);
+
+export const dailyNotes = sqliteTable(
+  'daily_notes',
+  {
+    id: text('id').primaryKey(),
+    localDate: text('local_date').notNull().unique(),
+    timeZone: text('time_zone').notNull(),
+    pageId: text('page_id').notNull().unique(),
+    templateId: text('template_id'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('daily_notes_page').on(table.pageId),
+    index('daily_notes_template').on(table.templateId),
+    check(
+      'daily_notes_local_date_format',
+      sql`${table.localDate} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'`,
+    ),
+    foreignKey({
+      columns: [table.pageId],
+      foreignColumns: [pages.id],
+      name: 'daily_notes_page_id_fkey',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.templateId],
+      foreignColumns: [templates.id],
+      name: 'daily_notes_template_id_fkey',
+    }).onDelete('set null'),
+  ],
+);
+
 export const publicationAssets = sqliteTable(
   'publication_assets',
   {
@@ -286,6 +339,8 @@ export const restoreSessions = sqliteTable(
     expectedAssets: integer('expected_assets').notNull(),
     expectedTags: integer('expected_tags').notNull().default(0),
     expectedPublications: integer('expected_publications').notNull().default(0),
+    expectedTemplates: integer('expected_templates').notNull().default(0),
+    expectedDailyNotes: integer('expected_daily_notes').notNull().default(0),
     expectedBytes: integer('expected_bytes').notNull(),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
@@ -304,6 +359,11 @@ export const restoreSessions = sqliteTable(
     check(
       'restore_sessions_expected_publications_nonnegative',
       sql`${table.expectedPublications} >= 0`,
+    ),
+    check('restore_sessions_expected_templates_nonnegative', sql`${table.expectedTemplates} >= 0`),
+    check(
+      'restore_sessions_expected_daily_notes_nonnegative',
+      sql`${table.expectedDailyNotes} >= 0`,
     ),
     check('restore_sessions_expected_bytes_nonnegative', sql`${table.expectedBytes} >= 0`),
     index('restore_sessions_owner_updated').on(table.ownerIdentity, desc(table.updatedAt)),
@@ -326,7 +386,7 @@ export const restoreSessionRecords = sqliteTable(
     index('restore_session_records_session').on(table.sessionId, table.recordType),
     check(
       'restore_session_records_type_allowed',
-      sql`${table.recordType} IN ('page', 'revision', 'publication', 'tag')`,
+      sql`${table.recordType} IN ('page', 'revision', 'publication', 'tag', 'template', 'dailyNote')`,
     ),
     foreignKey({
       columns: [table.sessionId],
@@ -375,6 +435,10 @@ export type PageRevision = typeof pageRevisions.$inferSelect;
 export type NewPageRevision = typeof pageRevisions.$inferInsert;
 export type PagePublication = typeof pagePublications.$inferSelect;
 export type NewPagePublication = typeof pagePublications.$inferInsert;
+export type Template = typeof templates.$inferSelect;
+export type NewTemplate = typeof templates.$inferInsert;
+export type DailyNote = typeof dailyNotes.$inferSelect;
+export type NewDailyNote = typeof dailyNotes.$inferInsert;
 export type PublicationAsset = typeof publicationAssets.$inferSelect;
 export type NewPublicationAsset = typeof publicationAssets.$inferInsert;
 export type AuthSession = typeof authSessions.$inferSelect;

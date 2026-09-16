@@ -108,6 +108,18 @@ export interface NewPageRecord {
   parentId: string | null;
   createdAt: string;
   updatedAt: string;
+  assetIds?: string[];
+  wikiLinks?: PageLinkRecord[];
+}
+
+export interface NewDailyNoteRecord {
+  id: string;
+  localDate: string;
+  timeZone: string;
+  pageId: string;
+  templateId: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PageTreeUpdate {
@@ -520,8 +532,12 @@ export class PageRepository {
     return this.db.batch(statements);
   }
 
-  async insert(page: NewPageRecord) {
+  private pageInsertStatement(page: NewPageRecord, dailyLocalDate?: string) {
     const parentFilter = page.parentId === null ? 'parent_id IS NULL' : 'parent_id = ?';
+    const dailyFilter =
+      dailyLocalDate === undefined
+        ? ''
+        : ' AND NOT EXISTS (SELECT 1 FROM daily_notes WHERE local_date = ?)';
     const bindings =
       page.parentId === null
         ? [
@@ -533,6 +549,7 @@ export class PageRepository {
             page.parentId,
             page.createdAt,
             page.updatedAt,
+            ...(dailyLocalDate === undefined ? [] : [dailyLocalDate]),
           ]
         : [
             page.id,
@@ -544,20 +561,92 @@ export class PageRepository {
             page.createdAt,
             page.updatedAt,
             page.parentId,
+            ...(dailyLocalDate === undefined ? [] : [dailyLocalDate]),
           ];
 
-    const result = await this.db
+    return this.db
       .prepare(
         `INSERT INTO pages
-          (id, title, slug, content_json, content_text, parent_id, position, revision, created_at, updated_at)
-         SELECT ?, ?, ?, ?, ?, ?, COALESCE(MAX(position) + 1, 0), 1, ?, ?
-         FROM pages
-         WHERE deleted_at IS NULL AND ${parentFilter}`,
+        (id, title, slug, content_json, content_text, parent_id, position, revision, created_at, updated_at)
+       SELECT ?, ?, ?, ?, ?, ?, COALESCE(MAX(position) + 1, 0), 1, ?, ?
+       FROM pages
+       WHERE deleted_at IS NULL AND ${parentFilter}${dailyFilter}`,
       )
-      .bind(...bindings)
-      .run();
+      .bind(...bindings);
+  }
 
-    return result.meta.changes;
+  private pageRelationStatements(page: NewPageRecord) {
+    const statements: D1PreparedStatement[] = [];
+    for (const assetId of page.assetIds ?? []) {
+      statements.push(
+        this.db
+          .prepare(
+            `INSERT INTO page_assets (page_id, asset_id)
+             SELECT ?, ? WHERE EXISTS (SELECT 1 FROM pages WHERE id = ? AND deleted_at IS NULL)
+               AND EXISTS (SELECT 1 FROM assets WHERE id = ?)`,
+          )
+          .bind(page.id, assetId, page.id, assetId),
+      );
+    }
+    for (const link of page.wikiLinks ?? []) {
+      statements.push(
+        this.db
+          .prepare(
+            `INSERT INTO page_links
+              (id, source_page_id, target_page_id, target_title, target_title_normalized, created_at)
+             SELECT ?, ?, ?, ?, ?, ?
+             WHERE EXISTS (SELECT 1 FROM pages WHERE id = ? AND deleted_at IS NULL)`,
+          )
+          .bind(
+            link.id,
+            page.id,
+            link.targetPageId,
+            link.targetTitle,
+            link.targetTitleNormalized,
+            link.createdAt,
+            page.id,
+          ),
+      );
+    }
+    return statements;
+  }
+
+  async insert(page: NewPageRecord) {
+    const result = await this.db.batch([
+      this.pageInsertStatement(page),
+      ...this.pageRelationStatements(page),
+    ]);
+
+    return result[0]?.meta.changes ?? 0;
+  }
+
+  async insertWithDailyNote(page: NewPageRecord, dailyNote: NewDailyNoteRecord) {
+    const statements = [
+      this.pageInsertStatement(page, dailyNote.localDate),
+      ...this.pageRelationStatements(page),
+      this.db
+        .prepare(
+          `INSERT INTO daily_notes
+            (id, local_date, time_zone, page_id, template_id, created_at, updated_at)
+           SELECT ?, ?, ?, ?, ?, ?, ?
+           WHERE EXISTS (SELECT 1 FROM pages WHERE id = ? AND deleted_at IS NULL)`,
+        )
+        .bind(
+          dailyNote.id,
+          dailyNote.localDate,
+          dailyNote.timeZone,
+          dailyNote.pageId,
+          dailyNote.templateId,
+          dailyNote.createdAt,
+          dailyNote.updatedAt,
+          dailyNote.pageId,
+        ),
+    ];
+    const result = await this.db.batch(statements);
+    return {
+      dailyNoteChanges: result.at(-1)?.meta.changes ?? 0,
+      pageChanges: result[0]?.meta.changes ?? 0,
+    };
   }
 
   async updateMetadata(

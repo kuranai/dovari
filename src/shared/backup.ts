@@ -10,6 +10,7 @@ import {
   type TiptapDocument,
 } from './pages';
 import { publicIdSchema, publicTiptapDocumentSchema } from './publications';
+import { localDateSchema, timeZoneSchema } from './templates';
 import {
   TAG_MAX_LIMIT,
   tagIdSchema,
@@ -91,6 +92,34 @@ export const backupTagRecordSchema = z
   .strict();
 
 export type BackupTagRecord = z.infer<typeof backupTagRecordSchema>;
+
+export const backupTemplateRecordSchema = z
+  .object({
+    id: pageIdSchema,
+    title: z.string().trim().min(1).max(PAGE_TITLE_MAX_LENGTH),
+    content: tiptapDocumentSchema,
+    revision: baseRevisionSchema,
+    isDailyNote: z.boolean(),
+    createdAt: timestampSchema,
+    updatedAt: timestampSchema,
+  })
+  .strict();
+
+export type BackupTemplateRecord = z.infer<typeof backupTemplateRecordSchema>;
+
+export const backupDailyNoteRecordSchema = z
+  .object({
+    id: pageIdSchema,
+    localDate: localDateSchema,
+    timeZone: timeZoneSchema,
+    pageId: pageIdSchema,
+    templateId: pageIdSchema.nullable(),
+    createdAt: timestampSchema,
+    updatedAt: timestampSchema,
+  })
+  .strict();
+
+export type BackupDailyNoteRecord = z.infer<typeof backupDailyNoteRecordSchema>;
 
 const backupPathSchema = z
   .string()
@@ -176,6 +205,8 @@ export const backupManifestV2Schema = z
     assets: z.array(backupAssetRecordSchema),
     publications: z.array(backupPublicationRecordSchema),
     tags: z.array(backupTagRecordSchema).max(TAG_MAX_LIMIT).default([]),
+    templates: z.array(backupTemplateRecordSchema).max(200).default([]),
+    dailyNotes: z.array(backupDailyNoteRecordSchema).max(10_000).default([]),
   })
   .strict();
 
@@ -196,6 +227,8 @@ export const restoreSessionCreateRequestSchema = z
     expectedAssets: nonnegativeIntegerSchema,
     expectedTags: nonnegativeIntegerSchema.default(0),
     expectedPublications: nonnegativeIntegerSchema.default(0),
+    expectedTemplates: nonnegativeIntegerSchema.default(0),
+    expectedDailyNotes: nonnegativeIntegerSchema.default(0),
     expectedBytes: nonnegativeIntegerSchema,
   })
   .strict();
@@ -212,17 +245,23 @@ export const restoreSessionStatusSchema = z
     expectedAssets: nonnegativeIntegerSchema,
     expectedTags: nonnegativeIntegerSchema.default(0),
     expectedPublications: nonnegativeIntegerSchema.default(0),
+    expectedTemplates: nonnegativeIntegerSchema.default(0),
+    expectedDailyNotes: nonnegativeIntegerSchema.default(0),
     expectedBytes: nonnegativeIntegerSchema,
     receivedPages: nonnegativeIntegerSchema,
     receivedRevisions: nonnegativeIntegerSchema,
     receivedAssets: nonnegativeIntegerSchema,
     receivedTags: nonnegativeIntegerSchema.default(0),
+    receivedTemplates: nonnegativeIntegerSchema.default(0),
+    receivedDailyNotes: nonnegativeIntegerSchema.default(0),
     receivedBytes: nonnegativeIntegerSchema,
     pageIds: z.array(pageIdSchema),
     revisionIds: z.array(pageIdSchema),
     assetIds: z.array(assetIdSchema),
     tagIds: z.array(tagIdSchema).default([]),
     publicationIds: z.array(pageIdSchema).default([]),
+    templateIds: z.array(pageIdSchema).default([]),
+    dailyNoteIds: z.array(pageIdSchema).default([]),
     createdAt: timestampSchema,
     updatedAt: timestampSchema,
     expiresAt: timestampSchema,
@@ -239,7 +278,7 @@ export type RestoreSessionResponse = z.infer<typeof restoreSessionResponseSchema
 export const restoreRecordResponseSchema = z
   .object({
     accepted: z.literal(true),
-    recordType: z.enum(['page', 'revision', 'publication', 'tag']),
+    recordType: z.enum(['page', 'revision', 'publication', 'tag', 'template', 'dailyNote']),
     recordId: pageIdSchema,
   })
   .strict();
@@ -260,6 +299,8 @@ export const restoreFinalizeResponseSchema = z
     assetCount: nonnegativeIntegerSchema,
     tagCount: nonnegativeIntegerSchema.default(0),
     publicationCount: nonnegativeIntegerSchema.default(0),
+    templateCount: nonnegativeIntegerSchema.default(0),
+    dailyNoteCount: nonnegativeIntegerSchema.default(0),
   })
   .strict();
 

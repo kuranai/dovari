@@ -40,6 +40,8 @@ export interface PageEditorProps {
   pageId?: string;
   onNavigateToPage?: (pageId: string) => void;
   onPageCreated?: (page: PageSummary) => void;
+  onOpenTemplateSettings?: () => void;
+  onOpenDailyNote?: () => void;
   toolbarAccessory?: ReactNode;
   createWikiLinkPage?: typeof createPage;
   searchWikiLinkPages?: typeof searchWikiLinkPages;
@@ -140,6 +142,8 @@ export function PageEditor({
   onChange,
   onNavigateToPage,
   onPageCreated,
+  onOpenTemplateSettings,
+  onOpenDailyNote,
   pageId,
   searchWikiLinkPages: searchWikiLinkPagesRequest = searchWikiLinkPages,
   toolbarAccessory,
@@ -419,6 +423,26 @@ export function PageEditor({
 
     if (command.id === 'image' || command.id === 'file') {
       openSlashAssetPicker(command.id, slashCommandSession);
+      return;
+    }
+
+    if (command.id === 'template' || command.id === 'daily-note') {
+      if (command.id === 'template' && !onOpenTemplateSettings) {
+        return;
+      }
+      if (command.id === 'daily-note' && !onOpenDailyNote) {
+        return;
+      }
+      const insertionPosition = deleteSlashQuery(slashCommandSession);
+      if (insertionPosition === null) {
+        return;
+      }
+      setSlashCommandSession(null);
+      if (command.id === 'template') {
+        onOpenTemplateSettings?.();
+      } else {
+        onOpenDailyNote?.();
+      }
       return;
     }
 

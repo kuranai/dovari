@@ -76,6 +76,99 @@ test('validates and restores a lossless backup after the workspace is emptied', 
   await expect(restoredTrashItem).toHaveCount(0);
 });
 
+test('creates independent template pages and reuses one local daily note', async ({ page }) => {
+  const pageTemplateTitle = `Template E2E ${Date.now()}`;
+  const dailyTemplateTitle = `Daily template E2E ${Date.now()}`;
+  const templateBody = 'This content comes from the reusable template.';
+
+  await page.goto('/app/settings/templates');
+  await expect(page.getByRole('heading', { exact: true, name: 'Templates' })).toBeVisible();
+  const desktopTemplateA11y = await new AxeBuilder({ page }).analyze();
+  expect(
+    desktopTemplateA11y.violations.filter((violation) => violation.impact === 'critical'),
+  ).toEqual([]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(page.getByRole('heading', { exact: true, name: 'Templates' })).toBeVisible();
+  const mobileTemplateA11y = await new AxeBuilder({ page }).analyze();
+  expect(
+    mobileTemplateA11y.violations.filter((violation) => violation.impact === 'critical'),
+  ).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+
+  await page.getByLabel('Template title').fill(pageTemplateTitle);
+  const templateEditor = page.getByRole('textbox', { name: 'Page content' });
+  await templateEditor.click();
+  await page.keyboard.type(templateBody);
+  await page.getByRole('button', { name: 'Create template' }).click();
+  await expect(page.getByRole('status')).toContainText('Template created.');
+
+  await page.getByRole('button', { name: 'Create page from template' }).click();
+  await expect(page).toHaveURL(/\/app\/pages\//u);
+  await expect(page.getByRole('heading', { name: pageTemplateTitle })).toBeVisible();
+  await expect(page.getByText(templateBody)).toBeVisible();
+  await page.getByRole('button', { name: 'Delete page' }).click();
+  await expect(page).toHaveURL('/app');
+  await page.goto('/app/settings');
+  await expect(page).toHaveURL('/app/settings');
+  await page.getByRole('link', { name: 'Open Trash' }).click();
+  const copiedPageTrashItem = page.locator('.trash-item').filter({ hasText: pageTemplateTitle });
+  await copiedPageTrashItem.getByRole('button', { name: 'Delete permanently' }).click();
+  const copiedPageConfirmation = page.getByRole('form', {
+    name: `Permanently delete ${pageTemplateTitle}`,
+  });
+  await copiedPageConfirmation.getByLabel(/Type .* to confirm/).fill(pageTemplateTitle);
+  await copiedPageConfirmation.getByRole('button', { name: 'Confirm permanent delete' }).click();
+  await expect(copiedPageTrashItem).toHaveCount(0);
+
+  await page.goto('/app/settings/templates');
+  await page.getByRole('button', { name: new RegExp(pageTemplateTitle) }).click();
+  await expect(page.getByRole('button', { name: 'Delete template' })).toBeVisible();
+  page.once('dialog', (dialog) => void dialog.accept());
+  await page.getByRole('button', { name: 'Delete template' }).click();
+  await expect(page.getByRole('button', { name: 'Create template' })).toBeEnabled();
+
+  await page.getByLabel('Template title').fill(dailyTemplateTitle);
+  await page.getByRole('textbox', { name: 'Page content' }).click();
+  await page.keyboard.type('A fresh note starts here.');
+  await page.getByRole('checkbox', { name: /Use for daily notes/ }).check();
+  await page.getByRole('button', { name: 'Create template' }).click();
+  await expect(page.getByRole('status')).toContainText('Template created.');
+
+  await page.getByRole('button', { name: 'Open today’s note' }).click();
+  await expect(page).toHaveURL(/\/app\/pages\//u);
+  const dailyNoteUrl = page.url();
+  await expect(page.getByRole('heading', { name: /^\d{4}-\d{2}-\d{2}$/u })).toBeVisible();
+  await expect(page.getByText('A fresh note starts here.')).toBeVisible();
+  const dailyNoteTitle = await page.locator('h1.page-title-heading').getAttribute('aria-label');
+  expect(dailyNoteTitle).toMatch(/^\d{4}-\d{2}-\d{2}$/u);
+
+  await page.goto('/app/settings/templates');
+  await page.getByRole('button', { name: 'Open today’s note' }).click();
+  await expect(page).toHaveURL(dailyNoteUrl);
+
+  await page.getByRole('button', { name: 'Delete page' }).click();
+  await expect(page).toHaveURL('/app');
+  await page.goto('/app/settings');
+  await expect(page).toHaveURL('/app/settings');
+  await page.getByRole('link', { name: 'Open Trash' }).click();
+  const dailyNoteTrashItem = page.locator('.trash-item').filter({ hasText: dailyNoteTitle! });
+  await dailyNoteTrashItem.getByRole('button', { name: 'Delete permanently' }).click();
+  const dailyNoteConfirmation = page.getByRole('form', {
+    name: `Permanently delete ${dailyNoteTitle}`,
+  });
+  await dailyNoteConfirmation.getByLabel(/Type .* to confirm/).fill(dailyNoteTitle!);
+  await dailyNoteConfirmation.getByRole('button', { name: 'Confirm permanent delete' }).click();
+  await expect(dailyNoteTrashItem).toHaveCount(0);
+
+  await page.goto('/app/settings/templates');
+  await page.getByRole('button', { name: new RegExp(dailyTemplateTitle) }).click();
+  page.once('dialog', (dialog) => void dialog.accept());
+  await page.getByRole('button', { name: 'Delete template' }).click();
+});
+
 test('keeps tags and favorites through filters and Trash restore', async ({ page }) => {
   const title = `Organization E2E page ${Date.now()}`;
   const tagName = `e2e-${Date.now()}`;

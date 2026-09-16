@@ -16,6 +16,7 @@ import { registerSearchRoutes } from './search/routes';
 import { registerPublicSearchRoutes } from './public-search/routes';
 import { registerPublicationRoutes } from './publications/routes';
 import { registerTagRoutes } from './tags/routes';
+import { registerTemplateRoutes } from './templates/routes';
 import type { WorkerApp } from './types';
 
 async function checkBindings(env: WorkerApp['Bindings']) {
@@ -51,6 +52,7 @@ export function createApp() {
 
   registerAuthRoutes(app);
   registerPageRoutes(app);
+  registerTemplateRoutes(app);
   registerAssetRoutes(app);
   registerBackupRoutes(app);
   registerExportRoutes(app);

@@ -43,6 +43,7 @@ export function SettingsPage() {
 
       <nav aria-label="Settings sections" className="settings-section-nav">
         <a href="#theme">Theme</a>
+        <a href="#templates">Templates</a>
         <a href="#trash">Trash</a>
         <a href="#versions">Version history</a>
         <a href="#backup">Backup</a>
@@ -58,6 +59,17 @@ export function SettingsPage() {
             <p>Choose Light, Dark, or System. Your preference stays in this browser.</p>
           </div>
           <ThemeControl />
+        </section>
+
+        <section className="settings-card" id="templates">
+          <div>
+            <span className="state-kicker">Writing</span>
+            <h2>Templates</h2>
+            <p>Build reusable page starters and choose the template used for daily notes.</p>
+          </div>
+          <Link className="button button-secondary" to="/app/settings/templates">
+            Manage templates
+          </Link>
         </section>
 
         <section className="settings-card" id="trash">

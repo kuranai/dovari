@@ -194,6 +194,53 @@ function validateManifestSemantics(manifest: BackupManifest) {
   }
 
   if (manifest.version === 2) {
+    const templateIds = new Set<string>();
+    const templateTitles = new Set<string>();
+    let dailyTemplateId: string | null = null;
+    for (const template of manifest.templates) {
+      const normalizedTitle = template.title.toLocaleLowerCase();
+      if (templateIds.has(template.id) || templateTitles.has(normalizedTitle)) {
+        throw new BackupArchiveError('The backup contains duplicate template metadata.');
+      }
+      if (template.isDailyNote && dailyTemplateId !== null) {
+        throw new BackupArchiveError('The backup contains multiple daily-note templates.');
+      }
+      for (const assetId of collectAssetIds(template.content)) {
+        if (!manifest.assets.some((asset) => asset.id === assetId)) {
+          throw new BackupArchiveError('A template references an asset missing from the backup.');
+        }
+      }
+      templateIds.add(template.id);
+      templateTitles.add(normalizedTitle);
+      if (template.isDailyNote) dailyTemplateId = template.id;
+    }
+
+    const dailyNoteIds = new Set<string>();
+    const dailyNoteDates = new Set<string>();
+    const dailyNotePageIds = new Set<string>();
+    for (const dailyNote of manifest.dailyNotes) {
+      if (
+        dailyNoteIds.has(dailyNote.id) ||
+        dailyNoteDates.has(dailyNote.localDate) ||
+        dailyNotePageIds.has(dailyNote.pageId) ||
+        !pageIds.has(dailyNote.pageId) ||
+        (dailyNote.templateId !== null && !templateIds.has(dailyNote.templateId))
+      ) {
+        throw new BackupArchiveError('The backup contains invalid daily-note metadata.');
+      }
+      if (
+        dailyNote.templateId !== null &&
+        !manifest.templates.some(
+          (template) => template.id === dailyNote.templateId && template.isDailyNote,
+        )
+      ) {
+        throw new BackupArchiveError('A daily note references a non-daily template.');
+      }
+      dailyNoteIds.add(dailyNote.id);
+      dailyNoteDates.add(dailyNote.localDate);
+      dailyNotePageIds.add(dailyNote.pageId);
+    }
+
     const publicationIds = new Set<string>();
     const publicIds = new Set<string>();
     const pagesById = new Map(manifest.pages.map((page) => [page.id, page]));

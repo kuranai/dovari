@@ -9,6 +9,8 @@ import {
   backupPublicationRecordSchema,
   backupRevisionRecordSchema,
   backupTagRecordSchema,
+  backupTemplateRecordSchema,
+  backupDailyNoteRecordSchema,
   canonicalJson,
   restoreSessionCreateRequestSchema,
   sha256Hex,
@@ -18,6 +20,8 @@ import {
   type BackupPublicationRecord,
   type BackupRevisionRecord,
   type BackupTagRecord,
+  type BackupTemplateRecord,
+  type BackupDailyNoteRecord,
   type RestoreSessionCreateRequest,
   type RestoreSessionStatus,
 } from '../../shared/backup';
@@ -52,11 +56,13 @@ import {
   normalizeSha256,
   pageBackupRecord,
   publicationBackupRecord,
+  dailyNoteBackupRecord,
   parseSha256Header,
   parseStoredBackupContent,
   restoreTemporaryObjectKey,
   revisionBackupRecord,
   tagBackupRecord,
+  templateBackupRecord,
 } from './format';
 import {
   BackupRepository,
@@ -66,7 +72,14 @@ import {
 } from './repository';
 import { createZipStream, textZipEntry, type ZipEntrySource } from '../export/zip';
 
-const RECORD_TYPE_VALUES = ['page', 'revision', 'publication', 'tag'] as const;
+const RECORD_TYPE_VALUES = [
+  'page',
+  'revision',
+  'publication',
+  'tag',
+  'template',
+  'dailyNote',
+] as const;
 type RestoreRecordType = (typeof RECORD_TYPE_VALUES)[number];
 
 function isRecordType(value: string): value is RestoreRecordType {
@@ -166,6 +179,8 @@ function summaryFromSession(
     revisions: string[];
     publications: string[];
     tags: string[];
+    templates: string[];
+    dailyNotes: string[];
     assets: string[];
     bytes: number;
   },
@@ -179,17 +194,23 @@ function summaryFromSession(
     expectedAssets: session.expected_assets,
     expectedTags: session.expected_tags,
     expectedPublications: session.expected_publications,
+    expectedTemplates: session.expected_templates,
+    expectedDailyNotes: session.expected_daily_notes,
     expectedBytes: session.expected_bytes,
     receivedPages: received.pages.length,
     receivedRevisions: received.revisions.length,
     receivedAssets: received.assets.length,
     receivedTags: received.tags.length,
+    receivedTemplates: received.templates.length,
+    receivedDailyNotes: received.dailyNotes.length,
     receivedBytes: received.bytes,
     pageIds: received.pages,
     revisionIds: received.revisions,
     publicationIds: received.publications,
     assetIds: received.assets,
     tagIds: received.tags,
+    templateIds: received.templates,
+    dailyNoteIds: received.dailyNotes,
     createdAt: session.created_at,
     updatedAt: session.updated_at,
     expiresAt: session.expires_at,
@@ -242,18 +263,24 @@ export class BackupService {
   }
 
   async prepareBackup(): Promise<PreparedBackup> {
-    const [pages, revisions, assets, publications, tags] = await Promise.all([
-      this.repository.listPages(),
-      this.repository.listRevisions(),
-      this.repository.listAssets(),
-      this.repository.listPublications(),
-      this.repository.listTags(),
-    ]);
+    const [pages, revisions, assets, publications, tags, templates, dailyNotes] = await Promise.all(
+      [
+        this.repository.listPages(),
+        this.repository.listRevisions(),
+        this.repository.listAssets(),
+        this.repository.listPublications(),
+        this.repository.listTags(),
+        this.repository.listTemplates(),
+        this.repository.listDailyNotes(),
+      ],
+    );
 
     let pageRecords: BackupPageRecord[];
     let revisionRecords: BackupRevisionRecord[];
     let publicationRecords: BackupPublicationRecord[];
     let tagRecords: BackupTagRecord[];
+    let templateRecords: BackupTemplateRecord[];
+    let dailyNoteRecords: BackupDailyNoteRecord[];
     try {
       pageRecords = pages
         .map((page) => pageBackupRecord(page, pageContent(page)))
@@ -305,6 +332,23 @@ export class BackupService {
       }
       publicationRecords.sort((left, right) => compareText(left.id, right.id));
       tagRecords = tags.map(tagBackupRecord).sort((left, right) => compareText(left.id, right.id));
+      templateRecords = templates
+        .map((template) => {
+          const content = parseStoredBackupContent(template.contentJson);
+          const parsed = tiptapDocumentSchema.safeParse(content);
+          if (!parsed.success) {
+            throw new BackupError(
+              500,
+              'BACKUP_FAILED',
+              'A stored template contains invalid content.',
+            );
+          }
+          return templateBackupRecord(template, parsed.data);
+        })
+        .sort((left, right) => compareText(left.id, right.id));
+      dailyNoteRecords = dailyNotes
+        .map(dailyNoteBackupRecord)
+        .sort((left, right) => compareText(left.id, right.id));
     } catch (error) {
       if (error instanceof BackupError) {
         throw error;
@@ -349,6 +393,8 @@ export class BackupService {
       assets: assetRecords.sort((left, right) => compareText(left.id, right.id)),
       publications: publicationRecords,
       tags: tagRecords,
+      templates: templateRecords,
+      dailyNotes: dailyNoteRecords,
     });
     const manifestJson = `${canonicalJson(manifest)}\n`;
 
@@ -397,6 +443,14 @@ export class BackupService {
       .filter((record) => record.record_type === 'tag')
       .map((record) => record.record_id)
       .sort(compareText);
+    const templateIds = records
+      .filter((record) => record.record_type === 'template')
+      .map((record) => record.record_id)
+      .sort(compareText);
+    const dailyNoteIds = records
+      .filter((record) => record.record_type === 'dailyNote')
+      .map((record) => record.record_id)
+      .sort(compareText);
     const receivedAssetIds: string[] = [];
     let receivedBytes = 0;
     for (const asset of assets) {
@@ -418,6 +472,8 @@ export class BackupService {
       publications: publicationIds,
       revisions: revisionIds,
       tags: tagIds,
+      templates: templateIds,
+      dailyNotes: dailyNoteIds,
     });
   }
 
@@ -442,6 +498,12 @@ export class BackupService {
     if (parsed.backupVersion === 1 && parsed.expectedPublications !== 0) {
       throw recordMismatch('Backup version 1 cannot contain publications.');
     }
+    if (
+      parsed.backupVersion === 1 &&
+      (parsed.expectedTemplates !== 0 || parsed.expectedDailyNotes !== 0)
+    ) {
+      throw recordMismatch('Backup version 1 cannot contain templates or daily notes.');
+    }
     if (await this.repository.hasWorkspaceData()) {
       throw workspaceNotEmpty();
     }
@@ -460,6 +522,8 @@ export class BackupService {
       expectedAssets: parsed.expectedAssets,
       expectedTags: parsed.expectedTags,
       expectedPublications: parsed.expectedPublications,
+      expectedTemplates: parsed.expectedTemplates,
+      expectedDailyNotes: parsed.expectedDailyNotes,
       expectedBytes: parsed.expectedBytes,
       createdAt,
       updatedAt: createdAt,
@@ -503,6 +567,12 @@ export class BackupService {
     if (session.backup_version === 1 && recordTypeValue === 'publication') {
       throw recordMismatch('Backup version 1 cannot contain publications.');
     }
+    if (
+      session.backup_version === 1 &&
+      (recordTypeValue === 'template' || recordTypeValue === 'dailyNote')
+    ) {
+      throw recordMismatch('Backup version 1 cannot contain templates or daily notes.');
+    }
 
     const contentLength = request.headers.get('Content-Length');
     if (
@@ -535,7 +605,11 @@ export class BackupService {
           ? backupRevisionRecordSchema.safeParse(value)
           : recordTypeValue === 'publication'
             ? backupPublicationRecordSchema.safeParse(value)
-            : backupTagRecordSchema.safeParse(value);
+            : recordTypeValue === 'tag'
+              ? backupTagRecordSchema.safeParse(value)
+              : recordTypeValue === 'template'
+                ? backupTemplateRecordSchema.safeParse(value)
+                : backupDailyNoteRecordSchema.safeParse(value);
     if (!parsed.success || parsed.data.id !== recordId) {
       throw new BackupError(
         422,
@@ -577,7 +651,11 @@ export class BackupService {
           ? session.expected_revisions
           : recordTypeValue === 'publication'
             ? session.expected_publications
-            : session.expected_tags;
+            : recordTypeValue === 'tag'
+              ? session.expected_tags
+              : recordTypeValue === 'template'
+                ? session.expected_templates
+                : session.expected_daily_notes;
     if (
       currentRecords.filter((record) => record.record_type === recordTypeValue).length >=
       expectedCount
@@ -764,11 +842,15 @@ export class BackupService {
     const revisionRows = recordRows.filter((row) => row.record_type === 'revision');
     const publicationRows = recordRows.filter((row) => row.record_type === 'publication');
     const tagRows = recordRows.filter((row) => row.record_type === 'tag');
+    const templateRows = recordRows.filter((row) => row.record_type === 'template');
+    const dailyNoteRows = recordRows.filter((row) => row.record_type === 'dailyNote');
     if (
       pageRows.length !== session.expected_pages ||
       revisionRows.length !== session.expected_revisions ||
       publicationRows.length !== session.expected_publications ||
       tagRows.length !== session.expected_tags ||
+      templateRows.length !== session.expected_templates ||
+      dailyNoteRows.length !== session.expected_daily_notes ||
       assetRows.length !== session.expected_assets
     ) {
       throw incompleteRestore();
@@ -972,6 +1054,91 @@ export class BackupService {
       );
     }
 
+    const templates: BackupTemplateRecord[] = [];
+    const templateIds = new Set<string>();
+    const templateTitles = new Set<string>();
+    const dailyTemplateIds = new Set<string>();
+    for (const row of templateRows) {
+      let value: unknown;
+      try {
+        value = JSON.parse(row.payload_json) as unknown;
+      } catch {
+        throw new BackupError(
+          422,
+          'RESTORE_RECORD_MISMATCH',
+          'A staged template record is invalid.',
+        );
+      }
+      const parsed = backupTemplateRecordSchema.safeParse(value);
+      if (!parsed.success || parsed.data.id !== row.record_id) {
+        throw new BackupError(
+          422,
+          'RESTORE_RECORD_MISMATCH',
+          'A staged template record is invalid.',
+        );
+      }
+      const normalizedTitle = parsed.data.title.toLocaleLowerCase();
+      if (
+        canonicalJson(parsed.data) !== row.payload_json ||
+        (await sha256Hex(row.payload_json)) !== row.sha256 ||
+        templateIds.has(parsed.data.id) ||
+        templateTitles.has(normalizedTitle) ||
+        (parsed.data.isDailyNote && dailyTemplateIds.size > 0)
+      ) {
+        throw new BackupError(
+          422,
+          'RESTORE_RECORD_MISMATCH',
+          'The staged template metadata changed.',
+        );
+      }
+      templateIds.add(parsed.data.id);
+      templateTitles.add(normalizedTitle);
+      if (parsed.data.isDailyNote) dailyTemplateIds.add(parsed.data.id);
+      templates.push(parsed.data);
+    }
+
+    const dailyNotes: BackupDailyNoteRecord[] = [];
+    const dailyNoteIds = new Set<string>();
+    const dailyNoteDates = new Set<string>();
+    const dailyNotePageIds = new Set<string>();
+    for (const row of dailyNoteRows) {
+      let value: unknown;
+      try {
+        value = JSON.parse(row.payload_json) as unknown;
+      } catch {
+        throw new BackupError(
+          422,
+          'RESTORE_RECORD_MISMATCH',
+          'A staged daily-note record is invalid.',
+        );
+      }
+      const parsed = backupDailyNoteRecordSchema.safeParse(value);
+      if (!parsed.success || parsed.data.id !== row.record_id) {
+        throw new BackupError(
+          422,
+          'RESTORE_RECORD_MISMATCH',
+          'A staged daily-note record is invalid.',
+        );
+      }
+      if (
+        canonicalJson(parsed.data) !== row.payload_json ||
+        (await sha256Hex(row.payload_json)) !== row.sha256 ||
+        dailyNoteIds.has(parsed.data.id) ||
+        dailyNoteDates.has(parsed.data.localDate) ||
+        dailyNotePageIds.has(parsed.data.pageId)
+      ) {
+        throw new BackupError(
+          422,
+          'RESTORE_RECORD_MISMATCH',
+          'The staged daily-note metadata changed.',
+        );
+      }
+      dailyNoteIds.add(parsed.data.id);
+      dailyNoteDates.add(parsed.data.localDate);
+      dailyNotePageIds.add(parsed.data.pageId);
+      dailyNotes.push(parsed.data);
+    }
+
     const pagesById = new Map(pages.map((page) => [page.id, page]));
     const slugs = new Set<string>();
     const siblingPositions = new Map<string, Set<number>>();
@@ -1011,6 +1178,39 @@ export class BackupService {
         }) > MAX_PAGE_ROW_BYTES
       ) {
         throw new BackupError(413, 'PAGE_TOO_LARGE', 'A restored page is too large.');
+      }
+    }
+
+    for (const template of templates) {
+      for (const assetId of collectAssetIds(template.content)) {
+        if (!assetIds.has(assetId)) {
+          throw new BackupError(
+            422,
+            'RESTORE_RECORD_MISMATCH',
+            'A template references a missing asset.',
+          );
+        }
+      }
+    }
+    const templatesById = new Map(templates.map((template) => [template.id, template]));
+    for (const dailyNote of dailyNotes) {
+      if (!pageIds.has(dailyNote.pageId)) {
+        throw new BackupError(
+          422,
+          'RESTORE_RECORD_MISMATCH',
+          'A daily note references a missing page.',
+        );
+      }
+      if (
+        dailyNote.templateId !== null &&
+        (!templatesById.get(dailyNote.templateId)?.isDailyNote ||
+          !templatesById.has(dailyNote.templateId))
+      ) {
+        throw new BackupError(
+          422,
+          'RESTORE_RECORD_MISMATCH',
+          'A daily note references an invalid template.',
+        );
       }
     }
 
@@ -1149,7 +1349,7 @@ export class BackupService {
     };
     pages.forEach((page) => visit(page.id));
 
-    return { assets, pages, publications, revisions, tags };
+    return { assets, dailyNotes, pages, publications, revisions, tags, templates };
   }
 
   private async copyAssets(sessionId: string, assets: BackupAssetRecord[]) {
@@ -1198,7 +1398,10 @@ export class BackupService {
            SET status = 'finalizing', updated_at = ?
            WHERE id = ? AND owner_identity = ? AND status IN ('uploading', 'failed')
              AND NOT EXISTS (SELECT 1 FROM pages)
-             AND NOT EXISTS (SELECT 1 FROM assets)`,
+             AND NOT EXISTS (SELECT 1 FROM assets)
+             AND NOT EXISTS (SELECT 1 FROM tags)
+             AND NOT EXISTS (SELECT 1 FROM templates)
+             AND NOT EXISTS (SELECT 1 FROM daily_notes)`,
         )
         .bind(nowIso(), session.id, ownerIdentity)
         .run();
@@ -1213,7 +1416,10 @@ export class BackupService {
         SET updated_at = ?
         WHERE id = ? AND owner_identity = ? AND status = 'finalizing'
           AND NOT EXISTS (SELECT 1 FROM pages)
-          AND NOT EXISTS (SELECT 1 FROM assets)`;
+          AND NOT EXISTS (SELECT 1 FROM assets)
+          AND NOT EXISTS (SELECT 1 FROM tags)
+          AND NOT EXISTS (SELECT 1 FROM templates)
+          AND NOT EXISTS (SELECT 1 FROM daily_notes)`;
       const ready = `EXISTS (
         SELECT 1 FROM restore_sessions
         WHERE id = ? AND owner_identity = ? AND status = 'finalizing' AND updated_at = ?
@@ -1254,6 +1460,28 @@ export class BackupService {
         );
       }
 
+      for (const template of validated.templates) {
+        statements.push(
+          this.repository.db
+            .prepare(
+              `INSERT INTO templates
+                (id, title, content_json, revision, is_daily_note, created_at, updated_at)
+               SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${ready}`,
+            )
+            .bind(
+              ...bindReady([
+                template.id,
+                template.title,
+                canonicalJson(template.content),
+                template.revision,
+                template.isDailyNote ? 1 : 0,
+                template.createdAt,
+                template.updatedAt,
+              ]),
+            ),
+        );
+      }
+
       for (const page of pageInsertOrder) {
         const contentJson = canonicalJson(page.content);
         const contentText = derivePlainText(page.content);
@@ -1280,6 +1508,28 @@ export class BackupService {
                 page.updatedAt,
                 page.deletedAt,
                 page.isFavorite ? 1 : 0,
+              ]),
+            ),
+        );
+      }
+
+      for (const dailyNote of validated.dailyNotes) {
+        statements.push(
+          this.repository.db
+            .prepare(
+              `INSERT INTO daily_notes
+                (id, local_date, time_zone, page_id, template_id, created_at, updated_at)
+               SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${ready}`,
+            )
+            .bind(
+              ...bindReady([
+                dailyNote.id,
+                dailyNote.localDate,
+                dailyNote.timeZone,
+                dailyNote.pageId,
+                dailyNote.templateId,
+                dailyNote.createdAt,
+                dailyNote.updatedAt,
               ]),
             ),
         );
@@ -1447,6 +1697,8 @@ export class BackupService {
         assetCount: validated.assets.length,
         tagCount: validated.tags.length,
         publicationCount: validated.publications.length,
+        templateCount: validated.templates.length,
+        dailyNoteCount: validated.dailyNotes.length,
       };
     } catch (error) {
       await Promise.allSettled(copiedKeys.map((key) => this.bucket.delete(key)));
