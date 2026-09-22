@@ -23,6 +23,7 @@ import {
 } from '../../shared/recovery';
 import { tagIdSchema, tagNameInputSchema } from '../../shared/tags';
 import { apiError } from '../middleware/security';
+import { PublicationService } from '../publications/service';
 import type { WorkerApp } from '../types';
 import { PageError } from './errors';
 import { decodeRecoveryCursor } from './recovery';
@@ -273,6 +274,7 @@ export function registerPageRoutes(app: Hono<WorkerApp>) {
     withPageErrors(context, async (service) => {
       const input = await parseJsonBody(context, restorePageRequestSchema);
       const page = await service.restorePageRevision(pageId(context), revisionId(context), input);
+      await new PublicationService(context.env.DB).syncPage(page.id, page.revision);
       return context.json({ page });
     }),
   );
@@ -287,6 +289,7 @@ export function registerPageRoutes(app: Hono<WorkerApp>) {
     withPageErrors(context, async (service) => {
       const input = await parseJsonBody(context, createPageRequestSchema);
       const page = await service.create(input);
+      await new PublicationService(context.env.DB).inheritPublication(page.id, page.revision);
       return context.json({ page }, 201);
     }),
   );
@@ -309,6 +312,7 @@ export function registerPageRoutes(app: Hono<WorkerApp>) {
     withPageErrors(context, async (service) => {
       const input = await parseJsonBody(context, updatePageRequestSchema);
       const page = await service.updateMetadata(pageId(context), input);
+      await new PublicationService(context.env.DB).syncPage(page.id, page.revision);
       return context.json({ page });
     }),
   );
@@ -321,6 +325,7 @@ export function registerPageRoutes(app: Hono<WorkerApp>) {
         'INVALID_DOCUMENT',
       );
       const page = await service.updateContent(pageId(context), input);
+      await new PublicationService(context.env.DB).syncPage(page.id, page.revision);
       return context.json({ page });
     }),
   );
@@ -329,6 +334,9 @@ export function registerPageRoutes(app: Hono<WorkerApp>) {
     withPageErrors(context, async (service) => {
       const input = await parseJsonBody(context, movePageRequestSchema);
       const page = await service.move(pageId(context), input);
+      const publications = new PublicationService(context.env.DB);
+      await publications.inheritPublication(page.id, page.revision);
+      await publications.syncPage(page.id, page.revision);
       return context.json({ page });
     }),
   );

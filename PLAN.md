@@ -1931,7 +1931,9 @@ Aufgaben:
 - explizite, bereinigte Publication-Snapshots
 - `/` als öffentliche Landingpage mit vollständiger Liste aller aktiven Publications
 - öffentliche Read-only-Seite unter `/p/:publicId`
-- private Publish-, Update- und Unpublish-Aktionen
+- privates erstmaliges Publish und Unpublish; bestehende Publications synchronisieren Titel- und
+  Inhaltsänderungen automatisch bei erfolgreichem Save, und neu angelegte oder verschobene
+  Unterseiten erben die Veröffentlichung eines veröffentlichten Vorfahren
 - Publish-Status und Sharing-Aktionen in der privaten Seitenansicht
 - Bearbeiten-Link, der erst beim Wechsel nach `/app` die Passwort-Anmeldung verlangt
 - öffentliche Asset-Auslieferung nur für Assets des konkreten Snapshots
@@ -1956,7 +1958,7 @@ Aufgaben:
 - öffentliche Suche und veröffentlichte Navigation
 - kanonische URLs sowie sichere Title-, Description- und Open-Graph-Metadaten
 - `robots.txt` und `sitemap.xml` nur für explizit indexierbare Publications
-- Cache-Invalidierung bei Republish und Unpublish
+- Cache-Invalidierung bei automatischer Snapshot-Synchronisierung und Unpublish
 
 Ziel:
 
@@ -2174,7 +2176,7 @@ bereinigter Publication Snapshot
 öffentliche Read-only URL
 ```
 
-Nur Assets, die der veröffentlichte Snapshot tatsächlich referenziert, dürfen über die öffentliche Route ausgeliefert werden. Änderungen an der privaten Seite erscheinen erst nach erneutem Veröffentlichen. Private Wiki Links und nicht veröffentlichte eingebettete Inhalte dürfen durch eine öffentliche Seite nicht offengelegt werden.
+Nur Assets, die der veröffentlichte Snapshot tatsächlich referenziert, dürfen über die öffentliche Route ausgeliefert werden. Eine erstmalige Veröffentlichung bleibt bewusst, aber Titel- und Inhaltsänderungen einer bereits veröffentlichten Seite aktualisieren ihren bereinigten Snapshot automatisch. Private Wiki Links und nicht veröffentlichte eingebettete Inhalte dürfen durch eine öffentliche Seite nicht offengelegt werden.
 
 Die Domain-Wurzel zeigt eine öffentliche Übersicht aller aktiven Publications. Diese Übersicht ist
 keine gefilterte private Seitenliste, sondern wird ausschließlich aus Publication-Snapshots

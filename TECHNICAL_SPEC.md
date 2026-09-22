@@ -528,8 +528,14 @@ bleiben erhalten. Asset-Nodes bleiben nur erhalten, wenn das Asset existiert, ni
 und in `publication_assets` aufgenommen wird. Ein Wiki Link auf eine zu diesem Zeitpunkt aktive
 Publication wird auf deren `public_id` umgeschrieben; andernfalls wird er zu normalem Text. Der
 Snapshot enthält niemals private Page-IDs, Slugs, Parent-IDs, Revisionen oder Backlinks. Eine
-spätere Veröffentlichung oder Zurücknahme eines Linkziels verändert bestehende Snapshots nicht;
-die Quellseite muss bewusst erneut veröffentlicht werden.
+spätere Veröffentlichung oder Zurücknahme eines Linkziels verändert bestehende Snapshots nicht.
+Nach einer erfolgreichen Titel-, Inhalts- oder Revisionswiederherstellung einer bereits
+veröffentlichten Quellseite wird deren bestehender Snapshot jedoch automatisch neu berechnet;
+`public_id` und die explizite Unpublish-Grenze bleiben dabei unverändert. Neu angelegte oder in
+einen veröffentlichten Seitenbaum verschobene Seiten werden automatisch mit der
+Freigabeeinstellung ihres nächsten veröffentlichten Vorfahren veröffentlicht. Eine erstmals
+veröffentlichte Seite und eine Änderung der Freigabeeinstellungen benötigen weiterhin den privaten
+Publish-Endpunkt.
 
 `publication_assets` enthält ausschließlich Assets, die der Snapshot tatsächlich referenziert.
 Öffentliche Asset-Auslieferung verlangt Publication-ID und Asset-ID und prüft diese Beziehung vor
@@ -549,8 +555,8 @@ Public-Dokument rekonstruiert. Ein v1-Restore erzeugt keine Publications.
 
 Soft Delete einer privaten Seite löscht eine aktive Publication und ihre Assetzuordnungen im
 selben atomaren Ablauf. Ein Page-Restore veröffentlicht sie nicht erneut. Normale Titel-, Inhalts-
-und Revisions-Restores verändern eine aktive Publication dagegen nicht; dafür ist weiterhin ein
-bewusstes Republish erforderlich.
+und Revisions-Restores synchronisieren eine bestehende Publication dagegen automatisch, ohne deren
+`public_id` zu ändern.
 
 ### 6.9 Öffentlicher Suchindex
 
@@ -813,8 +819,11 @@ GET    /api/private/publications/:publicId/editor-target
 ```
 
 `PUT` akzeptiert `{ "baseRevision": 12, "allowIndexing": false }`. Es erzeugt oder ersetzt den
-bereinigten Snapshot atomar und liefert Public URL, Quellrevision und Zeitstempel. Eine abweichende
-Seitenrevision liefert `409 PAGE_CONFLICT`; gelöschte Seiten sind nicht veröffentlichbar.
+bereinigten Snapshot atomar und liefert Public URL, Quellrevision und Zeitstempel. Der Endpunkt wird
+für das erstmalige Veröffentlichen und Änderungen an den Freigabeeinstellungen verwendet; Titel-,
+Inhalts- und Revisionsmutationen synchronisieren eine vorhandene Publication serverseitig nach
+erfolgreichem Save. Eine abweichende Seitenrevision liefert `409 PAGE_CONFLICT`; gelöschte Seiten
+sind nicht veröffentlichbar.
 `DELETE` akzeptiert `{ "publicId": "…", "expectedUpdatedAt": "…" }` und entfernt nur genau
 diese aktive Version atomar; ein veralteter Tab erhält `409 PUBLICATION_CONFLICT`. `editor-target`
 liegt bewusst privat: Erst nach gültiger Dovari-Passwort-Session wird `publicId` zur privaten
@@ -836,8 +845,8 @@ Publication-Zuordnung gelesen. Fehlende, zurückgezogene und unbekannte Publicat
 gleichförmig mit `404 PUBLICATION_NOT_FOUND` und ohne unterscheidbare Details. Jede nicht explizit
 erlaubte Methode unter `/api/public/*` liefert `405 METHOD_NOT_ALLOWED` mit `Allow: GET, HEAD` vor
 jeglichem D1-/R2-Mutationszugriff. Bis zur expliziten Cache-Strategie in P26 senden alle Public-
-Listen-, Detail- und Assetantworten `Cache-Control: no-store`, damit Republish und Unpublish nicht
-durch veraltete Browser- oder Edge-Antworten verzögert werden.
+Listen-, Detail- und Assetantworten `Cache-Control: no-store`, damit automatische Snapshot-
+Synchronisierung und Unpublish nicht durch veraltete Browser- oder Edge-Antworten verzögert werden.
 
 ### 7.7 Öffentliche Suche und Discovery
 

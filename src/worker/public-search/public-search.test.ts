@@ -79,6 +79,16 @@ describe('public search and discovery', () => {
     const root = await createPage('Published root');
     const rootPublication = await publish(root, true);
     const hiddenParent = await createPage('Private intermediate', root.id);
+    const hiddenParentPublicationResponse = await request(
+      `/api/private/pages/${hiddenParent.id}/publication`,
+    );
+    expect(hiddenParentPublicationResponse.status).toBe(200);
+    const hiddenParentPublication = (
+      (await hiddenParentPublicationResponse.json()) as {
+        publication: { publicId: string } | null;
+      }
+    ).publication;
+    expect(hiddenParentPublication).not.toBeNull();
     const child = await createPage('Published child', hiddenParent.id);
     const childWithContent = await updateContent(child, {
       type: 'doc',
@@ -105,12 +115,17 @@ describe('public search and discovery', () => {
         publishedTitle: root.title,
         url: `/p/${rootPublication.publicId}`,
       },
+      {
+        publicId: hiddenParentPublication?.publicId,
+        publishedTitle: hiddenParent.title,
+        url: `/p/${hiddenParentPublication?.publicId}`,
+      },
     ]);
     const serialized = JSON.stringify(searchBody);
     expect(serialized).not.toContain(root.id);
     expect(serialized).not.toContain(hiddenParent.id);
     expect(serialized).not.toContain(child.id);
-    expect(serialized).not.toContain(hiddenParent.title);
+    expect(serialized).toContain(hiddenParent.title);
 
     const list = await request('/api/public/publications', {}, false);
     expect(list.status).toBe(200);
@@ -120,12 +135,12 @@ describe('public search and discovery', () => {
     expect(listBody.publications).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          parentPublicId: rootPublication.publicId,
+          parentPublicId: hiddenParentPublication?.publicId,
           publicId: childPublication.publicId,
         }),
       ]),
     );
-    expect(JSON.stringify(listBody)).not.toContain(hiddenParent.title);
+    expect(JSON.stringify(listBody)).toContain(hiddenParent.title);
   });
 
   it('updates and removes snapshot search entries on republish and unpublish', async () => {

@@ -48,7 +48,8 @@ test('validates and restores a lossless backup after the workspace is emptied', 
   await page.getByLabel('Edit title').press('Enter');
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
 
-  await page.getByRole('link', { name: 'Backup & restore' }).first().click();
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await page.getByRole('link', { name: 'Create backup' }).click();
   await expect(page).toHaveURL('/app/settings/backup');
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download Dovari backup' }).click();
@@ -70,7 +71,8 @@ test('validates and restores a lossless backup after the workspace is emptied', 
   await confirmation.getByRole('button', { name: 'Confirm permanent delete' }).click();
   await expect(trashItem).toHaveCount(0);
 
-  await page.getByRole('link', { name: 'Backup & restore' }).first().click();
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await page.getByRole('link', { name: 'Restore a backup' }).click();
   await page.getByLabel('Select a Dovari backup ZIP (v1 or v2)').setInputFiles(backupPath);
   await expect(page.getByRole('heading', { name: 'Validated backup' })).toBeVisible();
   await page.getByRole('button', { name: 'Start restore' }).click();
@@ -184,7 +186,7 @@ test('creates independent template pages and reuses one local daily note', async
   await page.getByRole('button', { name: 'Delete template' }).click();
 });
 
-test('keeps tags and favorites through filters and Trash restore', async ({ page }) => {
+test('keeps tags and favorites through navigation and Trash restore', async ({ page }) => {
   const title = `Organization E2E page ${Date.now()}`;
   const tagName = `e2e-${Date.now()}`;
 
@@ -205,22 +207,22 @@ test('keeps tags and favorites through filters and Trash restore', async ({ page
 
   await page.getByRole('button', { name: 'Add to favorites' }).click();
   await expect(page.getByRole('button', { name: 'Favorited' })).toBeVisible();
-  await page.getByRole('button', { name: /^Favorites/ }).click();
-  await expect(page.getByRole('link', { exact: true, name: title })).toBeVisible();
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Favorite pages' })
+      .getByRole('link', { name: `Open favorite page: ${title}` }),
+  ).toBeVisible();
 
   await page.getByRole('button', { name: 'Open command palette' }).click();
   const palette = page.getByRole('dialog', { name: 'Search or run a command' });
   await palette
     .getByRole('searchbox', { name: 'Search pages or commands' })
-    .fill(`Show #${tagName}`);
-  const tagCommand = palette.getByRole('option').filter({ hasText: `Show #${tagName}` });
+    .fill(`Search #${tagName}`);
+  const tagCommand = palette.getByRole('option').filter({ hasText: `Search #${tagName}` });
   await expect(tagCommand).toBeVisible();
   await tagCommand.click();
   await expect(palette).toHaveCount(0);
-  await expect(page.locator('.sidebar-filter-tag').filter({ hasText: tagName })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  await expect(page.locator('.sidebar-filter-tag')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Delete page' }).click();
   await expect(page).toHaveURL('/app');
@@ -249,6 +251,7 @@ test('publishes a page for anonymous readers and returns to private editing for 
   page,
 }) => {
   const title = `Public E2E page ${Date.now()}`;
+  const childTitle = `Public E2E child ${Date.now()}`;
 
   await page.goto('/app');
   await page.getByRole('button', { name: /New page/ }).click();
@@ -275,11 +278,36 @@ test('publishes a page for anonymous readers and returns to private editing for 
   await page.getByRole('button', { name: 'Publish page' }).click();
   await expect(page.getByText('Published', { exact: true })).toBeVisible();
 
+  await editor.click();
+  await page.keyboard.press('Control+End');
+  await page.keyboard.type(' It stays current automatically.');
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await expect(page.getByText('Published', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Update publication' })).toHaveCount(0);
+
   const publicUrl = await page.getByRole('link', { name: 'Open public page' }).getAttribute('href');
   if (!publicUrl) {
     throw new Error('The publication did not expose a public URL.');
   }
   expect(publicUrl).toMatch(/^\/p\/[0-9a-f-]+$/u);
+
+  await page.getByRole('button', { name: `Create child of ${title}` }).click();
+  await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible();
+  const childPrivateUrl = page.url();
+  await page.getByLabel('Edit title').fill(childTitle);
+  await page.getByLabel('Edit title').press('Enter');
+  await expect(page.getByRole('heading', { name: childTitle })).toBeVisible();
+  await expect(page.getByText('Published', { exact: true })).toBeVisible();
+  const childPublicUrl = await page
+    .getByRole('link', { name: 'Open public page' })
+    .getAttribute('href');
+  if (!childPublicUrl) {
+    throw new Error('The inherited child publication did not expose a public URL.');
+  }
+  expect(childPublicUrl).toMatch(/^\/p\/[0-9a-f-]+$/u);
+  await page.goto(privatePageUrl);
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  await expect(page.getByText('Published', { exact: true })).toBeVisible();
 
   const metadataResponse = await page.request.get(publicUrl);
   expect(metadataResponse.status()).toBe(200);
@@ -295,6 +323,7 @@ test('publishes a page for anonymous readers and returns to private editing for 
 
   await page.goto('/');
   await expect(page.getByRole('link', { name: new RegExp(title) })).toBeVisible();
+  await expect(page.getByRole('link', { name: new RegExp(childTitle) })).toBeVisible();
   const publicSearch = page.getByRole('searchbox', { name: 'Search public pages' });
   await publicSearch.fill('Anonymous readers');
   await expect(page.getByRole('option').filter({ hasText: title })).toBeVisible();
@@ -317,8 +346,12 @@ test('publishes a page for anonymous readers and returns to private editing for 
   await expect(page).toHaveURL(publicUrl);
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
   await expect(page.getByText('Anonymous readers can see this snapshot.')).toBeVisible();
+  await expect(page.getByText('It stays current automatically.')).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Page content' })).toHaveCount(0);
   await expect(page.locator('body')).not.toContainText(privatePageId);
+  await page.goto(childPublicUrl);
+  await expect(page.getByRole('heading', { name: childTitle })).toBeVisible();
+  await page.goto(publicUrl);
   const publicResults = await new AxeBuilder({ page }).analyze();
   expect(publicResults.violations.filter((violation) => violation.impact === 'critical')).toEqual(
     [],
@@ -351,6 +384,9 @@ test('publishes a page for anonymous readers and returns to private editing for 
 
   await page.goto(privatePageUrl);
   await page.getByRole('button', { name: 'Delete page' }).click();
+  await page.goto(childPrivateUrl);
+  await expect(page.getByRole('heading', { name: childTitle })).toBeVisible();
+  await page.getByRole('button', { name: 'Delete page' }).click();
   await page.goto('/app/settings/trash');
   const trashItem = page.locator('.trash-item').filter({ hasText: title });
   await trashItem.getByRole('button', { name: 'Delete permanently' }).click();
@@ -358,13 +394,21 @@ test('publishes a page for anonymous readers and returns to private editing for 
   await confirmation.getByLabel(/Type .* to confirm/).fill(title);
   await confirmation.getByRole('button', { name: 'Confirm permanent delete' }).click();
   await expect(trashItem).toHaveCount(0);
+  const childTrashItem = page.locator('.trash-item').filter({ hasText: childTitle });
+  await childTrashItem.getByRole('button', { name: 'Delete permanently' }).click();
+  const childConfirmation = page.getByRole('form', {
+    name: `Permanently delete ${childTitle}`,
+  });
+  await childConfirmation.getByLabel(/Type .* to confirm/).fill(childTitle);
+  await childConfirmation.getByRole('button', { name: 'Confirm permanent delete' }).click();
+  await expect(childTrashItem).toHaveCount(0);
 });
 
 test('creates, navigates, renames, reloads, and deletes pages', async ({ page }) => {
   const renamedTitle = `E2E page ${Date.now()}`;
 
   await page.goto('/app');
-  await expect(page.getByRole('heading', { exact: true, name: 'Pages' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /New page/ })).toBeVisible();
 
   await page.getByRole('button', { name: /New page/ }).click();
   await expect(page).toHaveURL(/\/app\/pages\/[0-9a-f-]+$/);
@@ -475,6 +519,8 @@ test('covers search, screenshot paste, drag and drop, and Markdown export', asyn
   await expect(editor.locator('.asset-image-node')).toHaveCount(2);
   await expect(page.getByText('Saved', { exact: true })).toBeVisible();
 
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL('/app/settings');
   const exportDownload = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export Markdown + ZIP' }).click();
   const download = await exportDownload;
@@ -498,27 +544,26 @@ test('covers search, screenshot paste, drag and drop, and Markdown export', asyn
   await expect(trashItem).toHaveCount(0);
 });
 
-test('supports a navigable page tree with child creation, collapse, move, and inline rename', async ({
+test('supports a navigable page tree with child creation, collapse, drag move, and direct rename', async ({
   page,
 }) => {
   const rootTitle = `Tree root ${Date.now()}`;
   const siblingTitle = `Tree sibling ${Date.now()}`;
 
   await page.goto('/app');
-  await expect(page.getByRole('heading', { exact: true, name: 'Pages' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /New page/ })).toBeVisible();
 
   await page.getByRole('button', { name: /New page/ }).click();
   await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible();
-  await page.getByRole('button', { name: 'Rename page' }).click();
-  await page.getByLabel('Page title').fill(rootTitle);
-  await page.getByRole('button', { name: 'Save title' }).click();
+  await page.getByLabel('Edit title').fill(rootTitle);
+  await page.getByLabel('Edit title').press('Enter');
   await expect(page.getByRole('heading', { name: rootTitle })).toBeVisible();
+  const rootUrl = page.url();
 
   await page.getByRole('button', { name: /New page/ }).click();
   await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible();
-  await page.getByRole('button', { name: 'Rename page' }).click();
-  await page.getByLabel('Page title').fill(siblingTitle);
-  await page.getByRole('button', { name: 'Save title' }).click();
+  await page.getByLabel('Edit title').fill(siblingTitle);
+  await page.getByLabel('Edit title').press('Enter');
   await expect(page.getByRole('heading', { name: siblingTitle })).toBeVisible();
 
   await page.getByRole('link', { exact: true, name: rootTitle }).click();
@@ -530,25 +575,30 @@ test('supports a navigable page tree with child creation, collapse, move, and in
   await expect(page.getByRole('link', { exact: true, name: 'Untitled' })).toHaveCount(0);
   await page.getByRole('button', { name: `Expand ${rootTitle}` }).click();
   await expect(page.getByRole('link', { exact: true, name: 'Untitled' })).toBeVisible();
+  const childUrl = await page
+    .getByRole('link', { exact: true, name: 'Untitled' })
+    .getAttribute('href');
+  if (!childUrl) {
+    throw new Error('The child page has no navigation URL.');
+  }
 
-  await page.getByRole('button', { name: `Move ${rootTitle}` }).click();
-  await page.getByLabel('Position').selectOption({ label: `After ${siblingTitle}` });
-  await page.getByRole('button', { name: 'Move page' }).click();
-  await expect(page.getByRole('button', { name: 'Move page' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: `Move ${rootTitle}` })).toHaveCount(0);
+  const moveResponse = page.waitForResponse(
+    (response) => response.url().includes('/move') && response.request().method() === 'POST',
+  );
+  await page
+    .getByLabel(`Drag ${rootTitle} to move it`)
+    .dragTo(page.getByLabel(`Drag ${siblingTitle} to move it`));
+  await moveResponse;
 
-  await page.getByRole('button', { name: `Rename ${rootTitle}` }).click();
-  await page.getByLabel('Page title').fill(`${rootTitle} renamed`);
-  await page.getByRole('button', { name: 'Save title' }).click();
+  await page.goto(rootUrl);
+  await expect(page.getByRole('heading', { name: rootTitle })).toBeVisible();
+  await page.getByLabel('Edit title').fill(`${rootTitle} renamed`);
+  await page.getByLabel('Edit title').press('Enter');
   await expect(page.getByRole('link', { exact: true, name: `${rootTitle} renamed` })).toBeVisible();
 
-  await page.getByRole('link', { exact: true, name: 'Untitled' }).click();
+  await page.goto(childUrl);
   await page.getByRole('button', { name: 'Delete page' }).click();
-  const rootUrl = await page
-    .getByRole('link', { exact: true, name: `${rootTitle} renamed` })
-    .getAttribute('href');
-  if (!rootUrl) {
-    throw new Error('The renamed root page has no navigation URL.');
-  }
   await page.goto(rootUrl);
   await expect(page.getByRole('heading', { name: `${rootTitle} renamed` })).toBeVisible();
   await page.getByRole('button', { name: 'Delete page' }).click();
@@ -561,6 +611,10 @@ test('supports theme persistence, skip navigation, and the mobile sidebar drawer
   page,
 }) => {
   await page.goto('/app');
+  await expect(page.getByRole('combobox', { name: 'Theme' })).toHaveCount(0);
+  await expect(page.getByText('Your knowledge base')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL('/app/settings');
   await expect(page.getByRole('combobox', { name: 'Theme' })).toBeVisible();
 
   await page.getByRole('combobox', { name: 'Theme' }).selectOption('dark');
@@ -729,7 +783,7 @@ test('supports delete undo, Trash restore, and revision restore', async ({ page 
   await page.getByLabel('Edit title').fill(title);
   await page.getByLabel('Edit title').press('Enter');
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Rename page' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rename page' })).toHaveCount(0);
   const editor = page.getByRole('textbox', { name: 'Page content' });
   await editor.click();
   await page.keyboard.type('Recoverable content');

@@ -73,6 +73,15 @@ async function updateContent(page: PageDetail, content: TiptapDocument) {
   return ((await response.json()) as { page: PageDetail }).page;
 }
 
+async function updateTitle(page: PageDetail, title: string) {
+  const response = await request(`/api/private/pages/${page.id}`, {
+    body: JSON.stringify({ baseRevision: page.revision, title }),
+    method: 'PATCH',
+  });
+  expect(response.status).toBe(200);
+  return ((await response.json()) as { page: PageDetail }).page;
+}
+
 async function publish(page: PageDetail, allowIndexing = false) {
   const response = await request(`/api/private/pages/${page.id}/publication`, {
     body: JSON.stringify({ allowIndexing, baseRevision: page.revision }),
@@ -157,19 +166,31 @@ describe('publications', () => {
       type: 'doc',
       content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Draft only' }] }],
     });
-    const stillPublic = await request(
+    const updatedPublic = await request(
       `/api/public/publications/${sourcePublication.publicId}`,
       {},
       false,
     );
-    expect(stillPublic.status).toBe(200);
+    expect(updatedPublic.status).toBe(200);
     expect(changed.revision).toBeGreaterThan(sourceWithLinks.revision);
-    const unchanged = await request(
+    const updatedBody = (await updatedPublic.json()) as {
+      publication: { content: TiptapDocument; publishedTitle: string };
+    };
+    expect(updatedBody.publication.content).toEqual({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Draft only' }] }],
+    });
+
+    const renamed = await updateTitle(changed, 'Updated public source');
+    const renamedPublic = await request(
       `/api/public/publications/${sourcePublication.publicId}`,
       {},
       false,
     );
-    expect(await unchanged.text()).toContain('Private target');
+    expect(renamed.revision).toBeGreaterThan(changed.revision);
+    expect((await renamedPublic.json()) as unknown).toMatchObject({
+      publication: { publishedTitle: 'Updated public source' },
+    });
   });
 
   it('lists only active publications, protects mutations, and revalidates caches', async () => {
@@ -269,6 +290,51 @@ describe('publications', () => {
         (publication) => publication.publishedTitle === grandchild.title,
       ),
     ).toBe(false);
+  });
+
+  it('automatically publishes pages created or moved beneath a published ancestor', async () => {
+    const root = await createPage('Published parent');
+    const rootPublication = await publish(root, true);
+
+    const createdChild = await createPage('Created child', root.id);
+    const createdChildPublicationResponse = await request(
+      `/api/private/pages/${createdChild.id}/publication`,
+    );
+    expect(createdChildPublicationResponse.status).toBe(200);
+    const createdChildPublication = (
+      (await createdChildPublicationResponse.json()) as {
+        publication: { allowIndexing: boolean; publicId: string } | null;
+      }
+    ).publication;
+    expect(createdChildPublication).toMatchObject({ allowIndexing: true });
+
+    const createdChildPublicResponse = await request(
+      `/api/public/publications/${createdChildPublication?.publicId}`,
+      {},
+      false,
+    );
+    expect(createdChildPublicResponse.status).toBe(200);
+    await expect(createdChildPublicResponse.json()).resolves.toMatchObject({
+      publication: {
+        parentPublicId: rootPublication.publicId,
+        publishedTitle: createdChild.title,
+      },
+    });
+
+    const movedChild = await createPage('Moved child');
+    const moveResponse = await request(`/api/private/pages/${movedChild.id}/move`, {
+      body: JSON.stringify({ parentId: root.id }),
+      method: 'POST',
+    });
+    expect(moveResponse.status).toBe(200);
+
+    const movedChildPublicationResponse = await request(
+      `/api/private/pages/${movedChild.id}/publication`,
+    );
+    expect(movedChildPublicationResponse.status).toBe(200);
+    await expect(movedChildPublicationResponse.json()).resolves.toMatchObject({
+      publication: { allowIndexing: true },
+    });
   });
 
   it('removes inherited publications when a shared category moves to Trash', async () => {

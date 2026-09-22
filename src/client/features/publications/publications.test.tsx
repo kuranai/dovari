@@ -191,10 +191,69 @@ describe('public publication UI', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Publish page' }));
 
     expect(await screen.findByText('Published')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Update publication' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Open public page' }).getAttribute('href')).toBe(
       `/p/${publicId}`,
     );
     expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it('synchronizes sharing settings without a manual republish action', async () => {
+    const currentPage = page();
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === `/api/private/pages/${pageId}/publication` && !init?.method) {
+        return response({
+          publication: {
+            allowIndexing: false,
+            publicId,
+            publicUrl: `/p/${publicId}`,
+            publishedAt: '2026-09-14T00:00:00.000Z',
+            publishedTitle: currentPage.title,
+            sourceRevision: currentPage.revision,
+            tags: [],
+            updatedAt: '2026-09-14T00:00:00.000Z',
+          },
+        });
+      }
+      if (url === `/api/private/pages/${pageId}/publication` && init?.method === 'PUT') {
+        expect(JSON.parse(String(init.body))).toEqual({
+          allowIndexing: true,
+          baseRevision: currentPage.revision,
+          tagIds: [],
+        });
+        return response({
+          publication: {
+            allowIndexing: true,
+            publicId,
+            publicUrl: `/p/${publicId}`,
+            publishedAt: '2026-09-14T00:00:00.000Z',
+            publishedTitle: currentPage.title,
+            sourceRevision: currentPage.revision,
+            tags: [],
+            updatedAt: '2026-09-14T00:00:01.000Z',
+          },
+        });
+      }
+      throw new Error(`Unexpected request: ${String(init?.method)} ${url}`);
+    });
+
+    render(
+      <MemoryRouter>
+        <PublicationPanel page={currentPage} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Published')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Sharing settings' }));
+    fireEvent.click(screen.getByLabelText('Allow search engine indexing'));
+
+    expect(await screen.findByText('Published')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Update publication' })).toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/private/pages/${pageId}/publication`,
+      expect.objectContaining({ method: 'PUT' }),
+    );
   });
 
   it('keeps sharing controls compact until sharing settings are opened', async () => {

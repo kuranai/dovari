@@ -21,7 +21,7 @@ import {
   type PublishPublicationRequest,
   type UnpublishPublicationRequest,
 } from '../../shared/publications';
-import { MAX_PAGE_TAGS, tagNameSchema } from '../../shared/tags';
+import { MAX_PAGE_TAGS, normalizeTagNameForComparison, tagNameSchema } from '../../shared/tags';
 import { AssetRepository } from '../assets/repository';
 import { PageRepository, type PageRecord } from '../pages/repository';
 import { PublicationError } from './errors';
@@ -271,6 +271,67 @@ export class PublicationService {
     if (!page) throw pageNotFound();
     const record = await this.publications.findByPageId(pageId);
     return { publication: record ? privatePublication(record) : null };
+  }
+
+  async syncPage(pageId: string, expectedRevision: number) {
+    const page = await this.pages.findById(pageId);
+    if (!page || page.revision !== expectedRevision) return;
+
+    const current = await this.publications.findByPageId(pageId);
+    if (!current) return;
+
+    const publishedTagNames = new Set(
+      parsePublishedTags(current).map(normalizeTagNameForComparison),
+    );
+    const tagIds = page.tags
+      .filter((tag) => publishedTagNames.has(normalizeTagNameForComparison(tag.name)))
+      .map((tag) => tag.id);
+
+    try {
+      await this.publish(pageId, {
+        allowIndexing: current.allowIndexing,
+        baseRevision: expectedRevision,
+        tagIds,
+      });
+    } catch (error) {
+      if (
+        error instanceof PublicationError &&
+        (error.code === 'PAGE_CONFLICT' || error.code === 'PUBLICATION_CONFLICT')
+      ) {
+        return;
+      }
+      throw error;
+    }
+  }
+
+  async inheritPublication(pageId: string, expectedRevision: number) {
+    const page = await this.pages.findById(pageId);
+    if (!page || page.revision !== expectedRevision) return;
+
+    const current = await this.publications.findByPageId(pageId);
+    if (current) return;
+
+    const parentPublicId = await this.publications.findNearestPublishedAncestor(pageId);
+    if (!parentPublicId) return;
+
+    const parentPublication = await this.publications.findByPublicId(parentPublicId);
+    if (!parentPublication) return;
+
+    try {
+      await this.publish(pageId, {
+        allowIndexing: parentPublication.allowIndexing,
+        baseRevision: expectedRevision,
+        tagIds: [],
+      });
+    } catch (error) {
+      if (
+        error instanceof PublicationError &&
+        (error.code === 'PAGE_CONFLICT' || error.code === 'PUBLICATION_CONFLICT')
+      ) {
+        return;
+      }
+      throw error;
+    }
   }
 
   async publish(pageId: string, input: PublishPublicationRequest) {

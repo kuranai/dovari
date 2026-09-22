@@ -13,6 +13,7 @@ import {
 import { MAX_PAGE_REQUEST_BYTES, pageIdSchema } from '../../shared/pages';
 import { apiError } from '../middleware/security';
 import { PageError } from '../pages/errors';
+import { PublicationService } from '../publications/service';
 import type { WorkerApp } from '../types';
 import { TemplateError } from './errors';
 import { TemplateRepository } from './repository';
@@ -141,6 +142,7 @@ export function registerTemplateRoutes(app: Hono<WorkerApp>) {
       const page = await service.createPageFromTemplate(
         await parseJsonBody(context, createPageFromTemplateRequestSchema),
       );
+      await new PublicationService(context.env.DB).inheritPublication(page.id, page.revision);
       return context.json({ page }, 201);
     }),
   );
