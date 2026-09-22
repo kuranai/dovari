@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 import type { Context, MiddlewareHandler } from 'hono';
 
 import { authorizePasswordRequest } from '../auth/password';
@@ -7,18 +9,24 @@ import type { WorkerApp } from '../types';
 export type ApiErrorStatus =
   400 | 401 | 403 | 404 | 405 | 409 | 413 | 415 | 416 | 422 | 429 | 500 | 503;
 
-const CONTENT_SECURITY_POLICY = [
-  "default-src 'self'",
-  "base-uri 'self'",
-  "connect-src 'self'",
-  "font-src 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-  "img-src 'self' data: blob:",
-  "object-src 'none'",
-  "script-src 'self'",
-  "style-src 'self'",
-].join('; ');
+export function contentSecurityPolicyFor(isDevelopment: boolean) {
+  const developmentInlineSources = isDevelopment ? " 'unsafe-inline'" : '';
+
+  return [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "connect-src 'self'",
+    "font-src 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "img-src 'self' data: blob:",
+    "object-src 'none'",
+    `script-src 'self'${developmentInlineSources}`,
+    `style-src 'self'${developmentInlineSources}`,
+  ].join('; ');
+}
+
+const CONTENT_SECURITY_POLICY = contentSecurityPolicyFor(import.meta.env.MODE === 'development');
 
 function createRequestId() {
   return crypto.randomUUID();

@@ -5,6 +5,7 @@ import { env } from 'cloudflare:workers';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { app } from './index';
+import { contentSecurityPolicyFor } from './middleware/security';
 import { TEST_PASSWORD, TEST_WORKER_VERSION } from './test-auth';
 import type { WorkerBindings } from './types';
 
@@ -68,6 +69,17 @@ beforeEach(async () => {
 });
 
 describe('worker password security boundary', () => {
+  it('allows Vite inline tooling only in development', () => {
+    const developmentPolicy = contentSecurityPolicyFor(true);
+    const productionPolicy = contentSecurityPolicyFor(false);
+
+    expect(developmentPolicy).toContain("script-src 'self' 'unsafe-inline'");
+    expect(developmentPolicy).toContain("style-src 'self' 'unsafe-inline'");
+    expect(productionPolicy).toContain("script-src 'self'");
+    expect(productionPolicy).not.toContain("script-src 'self' 'unsafe-inline'");
+    expect(productionPolicy).not.toContain("style-src 'self' 'unsafe-inline'");
+  });
+
   it('fails closed when the password or version configuration is missing or invalid', async () => {
     for (const overrides of [
       { DOVARI_PASSWORD: undefined },
