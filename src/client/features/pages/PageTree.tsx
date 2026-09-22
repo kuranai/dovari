@@ -428,7 +428,26 @@ function PageTreeBranch({
                 to={`/app/pages/${page.id}`}
               >
                 <span className="page-tree-icon" aria-hidden="true">
-                  {page.isFavorite ? '★' : '◇'}
+                  {page.isFavorite ? (
+                    <svg
+                      aria-hidden="true"
+                      className="page-tree-icon-svg is-favorite"
+                      focusable="false"
+                      viewBox="0 0 16 16"
+                    >
+                      <path d="m8 1.75 1.73 3.51 3.87.56-2.8 2.73.66 3.85L8 10.58l-3.46 1.82.66-3.85-2.8-2.73 3.87-.56L8 1.75Z" />
+                    </svg>
+                  ) : (
+                    <svg
+                      aria-hidden="true"
+                      className="page-tree-icon-svg"
+                      focusable="false"
+                      viewBox="0 0 16 16"
+                    >
+                      <rect height="10.5" rx="1.25" width="9.5" x="3.25" y="2.75" />
+                      <path d="M5.5 5.75h5M5.5 8.25h5M5.5 10.75h3" />
+                    </svg>
+                  )}
                 </span>
                 <span className="page-tree-title">{page.title}</span>
               </NavLink>
