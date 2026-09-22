@@ -181,32 +181,36 @@ export function PageOrganization({ onPageUpdated, page }: PageOrganizationProps)
           onClick={() => void handleFavoriteToggle()}
           type="button"
         >
-          <span aria-hidden="true">{page.isFavorite ? '★' : '☆'}</span>
+          <svg aria-hidden="true" className="favorite-icon" focusable="false" viewBox="0 0 16 16">
+            <path d="m8 1.75 1.73 3.51 3.87.56-2.8 2.73.66 3.85L8 10.58l-3.46 1.82.66-3.85-2.8-2.73 3.87-.56L8 1.75Z" />
+          </svg>
           {page.isFavorite ? 'Favorited' : 'Add to favorites'}
         </button>
       </div>
-      <div className="page-tag-list" aria-label="Page tags">
-        {selectedTags.length > 0 ? (
-          selectedTags.map((tag) => (
-            <span className="tag-chip" key={tag.id}>
-              {tag.name}
-            </span>
-          ))
-        ) : (
-          <span className="page-organization-empty">No tags assigned.</span>
-        )}
+      <div className="page-organization-footer">
+        <div className="page-tag-list" aria-label="Page tags">
+          {selectedTags.length > 0 ? (
+            selectedTags.map((tag) => (
+              <span className="tag-chip" key={tag.id}>
+                {tag.name}
+              </span>
+            ))
+          ) : (
+            <span className="page-organization-empty">No tags assigned.</span>
+          )}
+        </div>
+        <button
+          aria-expanded={isTagManagerOpen}
+          className="button button-quiet page-tag-manager-toggle"
+          onClick={() => {
+            setActionError(null);
+            setIsTagManagerOpen((open) => !open);
+          }}
+          type="button"
+        >
+          {isTagManagerOpen ? 'Close tag manager' : 'Manage tags'}
+        </button>
       </div>
-      <button
-        aria-expanded={isTagManagerOpen}
-        className="button button-quiet page-tag-manager-toggle"
-        onClick={() => {
-          setActionError(null);
-          setIsTagManagerOpen((open) => !open);
-        }}
-        type="button"
-      >
-        {isTagManagerOpen ? 'Close tag manager' : 'Manage tags'}
-      </button>
       {isTagManagerOpen ? (
         <div className="page-tag-manager">
           <form className="page-tag-create" onSubmit={(event) => void handleCreateTag(event)}>
