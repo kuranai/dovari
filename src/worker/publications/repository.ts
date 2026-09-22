@@ -107,6 +107,42 @@ export interface PublicationCursor {
   publicId: string;
 }
 
+export interface PublicationWriteInput {
+  id: string;
+  pageId: string;
+  publicId: string;
+  sourceRevision: number;
+  publishedContentJson: string;
+  publishedContentText: string;
+  publishedTitle: string;
+  publishedTagsJson: string;
+  allowIndexing: boolean;
+  publishedParentPublicId: string | null;
+  publishedPosition: number;
+  publishedAt: string;
+  updatedAt: string;
+  assetIds: string[];
+}
+
+function currentPagesCondition(inputs: readonly PublicationWriteInput[]) {
+  const pageIds = inputs.map((input) => input.pageId);
+  const pageIdPlaceholders = pageIds.map(() => '?').join(', ');
+  const mismatches = inputs.map(() => '(id = ? AND revision <> ?)').join(' OR ');
+
+  return {
+    sql: `(SELECT COUNT(*) FROM pages
+             WHERE id IN (${pageIdPlaceholders}) AND deleted_at IS NULL) = ?
+           AND NOT EXISTS (
+             SELECT 1 FROM pages WHERE ${mismatches}
+           )`,
+    bindings: [
+      ...pageIds,
+      pageIds.length,
+      ...inputs.flatMap((input) => [input.pageId, input.sourceRevision]),
+    ],
+  };
+}
+
 export class PublicationRepository {
   constructor(readonly db: D1Database) {}
 
@@ -272,128 +308,133 @@ export class PublicationRepository {
     return result ? toPublicationAssetRecord(result) : null;
   }
 
-  async publish(input: {
-    id: string;
-    pageId: string;
-    publicId: string;
-    sourceRevision: number;
-    publishedContentJson: string;
-    publishedContentText: string;
-    publishedTitle: string;
-    publishedTagsJson: string;
-    allowIndexing: boolean;
-    publishedParentPublicId: string | null;
-    publishedPosition: number;
-    publishedAt: string;
-    updatedAt: string;
-    assetIds: string[];
-  }) {
-    const pageIsCurrent = `
-      EXISTS (
-        SELECT 1 FROM pages
-        WHERE id = ? AND revision = ? AND deleted_at IS NULL
-      )
-    `;
-    const values = [
-      input.id,
-      input.pageId,
-      input.publicId,
-      input.sourceRevision,
-      input.publishedContentJson,
-      input.publishedContentText,
-      input.publishedTitle,
-      input.publishedTagsJson,
-      input.allowIndexing ? 1 : 0,
-      input.publishedParentPublicId,
-      input.publishedPosition,
-      input.publishedAt,
-      input.updatedAt,
-    ];
-    const statements: D1PreparedStatement[] = [
-      this.db
-        .prepare(
-          `UPDATE page_publications
-           SET public_id = ?, source_revision = ?, published_content_json = ?,
-               published_content_text = ?, published_title = ?, published_tags_json = ?,
-               allow_indexing = ?,
-               published_parent_public_id = ?, published_position = ?,
-               published_at = ?, updated_at = ?
-           WHERE page_id = ? AND ${pageIsCurrent}`,
-        )
-        .bind(
-          input.publicId,
-          input.sourceRevision,
-          input.publishedContentJson,
-          input.publishedContentText,
-          input.publishedTitle,
-          input.publishedTagsJson,
-          input.allowIndexing ? 1 : 0,
-          input.publishedParentPublicId,
-          input.publishedPosition,
-          input.publishedAt,
-          input.updatedAt,
-          input.pageId,
-          input.pageId,
-          input.sourceRevision,
-        ),
-      this.db
-        .prepare(
-          `INSERT INTO page_publications
-             (id, page_id, public_id, source_revision, published_content_json,
-              published_content_text, published_title, published_tags_json, allow_indexing,
-              published_parent_public_id, published_position, published_at, updated_at)
-           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-           WHERE NOT EXISTS (SELECT 1 FROM page_publications WHERE page_id = ?)
-             AND ${pageIsCurrent}`,
-        )
-        .bind(...values, input.pageId, input.pageId, input.sourceRevision),
-      this.db
-        .prepare(
-          `DELETE FROM publication_assets
-           WHERE publication_id = ? AND ${pageIsCurrent}`,
-        )
-        .bind(input.id, input.pageId, input.sourceRevision),
-    ];
+  async publishMany(inputs: readonly PublicationWriteInput[]) {
+    if (inputs.length === 0) return 0;
 
-    for (const assetId of input.assetIds) {
+    const currentPages = currentPagesCondition(inputs);
+    const statements: D1PreparedStatement[] = [];
+    const publicationChangeIndexes: number[] = [];
+
+    for (const input of inputs) {
+      publicationChangeIndexes.push(statements.length);
       statements.push(
         this.db
           .prepare(
-            `INSERT INTO publication_assets (publication_id, asset_id)
-             SELECT ?, ?
-             WHERE ${pageIsCurrent}
-               AND EXISTS (
-                 SELECT 1 FROM page_publications
-                 WHERE id = ? AND page_id = ?
-               )
-               AND EXISTS (
-                 SELECT 1 FROM assets
-                 WHERE id = ? AND deleted_at IS NULL
-               )`,
+            `UPDATE page_publications
+             SET public_id = ?, source_revision = ?, published_content_json = ?,
+                 published_content_text = ?, published_title = ?, published_tags_json = ?,
+                 allow_indexing = ?,
+                 published_parent_public_id = ?, published_position = ?,
+                 published_at = ?, updated_at = ?
+             WHERE page_id = ? AND ${currentPages.sql}`,
+          )
+          .bind(
+            input.publicId,
+            input.sourceRevision,
+            input.publishedContentJson,
+            input.publishedContentText,
+            input.publishedTitle,
+            input.publishedTagsJson,
+            input.allowIndexing ? 1 : 0,
+            input.publishedParentPublicId,
+            input.publishedPosition,
+            input.publishedAt,
+            input.updatedAt,
+            input.pageId,
+            ...currentPages.bindings,
+          ),
+      );
+      publicationChangeIndexes.push(statements.length);
+      statements.push(
+        this.db
+          .prepare(
+            `INSERT INTO page_publications
+               (id, page_id, public_id, source_revision, published_content_json,
+                published_content_text, published_title, published_tags_json, allow_indexing,
+                published_parent_public_id, published_position, published_at, updated_at)
+             SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+             WHERE NOT EXISTS (SELECT 1 FROM page_publications WHERE page_id = ?)
+               AND ${currentPages.sql}`,
           )
           .bind(
             input.id,
-            assetId,
             input.pageId,
+            input.publicId,
             input.sourceRevision,
-            input.id,
+            input.publishedContentJson,
+            input.publishedContentText,
+            input.publishedTitle,
+            input.publishedTagsJson,
+            input.allowIndexing ? 1 : 0,
+            input.publishedParentPublicId,
+            input.publishedPosition,
+            input.publishedAt,
+            input.updatedAt,
             input.pageId,
-            assetId,
+            ...currentPages.bindings,
           ),
       );
+      statements.push(
+        this.db
+          .prepare(
+            `DELETE FROM publication_assets
+             WHERE publication_id = ? AND ${currentPages.sql}`,
+          )
+          .bind(input.id, ...currentPages.bindings),
+      );
+
+      for (const assetId of input.assetIds) {
+        statements.push(
+          this.db
+            .prepare(
+              `INSERT INTO publication_assets (publication_id, asset_id)
+               SELECT ?, ?
+               WHERE ${currentPages.sql}
+                 AND EXISTS (
+                   SELECT 1 FROM page_publications
+                   WHERE id = ? AND page_id = ?
+                 )
+                 AND EXISTS (
+                   SELECT 1 FROM assets
+                   WHERE id = ? AND deleted_at IS NULL
+                 )`,
+            )
+            .bind(input.id, assetId, ...currentPages.bindings, input.id, input.pageId, assetId),
+        );
+      }
     }
 
     const results = await this.db.batch(statements);
-    return (results[0]?.meta.changes ?? 0) + (results[1]?.meta.changes ?? 0);
+    return publicationChangeIndexes.reduce(
+      (changes, index) => changes + (results[index]?.meta.changes ?? 0),
+      0,
+    );
   }
 
-  async unpublish(publicId: string, expectedUpdatedAt: string) {
+  async unpublishSubtree(pageId: string, publicId: string, expectedUpdatedAt: string) {
     const result = await this.db
       .prepare(
-        `DELETE FROM page_publications
-         WHERE public_id = ? AND updated_at = ?`,
+        `WITH RECURSIVE subtree(page_id) AS (
+           SELECT id
+           FROM pages
+           WHERE id = ? AND deleted_at IS NULL
+           UNION ALL
+           SELECT child.id
+           FROM pages AS child
+           INNER JOIN subtree ON subtree.page_id = child.parent_id
+           WHERE child.deleted_at IS NULL
+         )
+         DELETE FROM page_publications
+         WHERE page_id IN (SELECT page_id FROM subtree)
+           AND EXISTS (
+             SELECT 1
+             FROM page_publications AS root_publication
+             WHERE root_publication.page_id = ?
+               AND root_publication.public_id = ?
+               AND root_publication.updated_at = ?
+           )`,
       )
-      .bind(publicId, expectedUpdatedAt)
+      .bind(pageId, pageId, publicId, expectedUpdatedAt)
       .run();
     return result;
   }

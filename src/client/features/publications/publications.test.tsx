@@ -129,6 +129,10 @@ describe('public publication UI', () => {
     );
 
     expect(await screen.findByRole('heading', { name: 'Public handbook' })).toBeTruthy();
+    expect(screen.getByRole('article').className).toContain('page-detail');
+    expect(
+      document.querySelector('.public-document')?.classList.contains('page-editor-content'),
+    ).toBe(true);
     expect(screen.getByRole('link', { name: 'Next page' }).getAttribute('href')).toBe(
       `/p/${targetPublicId}`,
     );
@@ -178,6 +182,7 @@ describe('public publication UI', () => {
     );
 
     expect(await screen.findByText('Not published')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Sharing settings' }));
     fireEvent.click(screen.getByLabelText('Allow search engine indexing'));
     fireEvent.click(screen.getByRole('button', { name: 'Publish page' }));
 
@@ -186,6 +191,22 @@ describe('public publication UI', () => {
       `/p/${publicId}`,
     );
     expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it('keeps sharing controls compact until sharing settings are opened', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({ publication: null }));
+
+    render(
+      <MemoryRouter>
+        <PublicationPanel page={page()} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Not published')).toBeTruthy();
+    expect(screen.queryByLabelText('Allow search engine indexing')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Publish page' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Sharing settings' }));
+    expect(screen.getByLabelText('Allow search engine indexing')).toBeTruthy();
   });
 
   it('renders a retryable 404 state for an unpublished public page', async () => {

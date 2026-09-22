@@ -172,7 +172,7 @@ export function PublicDocument({
   publicationId: string;
 }) {
   return (
-    <div className="public-document">
+    <div className="page-editor-content public-document">
       <PublicNode node={document} publicationId={publicationId} />
     </div>
   );

@@ -53,9 +53,9 @@ async function request(path: string, init: RequestInit = {}, authenticated = tru
   return app.fetch(new Request(`http://localhost${path}`, { ...init, headers }), localEnv);
 }
 
-async function createPage(title: string) {
+async function createPage(title: string, parentId: string | null = null) {
   const response = await request('/api/private/pages', {
-    body: JSON.stringify({ parentId: null, title }),
+    body: JSON.stringify({ parentId, title }),
     method: 'POST',
   });
   expect(response.status).toBe(201);
@@ -209,6 +209,88 @@ describe('publications', () => {
       false,
     );
     expect(privateMutation.status).toBe(401);
+  });
+
+  it('publishes and unpublishes an entire page subtree as one public category', async () => {
+    const root = await createPage('Public category');
+    const child = await createPage('Public child', root.id);
+    const grandchild = await createPage('Public grandchild', child.id);
+    const privateCategory = await createPage('Private category');
+
+    const rootPublication = await publish(root, true);
+    const listResponse = await request('/api/public/publications', {}, false);
+    expect(listResponse.status).toBe(200);
+    const list = (await listResponse.json()) as {
+      publications: Array<{
+        parentPublicId: string | null;
+        publicId: string;
+        publishedTitle: string;
+      }>;
+    };
+    const publicPages = new Map(
+      list.publications.map((publication) => [publication.publishedTitle, publication]),
+    );
+
+    expect(publicPages.has(root.title)).toBe(true);
+    expect(publicPages.has(child.title)).toBe(true);
+    expect(publicPages.has(grandchild.title)).toBe(true);
+    expect(publicPages.has(privateCategory.title)).toBe(false);
+    expect(publicPages.get(child.title)?.parentPublicId).toBe(rootPublication.publicId);
+    expect(publicPages.get(grandchild.title)?.parentPublicId).toBe(
+      publicPages.get(child.title)?.publicId,
+    );
+
+    const currentRoot = await request(`/api/private/pages/${root.id}/publication`);
+    const currentRootPublication = (
+      (await currentRoot.json()) as { publication: { publicId: string; updatedAt: string } }
+    ).publication;
+    const unpublishResponse = await request(`/api/private/pages/${root.id}/publication`, {
+      body: JSON.stringify({
+        expectedUpdatedAt: currentRootPublication.updatedAt,
+        publicId: currentRootPublication.publicId,
+      }),
+      method: 'DELETE',
+    });
+    expect(unpublishResponse.status).toBe(200);
+
+    const afterUnpublish = (await (
+      await request('/api/public/publications', {}, false)
+    ).json()) as {
+      publications: Array<{ publishedTitle: string }>;
+    };
+    expect(
+      afterUnpublish.publications.some((publication) => publication.publishedTitle === root.title),
+    ).toBe(false);
+    expect(
+      afterUnpublish.publications.some((publication) => publication.publishedTitle === child.title),
+    ).toBe(false);
+    expect(
+      afterUnpublish.publications.some(
+        (publication) => publication.publishedTitle === grandchild.title,
+      ),
+    ).toBe(false);
+  });
+
+  it('removes inherited publications when a shared category moves to Trash', async () => {
+    const root = await createPage('Trashed category');
+    const child = await createPage('Trashed child', root.id);
+    await publish(root);
+
+    const deleted = await request(`/api/private/pages/${root.id}`, {
+      body: JSON.stringify({ baseRevision: root.revision }),
+      method: 'DELETE',
+    });
+    expect(deleted.status).toBe(200);
+
+    const list = (await (await request('/api/public/publications', {}, false)).json()) as {
+      publications: Array<{ publishedTitle: string }>;
+    };
+    expect(list.publications.some((publication) => publication.publishedTitle === root.title)).toBe(
+      false,
+    );
+    expect(
+      list.publications.some((publication) => publication.publishedTitle === child.title),
+    ).toBe(false);
   });
 
   it('keeps public assets snapshot-scoped and handles stale unpublish safely', async () => {

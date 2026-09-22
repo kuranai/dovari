@@ -1,2 +1,0 @@
-# Use at least 16 characters. The value is compared exactly and is never committed.
-DOVARI_PASSWORD=replace-with-a-long-private-password

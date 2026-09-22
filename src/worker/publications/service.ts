@@ -27,6 +27,7 @@ import { PageRepository, type PageRecord } from '../pages/repository';
 import { PublicationError } from './errors';
 import {
   PublicationRepository,
+  type PublicationWriteInput,
   type PublicationCursor,
   type PublicationRecord,
 } from './repository';
@@ -277,6 +278,9 @@ export class PublicationService {
     if (!page) throw pageNotFound();
     if (page.revision !== input.baseRevision) throw pageConflict(page.revision);
 
+    const subtree = await this.pages.listActiveSubtree(pageId);
+    if (subtree.length === 0) throw pageNotFound();
+
     const pageTagIds = new Set(page.tags.map((tag) => tag.id));
     const missingTagIds = input.tagIds.filter((tagId) => !pageTagIds.has(tagId));
     if (missingTagIds.length > 0) throw tagsNotFound(missingTagIds);
@@ -284,47 +288,84 @@ export class PublicationService {
       .filter((tag) => input.tagIds.includes(tag.id))
       .map((tag) => tag.name);
 
-    const document = parsePrivateContent(page);
-    const [assetRecords, targetPublications, existing, parentPublicId] = await Promise.all([
-      this.assets.findActiveByIds(collectAssetIds(document)),
-      this.publications.findActiveTargetsByPageIds(
-        collectWikiLinkReferences(document).flatMap((link) =>
-          link.targetPageId === null ? [] : [link.targetPageId],
+    const documents = new Map(
+      subtree.map((subtreePage) => [subtreePage.id, parsePrivateContent(subtreePage)]),
+    );
+    const allAssetIds = [
+      ...new Set([...documents.values()].flatMap((document) => collectAssetIds(document))),
+    ];
+    const targetPageIds = [
+      ...new Set(
+        [...documents.values()].flatMap((document) =>
+          collectWikiLinkReferences(document).flatMap((link) =>
+            link.targetPageId === null ? [] : [link.targetPageId],
+          ),
         ),
       ),
-      this.publications.findByPageId(pageId),
-      this.publications.findNearestPublishedAncestor(pageId),
-    ]);
+    ];
+    const [assetRecords, targetPublications, existingPublications, parentPublicId] =
+      await Promise.all([
+        this.assets.findActiveByIds(allAssetIds),
+        this.publications.findActiveTargetsByPageIds(targetPageIds),
+        this.publications.findActiveTargetsByPageIds(subtree.map((subtreePage) => subtreePage.id)),
+        this.publications.findNearestPublishedAncestor(pageId),
+      ]);
     const activeAssets = new Set(assetRecords.map((asset) => asset.id));
-    const snapshot = sanitizePublicDocument(document, activeAssets, targetPublications);
-    if (!publicTiptapDocumentSchema.safeParse(snapshot).success) throw internalError();
-    const snapshotAssetIds = collectPublicAssetIds(snapshot);
-    const assetIds = new Set(assetRecords.map((asset) => asset.id));
-    if (snapshotAssetIds.some((assetId) => !assetIds.has(assetId))) throw internalError();
-    const publishedContentJson = canonicalJson(snapshot);
-    const publishedContentText = derivePublicPlainText(snapshot);
+    const plannedPublications = new Map<string, PublicationRecord>();
 
-    const timestamp = nowIso(existing?.updatedAt);
-    const record = {
-      allowIndexing: input.allowIndexing,
-      assetIds: snapshotAssetIds,
-      id: existing?.id ?? crypto.randomUUID(),
-      pageId,
-      publicId: existing?.publicId ?? crypto.randomUUID(),
-      publishedAt: timestamp,
-      publishedContentJson,
-      publishedContentText,
-      publishedTitle: page.title,
-      publishedTagsJson: canonicalJson(publishedTags),
-      publishedParentPublicId: parentPublicId,
-      publishedPosition: page.position,
-      sourceRevision: page.revision,
-      updatedAt: timestamp,
-    } as const;
+    for (const subtreePage of subtree) {
+      const existing = existingPublications.get(subtreePage.id);
+      const inheritedParentPublicId =
+        subtreePage.id === pageId
+          ? parentPublicId
+          : (plannedPublications.get(subtreePage.parentId ?? '')?.publicId ?? null);
+      const timestamp = nowIso(existing?.updatedAt);
+      plannedPublications.set(subtreePage.id, {
+        allowIndexing: input.allowIndexing,
+        id: existing?.id ?? crypto.randomUUID(),
+        pageId: subtreePage.id,
+        publicId: existing?.publicId ?? crypto.randomUUID(),
+        publishedAt: timestamp,
+        publishedContentJson: '',
+        publishedContentText: '',
+        publishedParentPublicId: inheritedParentPublicId,
+        publishedPosition: subtreePage.position,
+        publishedTagsJson:
+          subtreePage.id === pageId
+            ? canonicalJson(publishedTags)
+            : (existing?.publishedTagsJson ?? canonicalJson([])),
+        publishedTitle: subtreePage.title,
+        sourceRevision: subtreePage.revision,
+        updatedAt: timestamp,
+      });
+    }
+
+    const targetPublicationsWithPlan = new Map(targetPublications);
+    for (const [subtreePageId, planned] of plannedPublications) {
+      targetPublicationsWithPlan.set(subtreePageId, planned);
+    }
+
+    const records: PublicationWriteInput[] = [];
+    for (const subtreePage of subtree) {
+      const document = documents.get(subtreePage.id);
+      const planned = plannedPublications.get(subtreePage.id);
+      if (!document || !planned) throw internalError();
+      const snapshot = sanitizePublicDocument(document, activeAssets, targetPublicationsWithPlan);
+      if (!publicTiptapDocumentSchema.safeParse(snapshot).success) throw internalError();
+      const snapshotAssetIds = collectPublicAssetIds(snapshot);
+      const publishedContentJson = canonicalJson(snapshot);
+      const publishedContentText = derivePublicPlainText(snapshot);
+      records.push({
+        ...planned,
+        assetIds: snapshotAssetIds,
+        publishedContentJson,
+        publishedContentText,
+      });
+    }
 
     try {
-      const changes = await this.publications.publish(record);
-      if (changes < 1) {
+      const changes = await this.publications.publishMany(records);
+      if (changes < records.length) {
         const latest = await this.pages.findById(pageId);
         if (!latest) throw pageNotFound();
         throw pageConflict(latest.revision);
@@ -345,7 +386,11 @@ export class PublicationService {
     if (!page) throw pageNotFound();
     const current = await this.publications.findByPageId(pageId);
     if (!current || current.publicId !== input.publicId) throw publicationConflict();
-    const result = await this.publications.unpublish(input.publicId, input.expectedUpdatedAt);
+    const result = await this.publications.unpublishSubtree(
+      pageId,
+      input.publicId,
+      input.expectedUpdatedAt,
+    );
     if (result.meta.changes < 1) throw publicationConflict();
     return { unpublished: true as const, publicId: input.publicId };
   }

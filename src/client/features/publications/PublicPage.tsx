@@ -19,7 +19,7 @@ type PublicPageState =
 
 function PublicHeader({ publicId }: { publicId: string }) {
   return (
-    <header className="public-header">
+    <header className="app-header public-header">
       <Link className="brand" to="/">
         <span aria-hidden="true" className="brand-mark">
           D
@@ -128,7 +128,7 @@ export function PublicPage() {
 
   if (state.status === 'loading') {
     return (
-      <div className="public-shell">
+      <div className="public-shell public-page-shell">
         <PublicHeader publicId={publicId ?? ''} />
         <main className="public-main" id="main-content" tabIndex={-1}>
           <section aria-busy="true" aria-live="polite" className="public-state">
@@ -141,7 +141,7 @@ export function PublicPage() {
 
   if (state.status === 'error') {
     return (
-      <div className="public-shell">
+      <div className="public-shell public-page-shell">
         <PublicHeader publicId={publicId ?? ''} />
         <main className="public-main" id="main-content" tabIndex={-1}>
           <PublicPageState
@@ -157,7 +157,7 @@ export function PublicPage() {
   const { publication, navigation, navigationError } = state;
   const navigationItems = flattenPublicNavigation(navigation);
   return (
-    <div className="public-shell">
+    <div className="public-shell public-page-shell">
       <PublicHeader publicId={publication.publicId} />
       <div className="public-layout">
         <aside className="public-navigation" aria-label="Public pages">
@@ -184,22 +184,24 @@ export function PublicPage() {
           ) : null}
         </aside>
         <main className="public-main public-page-main" id="main-content" tabIndex={-1}>
-          <article className="public-article">
-            <header className="public-article-header">
-              <span className="state-kicker">Published page</span>
-              <h1>{publication.publishedTitle}</h1>
-              <time dateTime={publication.updatedAt}>
-                Updated {new Date(publication.updatedAt).toLocaleDateString()}
-              </time>
-              {publication.tags.length > 0 ? (
-                <div aria-label="Published tags" className="public-tag-list">
-                  {publication.tags.map((tag) => (
-                    <span className="tag-chip" key={tag}>
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
+          <article className="page-detail public-article">
+            <header className="page-detail-header public-article-header">
+              <div className="public-article-heading">
+                <span className="state-kicker">Published page</span>
+                <h1>{publication.publishedTitle}</h1>
+                <time dateTime={publication.updatedAt}>
+                  Updated {new Date(publication.updatedAt).toLocaleDateString()}
+                </time>
+                {publication.tags.length > 0 ? (
+                  <div aria-label="Published tags" className="public-tag-list">
+                    {publication.tags.map((tag) => (
+                      <span className="tag-chip" key={tag}>
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </header>
             <PublicDocument document={publication.content} publicationId={publication.publicId} />
           </article>

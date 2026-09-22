@@ -252,6 +252,11 @@ test('publishes a page for anonymous readers and returns to private editing for 
   await page.keyboard.type('Anonymous readers can see this snapshot.');
   await expect(page.getByText('Saved', { exact: true })).toBeVisible();
   await expect(page.getByText('Not published', { exact: true })).toBeVisible();
+  expect(
+    await page
+      .locator('.publication-panel')
+      .evaluate((element) => element.getBoundingClientRect().height),
+  ).toBeLessThan(180);
   await page.getByRole('button', { name: 'Publish page' }).click();
   await expect(page.getByText('Published', { exact: true })).toBeVisible();
 
