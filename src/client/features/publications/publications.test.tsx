@@ -129,6 +129,10 @@ describe('public publication UI', () => {
     );
 
     expect(await screen.findByRole('heading', { name: 'Public handbook' })).toBeTruthy();
+    expect(screen.queryByText('Published page')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'All public pages' })).toBeNull();
+    expect(screen.getByText('Updated 2026-09-14')).toBeTruthy();
+    expect(document.querySelector('.public-search-icon')).not.toBeNull();
     expect(screen.getByRole('article').className).toContain('page-detail');
     expect(
       document.querySelector('.public-document')?.classList.contains('page-editor-content'),

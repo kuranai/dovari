@@ -3773,21 +3773,24 @@ kbd {
 
 .public-page-shell .public-layout {
   display: grid;
-  grid-template-columns: minmax(220px, 270px) minmax(0, 1fr);
+  grid-template-columns: minmax(238px, 276px) minmax(0, 1fr);
   width: 100%;
-  max-width: 1440px;
+  max-width: none;
   min-width: 0;
   margin: 0 auto;
   gap: 0;
   padding: 0;
+  align-items: stretch;
+  min-height: calc(100dvh - 84px);
 }
 
 .public-page-shell .public-navigation {
   position: sticky;
   top: 0;
-  max-height: calc(100vh - 68px);
+  align-self: stretch;
+  max-height: none;
   padding: 32px 20px 24px;
-  overflow: auto;
+  overflow: visible;
   border-right: 1px solid var(--color-border-subtle);
   background: var(--color-sidebar);
 }
@@ -3802,7 +3805,7 @@ kbd {
 }
 
 .public-page-shell .public-article {
-  width: min(1080px, 100%);
+  width: 100%;
   margin: 0 auto;
   padding: 0;
   border: 0;
@@ -3831,7 +3834,8 @@ kbd {
 }
 
 .public-page-shell .public-document {
-  width: min(100%, 900px);
+  width: 100%;
+  max-width: none;
   min-height: 340px;
   padding: 30px 0 44px;
 }
@@ -4017,6 +4021,7 @@ kbd {
     display: block;
     width: 100%;
     padding: 0;
+    min-height: 0;
   }
 
   .public-page-shell .public-navigation {
@@ -4912,6 +4917,52 @@ button:active:not(:disabled),
 }
 
 .public-search-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-mark);
+}
+
+.public-search-field {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 15px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 4px;
+  background: var(--color-surface);
+  box-shadow: 0 8px 22px var(--shadow-editor);
+}
+
+.public-search-icon {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  color: var(--color-placeholder);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.public-search-field .public-search-input {
+  width: 100%;
+  min-width: 0;
+  flex: 1;
+  padding: 12px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.public-search-field .public-search-input:focus {
+  border-color: transparent;
+  outline: 0;
+  box-shadow: none;
+}
+
+.public-search-field:focus-within {
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px var(--color-accent-mark);
 }
