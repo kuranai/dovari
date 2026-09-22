@@ -2,7 +2,6 @@ const SESSION_COOKIE = '__Host-dovari_session';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const MAX_LOGIN_FAILURES = 5;
-const MIN_PASSWORD_CHARACTERS = 16;
 const MAX_PASSWORD_BYTES = 256;
 
 export type AuthIdentity = { kind: 'password'; subject: 'owner' };
@@ -39,7 +38,6 @@ function configuredAuth(env: AuthEnvironment): AuthConfiguration | null {
   const workerVersion = env.CF_VERSION_METADATA?.id;
   if (
     typeof password !== 'string' ||
-    [...password].length < MIN_PASSWORD_CHARACTERS ||
     encoder.encode(password).byteLength > MAX_PASSWORD_BYTES ||
     typeof workerVersion !== 'string' ||
     workerVersion.length === 0

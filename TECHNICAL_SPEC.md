@@ -1061,8 +1061,8 @@ Diese Grenzen gefährden den primären `Ctrl+K`-Workflow nicht. Erst echte Nutzu
 ### 11.1 Instanz-Passwort und Sessions
 
 `/app/*` und `/api/private/*` werden durch ein einziges, beim Deployment gesetztes
-`DOVARI_PASSWORD` geschützt. Das Secret muss mindestens 16 Zeichen und darf höchstens 256
-UTF-8-Bytes enthalten. Es wird exakt verglichen und weder normalisiert noch getrimmt. Fehlt eine
+`DOVARI_PASSWORD` geschützt. Das Secret darf höchstens 256 UTF-8-Bytes enthalten. Es wird exakt
+verglichen und weder normalisiert noch getrimmt. Fehlt eine
 gültige Konfiguration, antworten private Pfade fail-closed mit `503 SETUP_REQUIRED`, ohne private
 D1- oder R2-Daten zu lesen.
 

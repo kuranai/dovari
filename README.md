@@ -36,7 +36,7 @@ traditional server or handing their notes to a hosted knowledge-base provider.
 The quickest way to run Dovari is with the deployment button at the top of this page.
 
 1. Sign in to Cloudflare and select your account.
-2. Set `DOVARI_PASSWORD` to a private password between 16 characters and 256 UTF-8 bytes.
+2. Set `DOVARI_PASSWORD` to a private password of at most 256 UTF-8 bytes.
 3. Keep the default Worker, D1 database, and R2 bucket names, or choose unused names if they
    already exist in your account.
 4. Wait for the deployment to finish, then open the generated `workers.dev` address.
@@ -58,8 +58,8 @@ npm ci
 cp .dev.vars.example .dev.vars
 ```
 
-Replace the example value in `.dev.vars` with a `DOVARI_PASSWORD` between 16 characters and 256
-UTF-8 bytes, then initialize the local database and start the application:
+Replace the example value in `.dev.vars` with a `DOVARI_PASSWORD` of at most 256 UTF-8 bytes, then
+initialize the local database and start the application:
 
 ```sh
 npm run db:migrate:local

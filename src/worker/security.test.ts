@@ -81,11 +81,7 @@ describe('worker password security boundary', () => {
   });
 
   it('fails closed when the password or version configuration is missing or invalid', async () => {
-    for (const overrides of [
-      { DOVARI_PASSWORD: undefined },
-      { DOVARI_PASSWORD: 'too-short' },
-      { CF_VERSION_METADATA: undefined },
-    ]) {
+    for (const overrides of [{ DOVARI_PASSWORD: undefined }, { CF_VERSION_METADATA: undefined }]) {
       const { bindings, staticFetch } = makeEnvironment(overrides);
       const appResponse = await fetchApp('/app', bindings);
       const apiResponse = await fetchApp('/api/private/pages', bindings);
@@ -96,6 +92,14 @@ describe('worker password security boundary', () => {
       });
       expect(staticFetch).not.toHaveBeenCalled();
     }
+  });
+
+  it('accepts configured passwords shorter than sixteen characters', async () => {
+    const password = 'short';
+    const { bindings } = makeEnvironment({ DOVARI_PASSWORD: password });
+    const response = await login(bindings, password);
+
+    expect(response.status).toBe(200);
   });
 
   it('creates only a hashed opaque session after an exact password match', async () => {

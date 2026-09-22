@@ -87,7 +87,7 @@
   "cloudflare": {
     "bindings": {
       "DOVARI_PASSWORD": {
-        "description": "Choose the private owner password for this Dovari installation (at least 16 characters)."
+        "description": "Choose the private owner password for this Dovari installation (maximum 256 UTF-8 bytes)."
       }
     }
   }
