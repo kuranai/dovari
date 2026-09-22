@@ -28,6 +28,12 @@ async function openLongEditorPage(page: Page) {
   return { editor, toolbar: page.locator('.editor-toolbar') };
 }
 
+async function deleteCurrentPageAndWait(page: Page) {
+  const currentUrl = page.url();
+  await page.getByRole('button', { name: 'Delete page' }).click();
+  await expect(page).not.toHaveURL(currentUrl);
+}
+
 test('signs the owner out and protects the app again', async ({ page }) => {
   await page.goto('/app/settings');
   await page.getByRole('button', { name: 'Sign out' }).click();
@@ -59,7 +65,7 @@ test('validates and restores a lossless backup after the workspace is emptied', 
 
   await page.getByRole('link', { name: 'Back to pages' }).click();
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
-  await page.getByRole('button', { name: 'Delete page' }).click();
+  await deleteCurrentPageAndWait(page);
   await page.getByRole('link', { name: 'Settings' }).click();
   await expect(page).toHaveURL('/app/settings');
   await page.getByRole('link', { name: 'Open Trash' }).click();
@@ -80,7 +86,7 @@ test('validates and restores a lossless backup after the workspace is emptied', 
   await page.getByRole('link', { name: 'Back to pages' }).click();
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Delete page' }).click();
+  await deleteCurrentPageAndWait(page);
   await page.getByRole('link', { name: 'Settings' }).click();
   await expect(page).toHaveURL('/app/settings');
   await page.getByRole('link', { name: 'Open Trash' }).click();
@@ -236,7 +242,7 @@ test('keeps tags and favorites through navigation and Trash restore', async ({ p
   await expect(page.getByRole('button', { name: 'Favorited' })).toBeVisible();
   await expect(page.locator('.page-tag-list .tag-chip')).toHaveText(tagName);
 
-  await page.getByRole('button', { name: 'Delete page' }).click();
+  await deleteCurrentPageAndWait(page);
   await page.getByRole('link', { name: 'Settings' }).click();
   await page.getByRole('link', { name: 'Open Trash' }).click();
   const finalTrashItem = page.locator('.trash-item').filter({ hasText: title });
@@ -383,10 +389,10 @@ test('publishes a page for anonymous readers and returns to private editing for 
   await expect(page.getByRole('heading', { name: 'This public page is gone.' })).toBeVisible();
 
   await page.goto(privatePageUrl);
-  await page.getByRole('button', { name: 'Delete page' }).click();
+  await deleteCurrentPageAndWait(page);
   await page.goto(childPrivateUrl);
   await expect(page.getByRole('heading', { name: childTitle })).toBeVisible();
-  await page.getByRole('button', { name: 'Delete page' }).click();
+  await deleteCurrentPageAndWait(page);
   await page.goto('/app/settings/trash');
   const trashItem = page.locator('.trash-item').filter({ hasText: title });
   await trashItem.getByRole('button', { name: 'Delete permanently' }).click();
@@ -534,7 +540,7 @@ test('covers search, screenshot paste, drag and drop, and Markdown export', asyn
   await palette.getByRole('option', { name: new RegExp(title) }).press('Enter');
   await expect(page).toHaveURL(pageUrl);
 
-  await page.getByRole('button', { name: 'Delete page' }).click();
+  await deleteCurrentPageAndWait(page);
   await page.goto('/app/settings/trash');
   const trashItem = page.locator('.trash-item').filter({ hasText: title });
   await trashItem.getByRole('button', { name: 'Delete permanently' }).click();
@@ -598,12 +604,12 @@ test('supports a navigable page tree with child creation, collapse, drag move, a
   await expect(page.getByRole('link', { exact: true, name: `${rootTitle} renamed` })).toBeVisible();
 
   await page.goto(childUrl);
-  await page.getByRole('button', { name: 'Delete page' }).click();
+  await deleteCurrentPageAndWait(page);
   await page.goto(rootUrl);
   await expect(page.getByRole('heading', { name: `${rootTitle} renamed` })).toBeVisible();
-  await page.getByRole('button', { name: 'Delete page' }).click();
+  await deleteCurrentPageAndWait(page);
   await expect(page.getByRole('heading', { name: siblingTitle })).toBeVisible();
-  await page.getByRole('button', { name: 'Delete page' }).click();
+  await deleteCurrentPageAndWait(page);
   await expect(page.getByRole('heading', { name: 'Start with one useful page.' })).toBeVisible();
 });
 
@@ -672,7 +678,7 @@ test('has no critical accessibility violations in the workspace shell', async ({
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
-  await page.getByRole('button', { name: 'Delete page' }).click();
+  await deleteCurrentPageAndWait(page);
 });
 
 test('supports discoverable safe links and wiki-link navigation by mouse and keyboard', async ({
@@ -766,9 +772,9 @@ test('supports discoverable safe links and wiki-link navigation by mouse and key
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(targetUrl);
 
-  await page.getByRole('button', { name: 'Delete page' }).click();
+  await deleteCurrentPageAndWait(page);
   await expect(page.getByRole('heading', { name: sourceTitle })).toBeVisible();
-  await page.getByRole('button', { name: 'Delete page' }).click();
+  await deleteCurrentPageAndWait(page);
   await expect(page.getByRole('heading', { name: 'Start with one useful page.' })).toBeVisible();
 });
 
@@ -789,7 +795,7 @@ test('supports delete undo, Trash restore, and revision restore', async ({ page 
   await page.keyboard.type('Recoverable content');
   await expect(page.getByText('Saved', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Delete page' }).click();
+  await deleteCurrentPageAndWait(page);
   await expect(page).toHaveURL('/app');
   await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible();
   await page.getByRole('button', { name: 'Undo' }).click();
@@ -975,10 +981,10 @@ test('supports Settings, Recent Pages, and slash commands on desktop and mobile'
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(targetUrl);
   await expect(page.getByRole('heading', { name: targetTitle })).toBeVisible();
-  await page.getByRole('button', { name: 'Delete page' }).click();
+  await deleteCurrentPageAndWait(page);
   await page.goto(sourceUrl);
   await expect(page.getByRole('heading', { name: sourceTitle })).toBeVisible();
-  await page.getByRole('button', { name: 'Delete page' }).click();
+  await deleteCurrentPageAndWait(page);
   await page.goto('/app/settings/trash');
   for (const title of [sourceTitle, targetTitle]) {
     const trashItem = page.locator('.trash-item').filter({ hasText: title });
