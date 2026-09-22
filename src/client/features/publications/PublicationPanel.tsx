@@ -32,7 +32,7 @@ function publicationStatus(
     selectedTagNames.length !== publicationTagNames.length ||
     selectedTagNames.some((name, index) => name !== publicationTagNames[index])
   ) {
-    return 'Changes not published';
+    return 'Syncing…';
   }
   return 'Published';
 }
@@ -78,7 +78,7 @@ export function PublicationPanel({ page }: { page: PageDetail }) {
         }
       });
     return () => controller.abort();
-  }, [page.id, reloadKey]);
+  }, [page.id, page.revision, page.updatedAt, reloadKey]);
 
   useEffect(() => {
     const pageTagIds = new Set(page.tags.map((tag) => tag.id));
@@ -105,6 +105,44 @@ export function PublicationPanel({ page }: { page: PageDetail }) {
     } finally {
       setIsPublishing(false);
     }
+  }
+
+  async function syncPublicationSettings(nextAllowIndexing: boolean, nextTagIds: string[]) {
+    if (state.status !== 'ready' || state.publication === null || isPublishing || isUnpublishing) {
+      return;
+    }
+
+    setIsPublishing(true);
+    setActionError(null);
+    setCopyNotice(null);
+    try {
+      const response = await publishPrivatePublication(page.id, {
+        allowIndexing: nextAllowIndexing,
+        baseRevision: page.revision,
+        tagIds: nextTagIds,
+      });
+      setAllowIndexing(response.publication.allowIndexing);
+      setState({ status: 'ready', publication: response.publication });
+    } catch (error: unknown) {
+      setActionError(
+        publicationErrorMessage(error, 'The sharing settings could not be synchronized.'),
+      );
+    } finally {
+      setIsPublishing(false);
+    }
+  }
+
+  function handleAllowIndexingChange(nextAllowIndexing: boolean) {
+    setAllowIndexing(nextAllowIndexing);
+    void syncPublicationSettings(nextAllowIndexing, selectedTagIdList);
+  }
+
+  function handleTagToggle(tagId: string) {
+    const next = new Set(selectedTagIds);
+    if (next.has(tagId)) next.delete(tagId);
+    else next.add(tagId);
+    setSelectedTagIds(next);
+    void syncPublicationSettings(allowIndexing, [...next]);
   }
 
   async function handleUnpublish() {
@@ -160,18 +198,16 @@ export function PublicationPanel({ page }: { page: PageDetail }) {
         </div>
         {state.status === 'ready' ? (
           <div className="publication-actions publication-actions-summary">
-            <button
-              className="button button-primary"
-              disabled={isPublishing || isUnpublishing}
-              onClick={() => void handlePublish()}
-              type="button"
-            >
-              {isPublishing
-                ? 'Publishing…'
-                : state.publication === null
-                  ? 'Publish page'
-                  : 'Update publication'}
-            </button>
+            {state.publication === null ? (
+              <button
+                className="button button-primary"
+                disabled={isPublishing || isUnpublishing}
+                onClick={() => void handlePublish()}
+                type="button"
+              >
+                {isPublishing ? 'Publishing…' : 'Publish page'}
+              </button>
+            ) : null}
             {state.publication ? (
               <>
                 <a
@@ -228,13 +264,14 @@ export function PublicationPanel({ page }: { page: PageDetail }) {
           {isSettingsOpen ? (
             <div className="publication-settings" id="publication-settings">
               <p className="publication-description">
-                Publish a safe snapshot when this page is ready to share. Private edits stay private
-                until you publish again. Publishing also includes every active subpage.
+                Publish this page once to make it public. Later title and content edits sync to the
+                public snapshot automatically. Publishing also includes every active subpage.
               </p>
               <label className="publication-indexing-option">
                 <input
                   checked={allowIndexing}
-                  onChange={(event) => setAllowIndexing(event.target.checked)}
+                  disabled={isPublishing || isUnpublishing}
+                  onChange={(event) => handleAllowIndexingChange(event.target.checked)}
                   type="checkbox"
                 />
                 <span>Allow search engine indexing</span>
@@ -246,14 +283,8 @@ export function PublicationPanel({ page }: { page: PageDetail }) {
                     <label className="publication-tag-option" key={tag.id}>
                       <input
                         checked={selectedTagIds.has(tag.id)}
-                        onChange={() =>
-                          setSelectedTagIds((current) => {
-                            const next = new Set(current);
-                            if (next.has(tag.id)) next.delete(tag.id);
-                            else next.add(tag.id);
-                            return next;
-                          })
-                        }
+                        disabled={isPublishing || isUnpublishing}
+                        onChange={() => handleTagToggle(tag.id)}
                         type="checkbox"
                       />
                       <span>{tag.name}</span>

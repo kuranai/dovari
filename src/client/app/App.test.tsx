@@ -128,8 +128,9 @@ describe('Dovari app shell', () => {
       `/app/pages/${pageId}`,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Rename page' }));
-    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Renamed page' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Edit title' }), {
+      target: { value: 'Renamed page' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Save title' }));
 
     expect(await screen.findByRole('heading', { name: 'Renamed page' })).toBeTruthy();
@@ -211,7 +212,7 @@ describe('Dovari app shell', () => {
     expect(screen.queryByText('Write in context.', { exact: true })).toBeNull();
     expect(screen.queryByText('View current document JSON', { exact: true })).toBeNull();
     expect(screen.queryByText('/untitled', { exact: true })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Rename page' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Rename page' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Delete page' })).toBeTruthy();
   });
 
@@ -313,6 +314,8 @@ describe('Dovari app shell', () => {
     render(<App />);
 
     expect(await screen.findByRole('link', { name: 'Root' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Rename Root' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Move Root' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Collapse Root' }));
     expect(screen.queryByRole('link', { name: 'Child' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Expand Root' }));
@@ -321,16 +324,27 @@ describe('Dovari app shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create child of Root' }));
     expect(await screen.findByRole('heading', { name: 'Untitled' })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Rename Root' }));
-    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Renamed root' } });
+    fireEvent.click(screen.getByRole('link', { name: 'Root' }));
+    expect(await screen.findByRole('heading', { name: 'Root' })).toBeTruthy();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Edit title' }), {
+      target: { value: 'Renamed root' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Save title' }));
     expect(await screen.findByRole('link', { name: 'Renamed root' })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Move Sibling' }));
-    fireEvent.change(screen.getByLabelText('Position'), {
-      target: { value: `before:${rootId}` },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Move page' }));
+    const sourceRow = screen.getByLabelText('Drag Sibling to move it');
+    const targetRow = screen.getByLabelText('Drag Renamed root to move it');
+    const dataTransfer = {
+      dropEffect: 'none',
+      effectAllowed: 'none',
+      getData: vi.fn((format: string) => (format === 'text/plain' ? siblingId : '')),
+      setData: vi.fn(),
+    } as unknown as DataTransfer;
+    fireEvent.dragStart(sourceRow, { dataTransfer });
+    fireEvent.dragOver(targetRow, { dataTransfer });
+    await waitFor(() => expect(targetRow.className).toContain('is-drop-into'));
+    fireEvent.drop(targetRow, { dataTransfer });
+
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(
@@ -402,6 +416,8 @@ describe('Dovari app shell', () => {
 
     try {
       render(<App />);
+      fireEvent.click(await screen.findByRole('link', { name: 'Settings' }));
+      await screen.findByRole('heading', { name: 'Settings' });
       const exportButton = await screen.findByRole('button', {
         name: 'Export Markdown + ZIP',
       });
@@ -451,6 +467,8 @@ describe('Dovari app shell', () => {
       );
 
     render(<App />);
+    fireEvent.click(await screen.findByRole('link', { name: 'Settings' }));
+    await screen.findByRole('heading', { name: 'Settings' });
     fireEvent.click(await screen.findByRole('button', { name: 'Export Markdown + ZIP' }));
 
     const alert = await screen.findByRole('alert');
@@ -534,6 +552,10 @@ describe('Dovari app shell', () => {
     render(<App />);
 
     await screen.findByRole('heading', { name: 'Start with one useful page.' });
+    expect(screen.queryByRole('combobox', { name: 'Theme' })).toBeNull();
+    expect(screen.queryByText('Your knowledge base')).toBeNull();
+    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
+    await screen.findByRole('heading', { name: 'Settings' });
     const themeSelect = screen.getByRole('combobox', { name: 'Theme' });
     fireEvent.change(themeSelect, { target: { value: 'dark' } });
     expect(document.documentElement.dataset.theme).toBe('dark');

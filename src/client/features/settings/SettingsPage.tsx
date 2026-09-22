@@ -10,7 +10,7 @@ export function SettingsPage() {
   const navigate = useNavigate();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
-  const { pages } = useOutletContext<WorkspaceOutletContext>();
+  const { exportPages, isExporting, pages } = useOutletContext<WorkspaceOutletContext>();
   const versionPage = selectRecentPages(pages)[0];
   const versionHistoryUrl = versionPage
     ? `/app/pages/${encodeURIComponent(versionPage.id)}?history=1`
@@ -48,6 +48,7 @@ export function SettingsPage() {
         <a href="#versions">Version history</a>
         <a href="#backup">Backup</a>
         <a href="#restore">Restore</a>
+        <a href="#export">Export</a>
         <a href="#account">Sign out</a>
       </nav>
 
@@ -125,6 +126,22 @@ export function SettingsPage() {
           <Link className="button button-secondary" to="/app/settings/backup">
             Restore a backup
           </Link>
+        </section>
+
+        <section className="settings-card" id="export">
+          <div>
+            <span className="state-kicker">Data</span>
+            <h2>Export</h2>
+            <p>Download your pages, links, and assets as a Markdown and ZIP archive.</p>
+          </div>
+          <button
+            className="button button-secondary"
+            disabled={isExporting}
+            onClick={() => void exportPages()}
+            type="button"
+          >
+            {isExporting ? 'Preparing export…' : 'Export Markdown + ZIP'}
+          </button>
         </section>
 
         <section className="settings-card" id="account">

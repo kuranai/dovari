@@ -74,7 +74,6 @@ function PageTitleEditor({
 }) {
   const [title, setTitle] = useState(page.title);
   const [isSaving, setIsSaving] = useState(false);
-  const [isFallbackOpen, setIsFallbackOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastServerTitleRef = useRef(page.title);
@@ -115,7 +114,6 @@ function PageTitleEditor({
     if (nextTitle === currentPage.title) {
       setTitle(currentPage.title);
       setError(null);
-      setIsFallbackOpen(false);
       return;
     }
 
@@ -129,7 +127,6 @@ function PageTitleEditor({
 
       if (titleRef.current.trim() === nextTitle) {
         setTitle(response.page.title);
-        setIsFallbackOpen(false);
       } else {
         saveAgain = true;
       }
@@ -155,14 +152,7 @@ function PageTitleEditor({
     const serverTitle = latestPageRef.current.title;
     titleRef.current = serverTitle;
     setTitle(serverTitle);
-    setIsFallbackOpen(false);
     setError(null);
-  }
-
-  function openFallback() {
-    setIsFallbackOpen(true);
-    inputRef.current?.focus();
-    inputRef.current?.select();
   }
 
   function handleBlur(event: FocusEvent<HTMLFormElement>) {
@@ -184,7 +174,7 @@ function PageTitleEditor({
       <h1 aria-label={title || 'Page title'} className="page-title-heading">
         <input
           disabled={isSaving}
-          aria-label={isFallbackOpen ? 'Page title' : 'Edit title'}
+          aria-label="Edit title"
           className="page-title-input"
           id="page-title"
           maxLength={200}
@@ -203,7 +193,7 @@ function PageTitleEditor({
         <span aria-live="polite" className="page-title-status">
           {isSaving ? 'Saving title…' : title !== page.title ? 'Unsaved title' : ''}
         </span>
-        {isFallbackOpen || title !== page.title ? (
+        {title !== page.title ? (
           <>
             <button className="button button-primary" disabled={isSaving} type="submit">
               {isSaving ? 'Saving…' : 'Save title'}
@@ -217,15 +207,7 @@ function PageTitleEditor({
               Cancel
             </button>
           </>
-        ) : (
-          <button
-            className="button button-quiet page-title-fallback-button"
-            onClick={openFallback}
-            type="button"
-          >
-            Rename page
-          </button>
-        )}
+        ) : null}
       </div>
       {error ? (
         <div className="page-title-error" role="alert">

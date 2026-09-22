@@ -47,34 +47,10 @@ import { TemplatesPage } from '../features/templates/TemplatesPage';
 import { openDailyNote as openDailyNoteRequest } from '../features/templates/api';
 import { selectRecentPages } from '../features/pages/recentPages';
 import { LoginPage } from '../features/auth/LoginPage';
-import { ThemeControl } from './ThemeControl';
 import { ThemeProvider, useTheme } from './theme';
 
 type PageListState = 'loading' | 'error' | 'ready';
 type PageFilter = { favorite?: boolean; tagId?: string };
-
-function pagesForFilter(pages: PageSummary[], filter: PageFilter) {
-  if (filter.favorite === undefined && filter.tagId === undefined) return pages;
-
-  const pageById = new Map(pages.map((page) => [page.id, page]));
-  const included = new Set(
-    pages
-      .filter(
-        (page) =>
-          (filter.favorite === undefined || page.isFavorite === filter.favorite) &&
-          (filter.tagId === undefined || page.tags.some((tag) => tag.id === filter.tagId)),
-      )
-      .map((page) => page.id),
-  );
-  for (const pageId of [...included]) {
-    let parentId = pageById.get(pageId)?.parentId ?? null;
-    while (parentId !== null && pageById.has(parentId)) {
-      included.add(parentId);
-      parentId = pageById.get(parentId)?.parentId ?? null;
-    }
-  }
-  return pages.filter((page) => included.has(page.id));
-}
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(() => {
@@ -122,8 +98,10 @@ export interface WorkspaceOutletContext {
   actionError: string | null;
   createPage: (parentId?: string | null) => Promise<void>;
   deletePage: (page: PageDetail) => Promise<void>;
+  exportPages: () => Promise<void>;
   openDailyNote: () => Promise<void>;
   isCreating: boolean;
+  isExporting: boolean;
   listError: string | null;
   listState: PageListState;
   onPageUpdated: (page: PageSummary) => void;
@@ -311,20 +289,49 @@ function PublicationEditorRoute() {
   );
 }
 
+function SidebarFavoritePages({ pages }: { pages: PageSummary[] }) {
+  const favoritePages = pages
+    .filter((page) => page.isFavorite)
+    .sort((left, right) =>
+      left.title.localeCompare(right.title, undefined, { sensitivity: 'base' }),
+    );
+
+  if (favoritePages.length === 0) {
+    return null;
+  }
+
+  return (
+    <section aria-labelledby="favorite-pages-title" className="sidebar-favorites">
+      <h2 id="favorite-pages-title">Favorites</h2>
+      <nav aria-label="Favorite pages">
+        <ul className="sidebar-favorites-list">
+          {favoritePages.map((page) => (
+            <li key={page.id}>
+              <Link
+                aria-label={`Open favorite page: ${page.title}`}
+                className="sidebar-favorite-link"
+                to={workspacePath(page.id)}
+              >
+                <span aria-hidden="true" className="sidebar-favorite-icon">
+                  ★
+                </span>
+                <span className="sidebar-favorite-title">{page.title}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    </section>
+  );
+}
+
 function Sidebar({
-  isExporting,
   isCreating,
   onCreate,
   onCreateChild,
-  onExport,
   onPageUpdated,
   onPagesChanged,
-  onFilterChange,
   pages,
-  favoriteCount,
-  allPagesCount,
-  availableTags,
-  filter,
   recentPages,
   state,
   error,
@@ -335,20 +342,13 @@ function Sidebar({
   closeButtonRef,
 }: {
   error: string | null;
-  isExporting: boolean;
   isCreating: boolean;
   onCreate: () => void;
   onCreateChild: (parentId: string) => void;
-  onExport: () => void;
   onPageUpdated: (page: PageSummary) => void;
   onPagesChanged: () => Promise<void>;
-  onFilterChange: (filter: PageFilter) => void;
   onRetry: () => void;
   pages: PageSummary[];
-  favoriteCount: number;
-  allPagesCount: number;
-  availableTags: TagSummary[];
-  filter: PageFilter;
   recentPages: PageSummary[];
   state: PageListState;
   isOpen: boolean;
@@ -393,58 +393,19 @@ function Sidebar({
       inert={isMobile && !isOpen ? true : undefined}
       onKeyDown={handleKeyDown}
     >
-      <div className="sidebar-heading">
-        <div>
-          <span className="state-kicker">Workspace</span>
-          <h2>Pages</h2>
-        </div>
-        <div className="sidebar-heading-actions">
-          {state === 'ready' && pages.length > 0 ? (
-            <span className="page-count" aria-label={`${pages.length} pages`}>
-              {pages.length}
-            </span>
-          ) : null}
-          <button
-            aria-label="Close pages navigation"
-            className="sidebar-close"
-            onClick={onClose}
-            ref={closeButtonRef}
-            type="button"
-          >
-            <span aria-hidden="true">×</span>
-          </button>
-        </div>
+      <div className="sidebar-topbar">
+        <button
+          aria-label="Close pages navigation"
+          className="sidebar-close"
+          onClick={onClose}
+          ref={closeButtonRef}
+          type="button"
+        >
+          <span aria-hidden="true">×</span>
+        </button>
       </div>
 
-      <div aria-label="Page filters" className="sidebar-filters" role="group">
-        <button
-          aria-pressed={filter.favorite === undefined && filter.tagId === undefined}
-          className="sidebar-filter-button"
-          onClick={() => onFilterChange({})}
-          type="button"
-        >
-          All <span>{allPagesCount}</span>
-        </button>
-        <button
-          aria-pressed={filter.favorite === true}
-          className="sidebar-filter-button"
-          onClick={() => onFilterChange({ favorite: true })}
-          type="button"
-        >
-          Favorites <span>{favoriteCount}</span>
-        </button>
-        {availableTags.map((tag) => (
-          <button
-            aria-pressed={filter.tagId === tag.id}
-            className="sidebar-filter-button sidebar-filter-tag"
-            key={tag.id}
-            onClick={() => onFilterChange(filter.tagId === tag.id ? {} : { tagId: tag.id })}
-            type="button"
-          >
-            <span aria-hidden="true">#</span> {tag.name}
-          </button>
-        ))}
-      </div>
+      {state === 'ready' ? <SidebarFavoritePages pages={pages} /> : null}
 
       {state === 'loading' ? (
         <p className="sidebar-state" aria-live="polite">
@@ -509,21 +470,20 @@ function Sidebar({
           {isCreating ? 'Creating page…' : 'New page'}
           <kbd>⌘N</kbd>
         </button>
-        <button
-          className="button button-secondary sidebar-export-button"
-          disabled={isExporting || state !== 'ready'}
-          onClick={onExport}
-          type="button"
-        >
-          {isExporting ? 'Preparing export…' : 'Export Markdown + ZIP'}
-        </button>
         <Link className="sidebar-settings-link" to="/app/settings">
-          Settings
+          <svg
+            aria-hidden="true"
+            className="sidebar-settings-icon"
+            focusable="false"
+            viewBox="0 0 20 20"
+          >
+            <path d="M4 5h12M4 10h12M4 15h12" />
+            <circle cx="8" cy="5" r="1.5" />
+            <circle cx="12" cy="10" r="1.5" />
+            <circle cx="7" cy="15" r="1.5" />
+          </svg>
+          <span>Settings</span>
         </Link>
-        <Link className="sidebar-settings-link" to="/app/settings/backup">
-          Backup &amp; restore
-        </Link>
-        <p className="sidebar-note">A quiet place for useful things.</p>
       </div>
     </aside>
   );
@@ -561,9 +521,6 @@ function Workspace() {
     pages.forEach((page) => page.tags.forEach((tag) => tags.set(tag.id, tag)));
     return [...tags.values()].sort((left, right) => left.name.localeCompare(right.name));
   }, [pages]);
-  const visiblePages = useMemo(() => pagesForFilter(pages, pageFilter), [pageFilter, pages]);
-  const favoriteCount = useMemo(() => pages.filter((page) => page.isFavorite).length, [pages]);
-
   const loadPages = useCallback(async (signal?: AbortSignal) => {
     setListState('loading');
     setListError(null);
@@ -811,7 +768,9 @@ function Workspace() {
     actionError,
     createPage,
     deletePage,
+    exportPages,
     isCreating,
+    isExporting,
     listError,
     listState,
     onPageUpdated,
@@ -845,8 +804,6 @@ function Workspace() {
           <span>Dovari</span>
         </Link>
         <div className="header-actions">
-          <ThemeControl />
-          <span className="phase-label">Your knowledge base</span>
           <button
             aria-haspopup="dialog"
             aria-keyshortcuts="Control+K Meta+K"
@@ -894,20 +851,13 @@ function Workspace() {
         <Sidebar
           closeButtonRef={sidebarCloseRef}
           error={listError}
-          isExporting={isExporting}
           isCreating={isCreating}
           onCreate={() => void createPage(null)}
           onCreateChild={(parentId) => void createPage(parentId)}
-          onExport={() => void exportPages()}
           onPageUpdated={onPageUpdated}
           onPagesChanged={refreshPages}
-          onFilterChange={setPageFilter}
           onRetry={retryPages}
-          pages={visiblePages}
-          favoriteCount={favoriteCount}
-          allPagesCount={pages.length}
-          availableTags={availableTags}
-          filter={pageFilter}
+          pages={pages}
           recentPages={recentPages}
           state={listState}
           isMobile={isMobile}

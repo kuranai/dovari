@@ -252,30 +252,30 @@ export function CommandPalette({
         shortcut: '⌘N',
       },
       {
-        description: 'Show every page in the workspace.',
+        description: 'Search across the full workspace.',
         id: 'all-pages',
         keywords: ['all', 'pages', 'reset', 'filter'],
-        label: 'Show all pages',
+        label: 'Search all pages',
         onSelect: () => {
           onFilterChange?.({});
           onClose();
         },
       },
       {
-        description: 'Limit the sidebar and search to favorite pages.',
+        description: 'Limit command-palette search to favorite pages.',
         id: 'favorite-pages',
         keywords: ['favorite', 'starred', 'important'],
-        label: 'Show favorite pages',
+        label: 'Search favorite pages',
         onSelect: () => {
           onFilterChange?.({ favorite: true });
           onClose();
         },
       },
       ...availableTags.map((tag) => ({
-        description: `Show pages tagged ${tag.name}.`,
+        description: `Search pages tagged ${tag.name}.`,
         id: `tag-${tag.id}`,
         keywords: ['tag', tag.name],
-        label: `Show #${tag.name}`,
+        label: `Search #${tag.name}`,
         onSelect: () => {
           onFilterChange?.({ tagId: tag.id });
           onClose();

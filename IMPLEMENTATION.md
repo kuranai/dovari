@@ -1,7 +1,7 @@
 # Dovari – Implementierungsstatus und Phasenplan
 
 **Dieses Dokument ist die kanonische Quelle für den aktuellen Implementierungsstand.**  
-**Letzte Aktualisierung:** 15. September 2026
+**Letzte Aktualisierung:** 22. September 2026
 **Gesamtstatus:** P00–P28 abgeschlossen, P29 geplant
 **Aktuelle Phase:** P28 – Templates und Daily Notes (`DONE`)
 **Nächste Phase:** P29 – Markdown- und Obsidian-Import (`NEXT`)
@@ -116,7 +116,7 @@ nicht automatisch begonnen.
 | P22 | Datensicherheit | Verlustfreies Backup und Restore | `DONE` | Versioniertes, verlustfreies Backup/Restore mit Manifest, Streaming-ZIP, resumierbaren Restore-Sessions, atomarer Finalisierung, lokaler Validierung und Settings-UI umgesetzt und verifiziert |
 | P23 | Produktreife | Settings, Slash Commands und Alltagsnavigation | `DONE` | Settings-Landing, Recent Pages, Slash-Command-Palette und Upload-/Wiki-Link-Abläufe umgesetzt und verifiziert |
 | P24 | Deployment | Deploy-to-Cloudflare und Version-1-Abnahme | `DONE` | Instanz-Passwort, eigene versionsgebundene D1-Sessions, Login/Logout, Dokumentation, lokale Abnahme und produktiver authentifizierter Deploy-Smoke sind umgesetzt und verifiziert |
-| P25 | Public | Öffentliche Knowledge Base und Veröffentlichungen | `DONE` | Publication-Migration, Snapshot-/Asset-Allowlist, private/public API, Read-only-UI, Backup-v2/v1-Restore-Kompatibilität, Soft-Delete-Rückzug und vollständige Verifikation umgesetzt |
+| P25 | Public | Öffentliche Knowledge Base und Veröffentlichungen | `DONE` | Publication-Migration, Snapshot-/Asset-Allowlist, private/public API, Read-only-UI, automatische Synchronisierung bestehender Publications bei Titel-/Inhaltsänderungen, Backup-v2/v1-Restore-Kompatibilität, Soft-Delete-Rückzug und vollständige Verifikation umgesetzt |
 | P26 | Public | Öffentliche Suche, Navigation und Auffindbarkeit | `DONE` | Öffentlicher Snapshot-FTS5-Index, Public Search, snapshotbasierte Hierarchie-Navigation, sichere Metadaten, Robots/Sitemap und revalidierbare Public-Caches umgesetzt und verifiziert |
 | P27 | Organisation | Tags und Favoriten | `DONE` | Normalisierte Tags, atomare Zuordnung, Favoriten, private Filter-/Suche, optionale Snapshot-Tags, Backup-/Restore und UI umgesetzt und verifiziert |
 | P28 | Workflows | Templates und Daily Notes | `DONE` | Private Templates, Create-from-Template, konfigurierbare Daily Notes, Slash-/Command-Palette, Backup-v2 und responsive Accessibility umgesetzt und verifiziert |
@@ -852,9 +852,11 @@ unveröffentlichte Seiten sichtbar sind.
 - Tabellen `page_publications` und `publication_assets` als neue Migration; genau eine aktive
   Publication pro Seite, zufällige stabile `public_id` bei erneutem Publish und eine neue URL nach
   Unpublish und späterer Neuveröffentlichung
-- private Publish-, Update-Publication- und Unpublish-Endpunkte ausschließlich unter
+- private Publish-/Freigabeeinstellungs- und Unpublish-Endpunkte ausschließlich unter
   `/api/private/*`, mit optimistischer Prüfung der Seitenrevision beziehungsweise des erwarteten
-  Publication-Zeitstempels
+  Publication-Zeitstempels; bestehende Publications werden nach erfolgreicher Titel-, Inhalts- oder
+  Revisionsänderung automatisch synchronisiert, neu angelegte oder verschobene Unterseiten erben
+  die Veröffentlichung eines veröffentlichten Vorfahren
 - expliziter, serverseitig validierter und bereinigter Snapshot aus Titel und Tiptap-Dokument statt
   Live-Zugriff auf `pages`; Wiki Links werden nur auf bereits veröffentlichte Ziele umgeschrieben,
   sonst zu normalem Text ohne private Ziel-ID
@@ -871,14 +873,15 @@ unveröffentlichte Seiten sichtbar sind.
   erforderliche `OPTIONS`, alle Mutationen liefern `405`
 - öffentliche Asset-Auslieferung nur mit Kombination aus gültiger Publication und tatsächlich im
   Snapshot referenziertem Asset; private Asset-Endpunkte und R2 bleiben unverändert geschützt
-- Publish-Bedienung in der privaten Seitenansicht mit Status „nicht veröffentlicht“/„Änderungen
-  nicht veröffentlicht“/„aktuell“, URL kopieren, aktualisieren, öffentlich öffnen und bestätigtem
-  Unpublish
+- Publish-Bedienung in der privaten Seitenansicht mit Status „nicht veröffentlicht“/„wird
+  synchronisiert“/„aktuell“, URL kopieren, Sharing-Einstellungen, öffentlich öffnen und bestätigtem
+  Unpublish; ein manuelles Aktualisieren der Publication ist nicht erforderlich
 - standardmäßig `noindex`; die bereits vorgesehene Option `allow_indexing` wird gespeichert und in
   der öffentlichen Antwort berücksichtigt, die vollständige Crawler-/Metadaten-Unterstützung folgt
   in P26
-- Public-Listen, -Details und -Assets verwenden in P25 `Cache-Control: no-store`, damit Republish
-  und Unpublish ohne veraltete Edge-/Browserantworten wirksam werden; gezieltes Caching folgt P26
+- Public-Listen, -Details und -Assets verwenden in P25 `Cache-Control: no-store`, damit automatische
+  Snapshot-Synchronisierung und Unpublish ohne veraltete Edge-/Browserantworten wirksam werden;
+  gezieltes Caching folgt P26
 - Backupformat `dovari-backup-v2` einschließlich Publications und Publication-Asset-Zuordnung;
   Restore akzeptiert weiterhin v1, erweitert Restore-Sessions migrationssicher um Publication-
   Records und erhält bei v2 die öffentlichen URLs verlustfrei
@@ -896,8 +899,9 @@ unveröffentlichte Seiten sichtbar sind.
   Existenz unveröffentlichter Seiten lassen sich dort und über API-Fehler nicht ableiten.
 - nur ein berechtigter Editor kann veröffentlichen, aktualisieren oder zurückziehen; der
   Bearbeiten-Link löst ohne Session die normale Dovari-Passwort-Anmeldung aus.
-- private Änderungen, einschließlich Titel, Wiki Links und Assets, bleiben bis zum erneuten Publish
-  unsichtbar; der öffentliche Snapshot bleibt währenddessen unverändert abrufbar.
+- private Titel-, Wiki-Link-, Inhalts- und Asset-Änderungen einer bereits veröffentlichten Seite
+  werden nach erfolgreichem Save automatisch im bestehenden öffentlichen Snapshot sichtbar; der
+  Snapshot bleibt weiterhin von Live-Zugriffen auf private Seitendaten isoliert.
 - Public JSON und öffentlich gerendertes HTML enthalten keine private Page-ID, Parent-ID, Revision,
   Backlinks, unveröffentlichte Linkziele oder nicht referenzierte Asset-Metadaten.
 - `POST`, `PUT`, `PATCH` und `DELETE` unter `/api/public/*` liefern immer `405`; private
@@ -919,8 +923,9 @@ unveröffentlichte Seiten sichtbar sind.
   Snapshot-, Cache- und Asset-Matrix einschließlich negativer Enumerationstests
 - Backup-v1-Kompatibilitäts- und Backup-v2-Roundtrip-Tests
 - Clienttests für Public Landing, Read-only-Renderer, Publish-Zustände und privaten Edit-Resolver
-- Browser-E2E ohne Login für Landing/Leseseite sowie mit lokalem Auth-Bypass für Publish,
-  unveröffentlichten Draft, erneutes Publish, Bearbeiten-Einstieg und Unpublish; Desktop/Mobile-Axe
+- Browser-E2E ohne Login für Landing/Leseseite sowie mit lokalem Auth-Bypass für initiales Publish,
+  automatische Inhalts-/Titel-Synchronisierung, unveröffentlichten Draft, Bearbeiten-Einstieg und
+  Unpublish; Desktop/Mobile-Axe
 - vollständiges `npm run ci`, `npm run test:e2e` und `git diff --check`
 
 **Nicht Teil dieser Phase:** öffentliche Volltextsuche, SEO-/Open-Graph-Metadaten, Sitemap,
@@ -941,7 +946,8 @@ navigieren und – nur nach ausdrücklicher Freigabe – von Suchmaschinen korre
   Zwischeneltern werden übersprungen und niemals namentlich offengelegt
 - kanonische URLs, sichere serverseitige Title-/Description-/Open-Graph-Metadaten für `/p/*`
 - `robots.txt` und `sitemap.xml` enthalten nur Publications mit `allow_indexing = true`
-- Cache-Strategie mit sofortiger Invalidierung bei Republish und Unpublish
+- Cache-Strategie mit sofortiger Invalidierung bei automatischer Snapshot-Synchronisierung und
+  Unpublish
 
 **Akzeptanzkriterien:** Öffentliche Suche, Navigation, Sitemap und Metadaten verwenden nachweislich
 nur Snapshotdaten; `noindex` ist der Default; Unpublish verschwindet unmittelbar aus Suche,
@@ -1050,7 +1056,7 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 | 2026-09-14 | P23 | Vollständige Settings-Landing-Route mit Theme-, Trash-, Versions-, Backup- und Restore-Navigation, direkte Command-Palette-Navigation, nach Aktualisierung sortierte Recent Pages sowie zugängliche Slash Commands für Textblöcke, Wiki Links, Bilder und Dateien umgesetzt; bestehende Wiki-Link- und Upload-Pipelines wiederverwendet und README aktualisiert | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 119 Tests in 28 Testdateien und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (8 isolierte Browser-Tests einschließlich Settings-/Recent-/Slash-Desktop-/Mobile-Axe-Smoke), `git diff --check` erfolgreich | Slash Commands verändern das persistierte Dokumentformat nicht; P24 ist `NEXT` |
 | 2026-09-14 | P24 | Die externe Authentifizierung wurde gemäß ADR 0001 durch ein erforderliches Instanz-Passwort ersetzt: eigene Login-/Logout-/Session-Routen und UI, 30-Tage-Cookie, gehashte versionsgebundene D1-Sessions, IP-gehashtes Login-Limit, lokale Passwortentwicklung, Settings-Logout sowie angepasste Deploy-/Smoke-Dokumentation sind umgesetzt | `npm run ci` (Format-Check, Lint, Typecheck, 126 Tests in 30 Testdateien und Produktionsbuild), `npm run test:e2e` (10 Browser-Tests), `npm run release:install-smoke` (frischer Checkout, sieben Migrationen plus idempotenter Zweitlauf, FK-/FTS-Prüfung und Wrangler-Dry-Run), `npm run db:migrate:local`, `npx drizzle-kit check --config drizzle.config.ts`, direkter Wrangler-FTS-Integrity-Check, `npm run deploy:dry-run`, produktives `npm run deploy` und authentifiziertes sowie abschließend fail-closed `npm run release:smoke -- https://dovari.kuranai.workers.dev` erfolgreich | Remote-Migration 0006 und Worker-Version `82494200-5605-46a7-8358-b5e29945eb8e` wurden ausgerollt. Das zufällige Testpasswort wurde danach entfernt; die Testinstanz bleibt bis zum Setzen eines Betreiberpassworts mit `503 SETUP_REQUIRED` geschlossen. P25 ist `NEXT` |
 | 2026-09-14 | Planung | P25 als öffentliche Knowledge Base mit Login erst beim Bearbeiten detailliert; P26–P29 für Public Discovery, Tags/Favoriten, Templates/Daily Notes und Import ergänzt | Dokumente und tatsächliche Routing-/Auth-/Datenmodell-Grenzen abgeglichen; `npx prettier --write IMPLEMENTATION.md PLAN.md TECHNICAL_SPEC.md` und `git diff --check` erfolgreich; Implementierungstests nicht ausgeführt | P24 ist abgeschlossen; P25 ist regulär `NEXT` |
-| 2026-09-14 | P25 | Öffentliche Knowledge Base und Veröffentlichungen mit isolierten Snapshots, Public-API, Read-only-UI, Publish-Workflow und v2-Backup/Restore umgesetzt | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 136 Tests in 32 Testdateien und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (11 Browser-Tests einschließlich anonymem Public-Landing-/Read-only-/Edit-/Unpublish-Flow mit Desktop-/Mobile-Axe), `npx --yes -p node@26 node /usr/bin/npm run db:migrate:local` (0006 und 0007 angewendet), `npx --yes -p node@26 node /usr/bin/npm run db:fts:integrity`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts` sowie `git diff --check` erfolgreich | Public-Search, Sitemap, Robots und gezieltes Caching bleiben gemäß Scope P26 vorbehalten; P26 ist `NEXT` |
+| 2026-09-14 | P25 | Öffentliche Knowledge Base und Veröffentlichungen mit isolierten Snapshots, Public-API, Read-only-UI, Publish-Workflow und v2-Backup/Restore umgesetzt; bestehende Publications synchronisieren Titel- und Inhaltsänderungen automatisch | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 136 Tests in 32 Testdateien und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (11 Browser-Tests einschließlich anonymem Public-Landing-/Read-only-/Edit-/Unpublish-Flow mit Desktop-/Mobile-Axe), `npx --yes -p node@26 node /usr/bin/npm run db:migrate:local` (0006 und 0007 angewendet), `npx --yes -p node@26 node /usr/bin/npm run db:fts:integrity`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts` sowie `git diff --check` erfolgreich | Public-Search, Sitemap, Robots und gezieltes Caching bleiben gemäß Scope P26 vorbehalten; die automatische Synchronisierung wurde später ergänzt; P26 ist `NEXT` |
 | 2026-09-14 | P26 | Öffentlicher Snapshot-FTS5-Index mit Titelgewichtung und Snippets, debounced/zugängliche Public Search, snapshotbasierte Navigation mit übersprungenen unveröffentlichten Zwischeneltern, sichere serverseitige Title-/Description-/Open-Graph-Metadaten, Robots/Sitemap und sofort revalidierbare Public-Caches umgesetzt | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 142 Tests in 34 Testdateien und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (11 Browser-Tests einschließlich Public-Search-/Metadata-/Robots-/Sitemap-Flow mit Desktop-/Mobile-Axe), `npx --yes -p node@26 node /usr/bin/npm run db:migrate:local` (0008 angewendet), `npx --yes -p node@26 node /usr/bin/npm run db:fts:public-integrity`, `npx --yes -p node@26 node /usr/bin/npm run db:fts:public-rebuild`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts` sowie `git diff --check` erfolgreich | Standardmäßig bleiben öffentliche Seiten `noindex`; P27 ist `NEXT` |
 | 2026-09-14 | P27 | Tags und Favoriten mit normalisierten eindeutigen Tag-Namen, atomarer Page-Tag-Zuordnung, Favoritenstatus, Sidebar-/Command-Palette-Filtern, privater Tag-Suche, expliziten Snapshot-Tags, Backup-/Restore-Erweiterung, Migration 0009 sowie Client-/Accessibility-/E2E-Abdeckung umgesetzt | `npx --yes -p node@26 node /usr/bin/npm test -- --run` (143 Tests in 35 Testdateien), `npx --yes -p node@26 node /usr/bin/npm run typecheck`, `npx --yes -p node@26 node /usr/bin/npm run lint`, `npx --yes -p node@26 node /usr/bin/npm run build`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts`, `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (12 Playwright-Tests einschließlich Tag-/Favorit-/Trash-Restore-Flow mit Desktop-/Mobile-Axe), `git diff --check` sowie gezielter Backup-Roundtrip-Test erfolgreich | `npm run format:check` meldet ausschließlich die bereits vorhandene, bewusst unveränderte Formatierung in `wrangler.jsonc`; alle P27-Dateien sind formatiert. P28 ist `NEXT` |
 | 2026-09-15 | P28 | Private Templates mit validiertem Tiptap-Inhalt, atomisches Create-from-Template, konfigurierbares und idempotentes Daily-Note-Öffnen mit lokaler Zeitzone/DST-Prüfung, Slash-/Command-Palette-Integration, responsive Templates-UI sowie Backup-v2 für Templates und Daily Notes umgesetzt | `npx --yes -p node@26 node /usr/bin/npm test` (150 Tests in 37 Testdateien), `npx --yes -p node@26 node /usr/bin/npm run typecheck`, `npx --yes -p node@26 node /usr/bin/npm run lint`, `npx --yes -p node@26 node /usr/bin/npm run build`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts`, `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (13 Playwright-Tests einschließlich Template-/Daily-Note-Flow sowie Desktop-/Mobile-Axe), `git diff --check` und erfolgreiche Anwendung der Migration 0010 im E2E-Lauf | `npm run format:check` meldet ausschließlich die bereits vorhandene, bewusst unveränderte Formatierung in `wrangler.jsonc`; alle P28-Dateien sind formatiert. P29 ist `NEXT` |
