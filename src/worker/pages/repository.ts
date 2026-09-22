@@ -418,6 +418,34 @@ export class PageRepository {
     return result.results.map(toPageRecord);
   }
 
+  async listActiveSubtree(rootId: string) {
+    const result = await this.db
+      .prepare(
+        `WITH RECURSIVE subtree(page_id, depth) AS (
+           SELECT id, 0
+           FROM pages
+           WHERE id = ? AND deleted_at IS NULL
+           UNION ALL
+           SELECT child.id, subtree.depth + 1
+           FROM pages AS child
+           INNER JOIN subtree ON subtree.page_id = child.parent_id
+           WHERE child.deleted_at IS NULL AND subtree.depth < 100
+         )
+         SELECT ${PAGE_COLUMNS}
+         FROM pages
+         INNER JOIN subtree ON subtree.page_id = pages.id
+         WHERE pages.deleted_at IS NULL
+         ORDER BY subtree.depth ASC,
+                  pages.position ASC,
+                  pages.title COLLATE NOCASE ASC,
+                  pages.id ASC`,
+      )
+      .bind(rootId)
+      .all<PageDatabaseRow>();
+
+    return result.results.map(toPageRecord);
+  }
+
   async findActiveIds(ids: string[]) {
     if (ids.length === 0) {
       return new Set<string>();
@@ -807,14 +835,20 @@ export class PageRepository {
         .bind(deletedAt, deletedAt, id, baseRevision),
       this.db
         .prepare(
-          `DELETE FROM page_publications
-           WHERE page_id = ?
-             AND EXISTS (
-               SELECT 1 FROM pages
-               WHERE id = ? AND revision = ? AND deleted_at IS NOT NULL
-             )`,
+          `WITH RECURSIVE subtree(page_id, depth) AS (
+             SELECT id, 0
+             FROM pages
+             WHERE id = ? AND revision = ? AND deleted_at IS NOT NULL
+             UNION ALL
+             SELECT child.id, subtree.depth + 1
+             FROM pages AS child
+             INNER JOIN subtree ON subtree.page_id = child.parent_id
+             WHERE subtree.depth < 100
+           )
+           DELETE FROM page_publications
+           WHERE page_id IN (SELECT page_id FROM subtree)`,
         )
-        .bind(id, id, baseRevision + 1),
+        .bind(id, baseRevision + 1),
       this.retentionStatement(id, baseRevision + 1, true),
     ];
 

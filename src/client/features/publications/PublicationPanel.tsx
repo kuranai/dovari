@@ -46,6 +46,7 @@ export function PublicationPanel({ page }: { page: PageDetail }) {
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(() => new Set());
   const [actionError, setActionError] = useState<string | null>(null);
   const [copyNotice, setCopyNotice] = useState<string | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -144,74 +145,21 @@ export function PublicationPanel({ page }: { page: PageDetail }) {
 
   return (
     <section aria-labelledby="publication-panel-title" className="publication-panel">
-      <div className="publication-panel-heading">
-        <div>
+      <div className="publication-panel-summary">
+        <div className="publication-panel-heading">
           <span className="state-kicker">Sharing</span>
-          <h2 id="publication-panel-title">Public page</h2>
+          <div className="publication-panel-title-row">
+            <h2 id="publication-panel-title">Public page</h2>
+            {state.status === 'ready' ? (
+              <span aria-live="polite" className="publication-status">
+                {publicationStatus(page, state.publication, allowIndexing, selectedTagIds)}
+              </span>
+            ) : null}
+          </div>
+          <p className="publication-scope">This page and all subpages</p>
         </div>
         {state.status === 'ready' ? (
-          <span aria-live="polite" className="publication-status">
-            {publicationStatus(page, state.publication, allowIndexing, selectedTagIds)}
-          </span>
-        ) : null}
-      </div>
-
-      {state.status === 'loading' ? (
-        <p aria-live="polite" className="publication-state">
-          Loading publication status…
-        </p>
-      ) : null}
-      {state.status === 'error' ? (
-        <div className="publication-state publication-state-error" role="alert">
-          <p>{state.message}</p>
-          <button
-            className="button button-quiet"
-            onClick={() => setReloadKey((value) => value + 1)}
-            type="button"
-          >
-            Retry
-          </button>
-        </div>
-      ) : null}
-      {state.status === 'ready' ? (
-        <>
-          <p className="publication-description">
-            Publish a safe snapshot when this page is ready to share. Private edits stay private
-            until you publish again.
-          </p>
-          <label className="publication-indexing-option">
-            <input
-              checked={allowIndexing}
-              onChange={(event) => setAllowIndexing(event.target.checked)}
-              type="checkbox"
-            />
-            <span>Allow search engine indexing</span>
-          </label>
-          <fieldset className="publication-tags">
-            <legend>Include tags in the public snapshot</legend>
-            {page.tags.length > 0 ? (
-              page.tags.map((tag) => (
-                <label className="publication-tag-option" key={tag.id}>
-                  <input
-                    checked={selectedTagIds.has(tag.id)}
-                    onChange={() =>
-                      setSelectedTagIds((current) => {
-                        const next = new Set(current);
-                        if (next.has(tag.id)) next.delete(tag.id);
-                        else next.add(tag.id);
-                        return next;
-                      })
-                    }
-                    type="checkbox"
-                  />
-                  <span>{tag.name}</span>
-                </label>
-              ))
-            ) : (
-              <p className="publication-state">Assign private tags above to include them here.</p>
-            )}
-          </fieldset>
-          <div className="publication-actions">
+          <div className="publication-actions publication-actions-summary">
             <button
               className="button button-primary"
               disabled={isPublishing || isUnpublishing}
@@ -235,14 +183,6 @@ export function PublicationPanel({ page }: { page: PageDetail }) {
                   Open public page
                 </a>
                 <button
-                  className="button button-quiet"
-                  disabled={isPublishing || isUnpublishing}
-                  onClick={() => void handleCopyUrl()}
-                  type="button"
-                >
-                  Copy public URL
-                </button>
-                <button
                   className="button button-danger"
                   disabled={isPublishing || isUnpublishing}
                   onClick={() => void handleUnpublish()}
@@ -253,6 +193,90 @@ export function PublicationPanel({ page }: { page: PageDetail }) {
               </>
             ) : null}
           </div>
+        ) : null}
+      </div>
+
+      {state.status === 'loading' ? (
+        <p aria-live="polite" className="publication-state">
+          Loading publication status…
+        </p>
+      ) : null}
+      {state.status === 'error' ? (
+        <div className="publication-state publication-state-error" role="alert">
+          <p>{state.message}</p>
+          <button
+            className="button button-quiet"
+            onClick={() => setReloadKey((value) => value + 1)}
+            type="button"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      {state.status === 'ready' ? (
+        <>
+          <button
+            aria-controls="publication-settings"
+            aria-expanded={isSettingsOpen}
+            className="publication-settings-toggle"
+            onClick={() => setIsSettingsOpen((open) => !open)}
+            type="button"
+          >
+            <span>Sharing settings</span>
+            <span aria-hidden="true">{isSettingsOpen ? '−' : '+'}</span>
+          </button>
+          {isSettingsOpen ? (
+            <div className="publication-settings" id="publication-settings">
+              <p className="publication-description">
+                Publish a safe snapshot when this page is ready to share. Private edits stay private
+                until you publish again. Publishing also includes every active subpage.
+              </p>
+              <label className="publication-indexing-option">
+                <input
+                  checked={allowIndexing}
+                  onChange={(event) => setAllowIndexing(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Allow search engine indexing</span>
+              </label>
+              <fieldset className="publication-tags">
+                <legend>Include tags in the public snapshot</legend>
+                {page.tags.length > 0 ? (
+                  page.tags.map((tag) => (
+                    <label className="publication-tag-option" key={tag.id}>
+                      <input
+                        checked={selectedTagIds.has(tag.id)}
+                        onChange={() =>
+                          setSelectedTagIds((current) => {
+                            const next = new Set(current);
+                            if (next.has(tag.id)) next.delete(tag.id);
+                            else next.add(tag.id);
+                            return next;
+                          })
+                        }
+                        type="checkbox"
+                      />
+                      <span>{tag.name}</span>
+                    </label>
+                  ))
+                ) : (
+                  <p className="publication-state">
+                    Assign private tags above to include them here.
+                  </p>
+                )}
+              </fieldset>
+              {state.publication ? (
+                <button
+                  className="button button-quiet"
+                  disabled={isPublishing || isUnpublishing}
+                  onClick={() => void handleCopyUrl()}
+                  type="button"
+                >
+                  Copy public URL
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {copyNotice ? (
             <p aria-live="polite" className="publication-copy-notice" role="status">
               {copyNotice}
