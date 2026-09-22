@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
+import type {
+  ChangeEvent,
+  CSSProperties,
+  KeyboardEvent as ReactKeyboardEvent,
+  ReactNode,
+} from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
 
@@ -136,6 +141,41 @@ function pageErrorMessage(error: unknown) {
   return 'The page could not be created.';
 }
 
+function useVisualViewportKeyboardInset() {
+  const [keyboardInset, setKeyboardInset] = useState(0);
+
+  useEffect(() => {
+    function updateKeyboardInset() {
+      const viewport = window.visualViewport;
+      if (!viewport) {
+        return;
+      }
+
+      const nextInset = Math.max(
+        0,
+        Math.round(window.innerHeight - viewport.height - viewport.offsetTop),
+      );
+      setKeyboardInset((currentInset) => (currentInset === nextInset ? currentInset : nextInset));
+    }
+
+    updateKeyboardInset();
+    window.addEventListener('orientationchange', updateKeyboardInset);
+    window.addEventListener('resize', updateKeyboardInset);
+    const viewport = window.visualViewport;
+    viewport?.addEventListener('resize', updateKeyboardInset);
+    viewport?.addEventListener('scroll', updateKeyboardInset);
+
+    return () => {
+      window.removeEventListener('orientationchange', updateKeyboardInset);
+      window.removeEventListener('resize', updateKeyboardInset);
+      viewport?.removeEventListener('resize', updateKeyboardInset);
+      viewport?.removeEventListener('scroll', updateKeyboardInset);
+    };
+  }, []);
+
+  return keyboardInset;
+}
+
 export function PageEditor({
   content,
   createWikiLinkPage = createPage,
@@ -151,6 +191,7 @@ export function PageEditor({
 }: PageEditorProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const keyboardInset = useVisualViewportKeyboardInset();
   const [slashCommandSession, setSlashCommandSession] = useState<SlashCommandSession | null>(null);
   const [slashCommandActiveIndex, setSlashCommandActiveIndex] = useState(0);
   const [wikiLinkSession, setWikiLinkSession] = useState<WikiLinkSession | null>(null);
@@ -676,12 +717,17 @@ export function PageEditor({
     editor.commands.setContent(safeEditorDocument(content), { emitUpdate: false });
   }, [content, editor]);
 
+  const editorStyle = {
+    '--editor-keyboard-inset': `${keyboardInset}px`,
+  } as CSSProperties;
+
   return (
     <section
       aria-label="Page editor"
       className="page-editor"
       onClick={handleEditorClick}
       onKeyDownCapture={handleEditorKeyDown}
+      style={editorStyle}
     >
       {editor ? (
         <>

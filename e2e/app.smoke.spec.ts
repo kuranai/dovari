@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -12,6 +12,21 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL('/app');
 });
+
+async function openLongEditorPage(page: Page) {
+  await page.getByRole('button', { name: /New page/ }).click();
+  await expect(page.getByRole('heading', { name: 'Untitled' })).toBeVisible();
+
+  const editor = page.getByRole('textbox', { name: 'Page content' });
+  await editor.fill(
+    Array.from(
+      { length: 48 },
+      (_, index) => `Line ${index + 1}: enough editor content to make the document scroll.`,
+    ).join('\n'),
+  );
+  await expect(editor).toBeFocused();
+  return { editor, toolbar: page.locator('.editor-toolbar') };
+}
 
 test('signs the owner out and protects the app again', async ({ page }) => {
   await page.goto('/app/settings');
@@ -914,4 +929,53 @@ test('supports Settings, Recent Pages, and slash commands on desktop and mobile'
     await confirmation.getByRole('button', { name: 'Confirm permanent delete' }).click();
     await expect(trashItem).toHaveCount(0);
   }
+});
+
+test('keeps the formatting toolbar reachable while a long document is scrolled', async ({
+  page,
+}) => {
+  const { editor, toolbar } = await openLongEditorPage(page);
+
+  await editor.locator('p').last().scrollIntoViewIfNeeded();
+
+  const toolbarBox = await toolbar.boundingBox();
+  expect(toolbarBox).not.toBeNull();
+  expect(toolbarBox?.y).toBeGreaterThanOrEqual(0);
+  expect(toolbarBox?.y).toBeLessThan(page.viewportSize()?.height ?? 0);
+});
+
+test('docks the mobile toolbar above the keyboard inset', async ({ page }) => {
+  const { editor, toolbar } = await openLongEditorPage(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await editor.click();
+  await expect(toolbar).toHaveCSS('position', 'fixed');
+
+  await page.evaluate(() => {
+    const visualViewport = {
+      height: window.innerHeight - 280,
+      offsetTop: 0,
+      addEventListener() {},
+      removeEventListener() {},
+    };
+
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: visualViewport,
+    });
+    window.dispatchEvent(new Event('resize'));
+  });
+
+  await expect
+    .poll(() =>
+      editor
+        .locator('..')
+        .evaluate((element) =>
+          getComputedStyle(element).getPropertyValue('--editor-keyboard-inset').trim(),
+        ),
+    )
+    .toBe('280px');
+
+  const toolbarBox = await toolbar.boundingBox();
+  expect(toolbarBox).not.toBeNull();
+  expect(toolbarBox ? toolbarBox.y + toolbarBox.height : undefined).toBeLessThanOrEqual(844 - 280);
 });
