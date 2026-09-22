@@ -161,9 +161,6 @@ export function PublicPage() {
       <PublicHeader publicId={publication.publicId} />
       <div className="public-layout">
         <aside className="public-navigation" aria-label="Public pages">
-          <Link className="public-home-link" to="/">
-            All public pages
-          </Link>
           <PublicSearch compact />
           {navigationError ? <p className="public-navigation-error">{navigationError}</p> : null}
           {navigationItems.length > 0 ? (
@@ -187,10 +184,9 @@ export function PublicPage() {
           <article className="page-detail public-article">
             <header className="page-detail-header public-article-header">
               <div className="public-article-heading">
-                <span className="state-kicker">Published page</span>
                 <h1>{publication.publishedTitle}</h1>
                 <time dateTime={publication.updatedAt}>
-                  Updated {new Date(publication.updatedAt).toLocaleDateString()}
+                  Updated {new Date(publication.updatedAt).toISOString().slice(0, 10)}
                 </time>
                 {publication.tags.length > 0 ? (
                   <div aria-label="Published tags" className="public-tag-list">

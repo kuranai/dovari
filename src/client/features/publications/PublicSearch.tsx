@@ -104,24 +104,35 @@ export function PublicSearch({ compact = false }: { compact?: boolean }) {
 
   return (
     <section className={`public-search${compact ? ' public-search-compact' : ''}`}>
-      <label htmlFor={compact ? 'public-sidebar-search' : 'public-search'}>
+      <label className="sr-only" htmlFor={compact ? 'public-sidebar-search' : 'public-search'}>
         Search public pages
       </label>
-      <input
-        aria-activedescendant={activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
-        aria-controls={results.length > 0 ? listId : undefined}
-        aria-label="Search public pages"
-        autoComplete="off"
-        className="public-search-input"
-        id={compact ? 'public-sidebar-search' : 'public-search'}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        placeholder="Search titles and content…"
-        ref={inputRef}
-        role="searchbox"
-        type="search"
-        value={query}
-      />
+      <div className="public-search-field">
+        <svg
+          aria-hidden="true"
+          className="public-search-icon"
+          focusable="false"
+          viewBox="0 0 24 24"
+        >
+          <circle cx="10.8" cy="10.8" r="6.4" />
+          <path d="m15.6 15.6 4.2 4.2" />
+        </svg>
+        <input
+          aria-activedescendant={activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
+          aria-controls={results.length > 0 ? listId : undefined}
+          aria-label="Search public pages"
+          autoComplete="off"
+          className="public-search-input"
+          id={compact ? 'public-sidebar-search' : 'public-search'}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          placeholder="Search titles and content…"
+          ref={inputRef}
+          role="searchbox"
+          type="search"
+          value={query}
+        />
+      </div>
       {state.status === 'loading' ? (
         <p aria-live="polite" className="public-search-status">
           Searching…
