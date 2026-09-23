@@ -33,16 +33,18 @@ traditional server or handing their notes to a hosted knowledge-base provider.
 
 ### Deploy to Cloudflare
 
-The quickest way to run Dovari is with the deployment button at the top of this page.
+The quickest way to run Dovari is with the deployment button at the top of this page. Follow the
+[step-by-step installation guide](docs/INSTALL.md) if this is your first Cloudflare deployment.
 
 1. Sign in to Cloudflare and select your account.
-2. Set `DOVARI_PASSWORD` to a private password of at most 256 UTF-8 bytes.
-3. Keep the default Worker, D1 database, and R2 bucket names, or choose unused names if they
-   already exist in your account.
-4. Wait for the deployment to finish, then open the generated `workers.dev` address.
+2. Authorize GitHub and choose a new repository for this installation.
+3. Choose unique names for the Worker, D1 database, and R2 bucket.
+4. Set `DOVARI_PASSWORD` when the deployment form asks for the encrypted runtime secret.
+5. Wait for the deployment to finish, then open the generated `workers.dev` address.
 
 Cloudflare provisions the required bindings and stores the password as an encrypted Worker
-secret. No external identity provider or public R2 bucket is required.
+secret. Add a custom domain after the first successful deployment; the source repository does not
+contain a domain-specific route.
 
 ### Run locally
 
@@ -137,7 +139,7 @@ API, data model, security constraints, and test strategy.
 
 ## CLI deployment
 
-For an existing checkout, authenticate Wrangler and deploy with:
+For an existing checkout, authenticate Wrangler, create the runtime secret, and deploy with:
 
 ```sh
 npm ci
@@ -150,8 +152,9 @@ The deployment runner builds the application, provisions or connects the configu
 resources, applies pending migrations, and deploys the Worker. Validate the production artifact
 without changing Cloudflare resources with `npm run deploy:dry-run`.
 
-To use a custom hostname, add one under **Workers & Pages → dovari → Settings → Domains & Routes**
-in the Cloudflare dashboard.
+To use a custom hostname, add one under **Workers & Pages → your Worker → Settings → Domains &
+Routes**. The [installation guide](docs/INSTALL.md) explains the DNS prerequisites and the common
+GitHub Pages record conflict.
 
 ## Security model and current limitations
 

@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, relative, resolve } from 'node:path';
 
@@ -26,6 +26,32 @@ function assertRuntime() {
     throw new Error(
       `Dovari requires npm ${MIN_NPM_MAJOR}+ (found ${npmVersion}). ` +
         'Run the smoke with the npm version shipped with the supported Node.js runtime.',
+    );
+  }
+}
+
+function assertDeployButtonInputs() {
+  const examplePath = join(sourceRoot, '.dev.vars.example');
+  if (!existsSync(examplePath)) {
+    throw new Error('Deploy button configuration is missing .dev.vars.example.');
+  }
+
+  const example = readFileSync(examplePath, 'utf8');
+  if (!/^DOVARI_PASSWORD=.+$/mu.test(example)) {
+    throw new Error(
+      'Deploy button configuration must define a non-empty DOVARI_PASSWORD in .dev.vars.example.',
+    );
+  }
+
+  const config = readFileSync(join(sourceRoot, 'wrangler.jsonc'), 'utf8');
+  if (/"secrets"\s*:\s*\{[\s\S]*?"required"\s*:/u.test(config)) {
+    throw new Error(
+      'wrangler.jsonc must not require DOVARI_PASSWORD during the Deploy to Cloudflare build step.',
+    );
+  }
+  if (/"routes"\s*:/u.test(config)) {
+    throw new Error(
+      'wrangler.jsonc must not contain a source-specific route; users add their own custom domain after deployment.',
     );
   }
 }
@@ -65,9 +91,9 @@ function run(command, args, cwd, options = {}) {
   return result;
 }
 
-function runNpm(cwd, args) {
+function runNpm(cwd, args, options = {}) {
   const invocation = commandForNpm(args);
-  return run(invocation.command, invocation.args, cwd);
+  return run(invocation.command, invocation.args, cwd, options);
 }
 
 function wranglerPath(cwd) {
@@ -78,12 +104,12 @@ function wranglerPath(cwd) {
   return entrypoint;
 }
 
-function runWrangler(cwd, args, capture = false) {
+function runWrangler(cwd, args, capture = false, options = {}) {
   const result = run(
     process.execPath,
     [wranglerPath(cwd), ...args],
     cwd,
-    capture ? { stdio: ['ignore', 'pipe', 'inherit'], encoding: 'utf8' } : undefined,
+    capture ? { ...options, stdio: ['ignore', 'pipe', 'inherit'], encoding: 'utf8' } : options,
   );
   return capture ? result.stdout.trim() : '';
 }
@@ -155,6 +181,7 @@ function migrationNames(cwd) {
 
 async function main() {
   assertRuntime();
+  assertDeployButtonInputs();
 
   const tempRoot = mkdtempSync(join(tmpdir(), 'dovari-install-'));
   const freshRoot = join(tempRoot, 'checkout');
@@ -209,9 +236,13 @@ async function main() {
       'FTS5 integrity',
     );
 
-    console.log('\nBuilding and validating the production artifact in the clean checkout…');
-    runNpm(freshRoot, ['run', 'build']);
-    runWrangler(freshRoot, ['deploy', '--dry-run', '--keep-vars']);
+    const buildWithoutPasswordEnv = { ...process.env };
+    delete buildWithoutPasswordEnv.DOVARI_PASSWORD;
+    console.log('\nBuilding and validating without exposing the runtime password to the build…');
+    runNpm(freshRoot, ['run', 'build'], { env: buildWithoutPasswordEnv });
+    runWrangler(freshRoot, ['deploy', '--dry-run', '--keep-vars'], false, {
+      env: buildWithoutPasswordEnv,
+    });
     console.log('\nFresh install smoke passed.');
   } finally {
     rmSync(tempRoot, { force: true, recursive: true });

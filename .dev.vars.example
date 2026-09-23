@@ -1,0 +1,3 @@
+# Local development only. Copy this file to .dev.vars and replace the value.
+# Use a private password of at most 256 UTF-8 bytes. Never commit .dev.vars.
+DOVARI_PASSWORD=replace-with-a-private-password
