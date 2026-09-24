@@ -1765,6 +1765,11 @@ kbd {
   background: var(--color-app);
 }
 
+.page-editor-content .asset-image-node[hidden],
+.page-editor-content .asset-missing-fallback[hidden] {
+  display: none;
+}
+
 .page-editor-content .asset-image-node-container {
   display: block;
   max-width: 100%;

@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -64,6 +67,7 @@ const documentWithFormatting: TiptapDocument = {
 };
 
 const assetId = '11111111-1111-4111-8111-111111111111';
+const appStyles = readFileSync(resolve(process.cwd(), 'src/client/app/app.css'), 'utf8');
 
 const documentWithAssets: TiptapDocument = {
   type: 'doc',
@@ -178,6 +182,24 @@ describe('PageEditor', () => {
     expect(attachment?.getAttribute('href')).toBe(`/api/private/assets/${assetId}/content`);
     expect(attachment?.textContent).toContain('notes.txt');
     expect(JSON.stringify(documentWithAssets)).not.toContain('blob:');
+  });
+
+  it('keeps the missing-image fallback hidden while the image is available', async () => {
+    render(<PageEditor content={documentWithAssets} />);
+
+    const editor = await screen.findByRole('textbox', { name: 'Page content' });
+    const image = editor.querySelector('.asset-image-node');
+    const fallback = editor.querySelector('.asset-missing-fallback');
+
+    expect(image).not.toBeNull();
+    expect(fallback).not.toBeNull();
+    expect(fallback?.hasAttribute('hidden')).toBe(true);
+    expect(appStyles).toMatch(
+      /\.page-editor-content \.asset-image-node\[hidden\][^{]*\{[^}]*display:\s*none[^}]*\}/u,
+    );
+    expect(appStyles).toMatch(
+      /\.page-editor-content \.asset-missing-fallback\[hidden\][^{]*\{[^}]*display:\s*none[^}]*\}/u,
+    );
   });
 
   it('shows a readable fallback when an inline asset cannot be loaded', async () => {
