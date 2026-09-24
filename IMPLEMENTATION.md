@@ -1,9 +1,9 @@
 # Dovari – Implementierungsstatus und Phasenplan
 
 **Dieses Dokument ist die kanonische Quelle für den aktuellen Implementierungsstand.**  
-**Letzte Aktualisierung:** 22. September 2026
-**Gesamtstatus:** P00–P28 abgeschlossen, P29 geplant
-**Aktuelle Phase:** P28 – Templates und Daily Notes (`DONE`)
+**Letzte Aktualisierung:** 24. September 2026
+**Gesamtstatus:** P00–P28 und P30 abgeschlossen, P29 als nächste Phase vorgesehen
+**Aktuelle Phase:** P30 – Editor-UX-Folgephase (`DONE`)
 **Nächste Phase:** P29 – Markdown- und Obsidian-Import (`NEXT`)
 
 ## 1. Zweck
@@ -121,6 +121,7 @@ nicht automatisch begonnen.
 | P27 | Organisation | Tags und Favoriten | `DONE` | Normalisierte Tags, atomare Zuordnung, Favoriten, private Filter-/Suche, optionale Snapshot-Tags, Backup-/Restore und UI umgesetzt und verifiziert |
 | P28 | Workflows | Templates und Daily Notes | `DONE` | Private Templates, Create-from-Template, konfigurierbare Daily Notes, Slash-/Command-Palette, Backup-v2 und responsive Accessibility umgesetzt und verifiziert |
 | P29 | Datenportabilität | Markdown- und Obsidian-Import | `NEXT` | – |
+| P30 | Editor-Polish | Editor-UX-Folgephase | `DONE` | Mobile Toolbar-/Scroll-Korrektur, proportionale Bildgrößenänderung, Preset-Größen, korrektes Verschieben bestehender Bild-Nodes, Bild-Ladezustand, feste Editor-Shortcuts, Desktop-Toolbar-Stacking und robuste Clipboard-Bildpaste umgesetzt und verifiziert |
 
 ## 6. Phasendefinitionen
 
@@ -160,6 +161,7 @@ Damit ein frischer Chat nicht erneut die gesamte Planung laden muss, gelten dies
 | P27 | §§ 6.6, 6.10, 7.5, 7.8, 10 und 14 | §§ 14–15, 19–20, 26–29, 38–39 und Phase 16 in § 45 |
 | P28 | §§ 6.6, 6.11, 7.5, 7.9, 8.1, 8.4 und 14.3 | §§ 7–8, 14–15, 21, 26–29, Templates und Daily Notes in § 50 sowie Phase 17 in § 45 |
 | P29 | §§ 6.1, 6.2, 7.10, 8.1, 9.1, 11.3 und 14 | §§ 27–29, 37–39, 46 und Phase 18 in § 45 |
+| P30 | §§ 3.2, 8.1, 8.2, 8.3, 14.3 und 16 | Folgephase gemäß P30-Definition in Abschnitt 6; keine zusätzliche Produktplanung |
 
 Zusätzlich wird nur der für die Phase relevante bestehende Code gelesen. Falls eine referenzierte Entscheidung widersprüchlich oder unvollständig ist, wird die Abweichung vor der Implementierung dokumentiert.
 
@@ -1016,6 +1018,48 @@ Roundtrip-Stichproben, Client-/E2E-/Accessibility-Tests und vollständige Qualit
 **Nicht Teil dieser Phase:** Notion-API-Import, proprietäre Plugin-Syntax, bidirektionale
 Synchronisation oder automatischer Hintergrundimport.
 
+### P30 – Editor-UX-Folgephase
+
+**Ziel:** Der bestehende Editor verhält sich auf großen Bildschirmen und mobilen Geräten
+zuverlässig, Bilder lassen sich komfortabel skalieren und die wichtigsten Toolbar-Befehle sind per
+Tastatur auffindbar und ausführbar.
+
+**Scope:** Visual-Viewport-nahe mobile Toolbar, normaler Dokument-Scrollfluss mit zuverlässiger
+Desktop-Sticky-Toolbar, proportionale Bildgrößenänderung per Ziehgriff und Größen-Popup,
+Wiederherstellung des Bildstatus nach erfolgreichem Laden, Preset-Größen für Bilder sowie
+zuverlässiges Verschieben bestehender Bild-Nodes; feste Alt-Shortcuts werden mit sichtbaren
+Tooltips und `aria-keyshortcuts` angezeigt.
+
+**Akzeptanzkriterien:** Die Toolbar liegt bei geöffneter mobiler Tastatur direkt am sichtbaren
+unteren Viewport-Rand; lange Dokumente bleiben im normalen Browser-Scroll erreichbar; Bildgrößen
+werden proportional geändert, gespeichert und zurückgesetzt; die Bildauswahl bietet Small, Medium,
+Large und Original ohne manuelle Width-/Height-Eingabe; vorhandene Bilder lassen sich im Dokument
+verschieben, ohne eine Kopie einzufügen; ein verspätetes Bild-`load` zeigt keinen „Image unavailable“-
+Fallback mehr; alle definierten Shortcuts funktionieren und werden zugänglich angezeigt.
+
+**Verifikation:** Fokussierte Editor-/Node-View-/Shortcut-Tests, responsive Browser-Tests für
+Toolbar-Geometrie und Dokument-Scroll, vollständige Qualitätsgates sowie `git diff --check`.
+
+**Nicht Teil dieser Phase:** konfigurierbare Shortcut-Einstellungen, neue Asset-APIs, Änderungen am
+Backupformat oder eine Überarbeitung des Markdown-/Obsidian-Imports.
+
+**Nachprüfung Clipboard (2026-09-24):** React-StrictMode beendete den memoisierten
+Upload-Controller beim zusätzlichen Effect-Cleanup, obwohl Tiptap den Editor weiterverwendete.
+Die Bereinigung erfolgt jetzt im `onDestroy` der Upload-Extension. Der Screenshot-Test wurde
+zuerst unter StrictMode reproduzierbar rot und nach der Korrektur grün; Clipboard-Dateien,
+Item-Dateien, asynchrones Clipboard sowie Abbruch bei Seitenwechsel und Unmount sind abgesichert.
+`npm run ci` (163 Tests in 37 Dateien, Format, Lint, Typecheck und Build) und
+`DOVARI_E2E_DEV_SERVER=1 npm run test:e2e -- --grep 'covers search, screenshot paste'`
+(Chromium mit echtem PNG-Clipboard/`Ctrl+V`, Paste, Drop und Export am Entwicklungsserver)
+sind erfolgreich. Der E2E-Runner unterstützt dafür den Entwicklungsserver und Playwright-Filter.
+
+**Nachprüfung Bild-UX (2026-09-24):** Die manuellen Width-/Height-Felder wurden durch
+proportionale Small-/Medium-/Large-/Original-Presets ersetzt. Ein eigener interner Bild-Drag behandelt
+die Node als Move und verhindert dadurch doppelte Bild-Nodes; der native Drag des `<img>`-Elements
+wird unterbunden. `npx --yes -p node@26 node /usr/bin/npm run ci` (163 Tests in 37 Dateien) sowie
+`npx --yes -p node@26 node /usr/bin/npm run test:e2e` (16 Chromium-Tests einschließlich Preset-
+Größenänderung und internem Bild-Drag) und `git diff --check` sind erfolgreich.
+
 ## 7. Entdeckte Folgearbeit
 
 Hier werden während einer Phase gefundene Aufgaben notiert, die nicht zu ihrem Scope gehören. Beim Abschluss einer Phase muss jeder Eintrag entweder einer späteren Phase zugeordnet oder ausdrücklich verworfen werden.
@@ -1060,6 +1104,7 @@ Das Kurzprotokoll bleibt bewusst knapp. Pro abgeschlossener oder blockierter Pha
 | 2026-09-14 | P26 | Öffentlicher Snapshot-FTS5-Index mit Titelgewichtung und Snippets, debounced/zugängliche Public Search, snapshotbasierte Navigation mit übersprungenen unveröffentlichten Zwischeneltern, sichere serverseitige Title-/Description-/Open-Graph-Metadaten, Robots/Sitemap und sofort revalidierbare Public-Caches umgesetzt | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 142 Tests in 34 Testdateien und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (11 Browser-Tests einschließlich Public-Search-/Metadata-/Robots-/Sitemap-Flow mit Desktop-/Mobile-Axe), `npx --yes -p node@26 node /usr/bin/npm run db:migrate:local` (0008 angewendet), `npx --yes -p node@26 node /usr/bin/npm run db:fts:public-integrity`, `npx --yes -p node@26 node /usr/bin/npm run db:fts:public-rebuild`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts` sowie `git diff --check` erfolgreich | Standardmäßig bleiben öffentliche Seiten `noindex`; P27 ist `NEXT` |
 | 2026-09-14 | P27 | Tags und Favoriten mit normalisierten eindeutigen Tag-Namen, atomarer Page-Tag-Zuordnung, Favoritenstatus, Sidebar-/Command-Palette-Filtern, privater Tag-Suche, expliziten Snapshot-Tags, Backup-/Restore-Erweiterung, Migration 0009 sowie Client-/Accessibility-/E2E-Abdeckung umgesetzt | `npx --yes -p node@26 node /usr/bin/npm test -- --run` (143 Tests in 35 Testdateien), `npx --yes -p node@26 node /usr/bin/npm run typecheck`, `npx --yes -p node@26 node /usr/bin/npm run lint`, `npx --yes -p node@26 node /usr/bin/npm run build`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts`, `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (12 Playwright-Tests einschließlich Tag-/Favorit-/Trash-Restore-Flow mit Desktop-/Mobile-Axe), `git diff --check` sowie gezielter Backup-Roundtrip-Test erfolgreich | `npm run format:check` meldet ausschließlich die bereits vorhandene, bewusst unveränderte Formatierung in `wrangler.jsonc`; alle P27-Dateien sind formatiert. P28 ist `NEXT` |
 | 2026-09-15 | P28 | Private Templates mit validiertem Tiptap-Inhalt, atomisches Create-from-Template, konfigurierbares und idempotentes Daily-Note-Öffnen mit lokaler Zeitzone/DST-Prüfung, Slash-/Command-Palette-Integration, responsive Templates-UI sowie Backup-v2 für Templates und Daily Notes umgesetzt | `npx --yes -p node@26 node /usr/bin/npm test` (150 Tests in 37 Testdateien), `npx --yes -p node@26 node /usr/bin/npm run typecheck`, `npx --yes -p node@26 node /usr/bin/npm run lint`, `npx --yes -p node@26 node /usr/bin/npm run build`, `npx --yes -p node@26 node /usr/bin/npx drizzle-kit check --config drizzle.config.ts`, `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (13 Playwright-Tests einschließlich Template-/Daily-Note-Flow sowie Desktop-/Mobile-Axe), `git diff --check` und erfolgreiche Anwendung der Migration 0010 im E2E-Lauf | `npm run format:check` meldet ausschließlich die bereits vorhandene, bewusst unveränderte Formatierung in `wrangler.jsonc`; alle P28-Dateien sind formatiert. P29 ist `NEXT` |
+| 2026-09-24 | P30 | Mobile Toolbar-/Scroll-Korrektur, proportionale Bildgrößenänderung mit Größen-Popup, Small-/Medium-/Large-/Original-Presets, korrektes Verschieben bestehender Bild-Nodes, Bild-Ladezustand, feste Editor-Shortcuts sowie Regressionfixes für Desktop-Toolbar-Stacking und Clipboard-Bildpaste umgesetzt | `npx --yes -p node@26 node /usr/bin/npm run ci` (Format-Check, Lint, Typecheck, 163 Tests in 37 Testdateien und Produktionsbuild), `npx --yes -p node@26 node /usr/bin/npm run test:e2e` (16 Browser-Tests einschließlich echtem Chromium-`ClipboardItem`-PNG mit `Ctrl+V`, Screenshot-Paste/Drop, Preset-Größenänderung, internem Bild-Drag, langer Dokumente bei Desktop-/Narrow-Breite, mobiler Visual-Viewport-/Tastatur-Simulation, Shortcut-Hinweisen und Accessibility-Smokes) sowie `git diff --check` erfolgreich | Die Clipboard-Pipeline verarbeitet synchrone `files`-/`items`-Payloads und fällt bei browserabhängigen Clipboard-Payloads auf die Clipboard-API beziehungsweise HTML-Data-URLs zurück; interne Bild-Drags werden als Move behandelt, damit keine Kopie entsteht; die vorhandene lokale Löschung von `.dev.vars.example` bleibt unverändert |
 
 ## 9. Regeln zur Pflege dieses Dokuments
 
